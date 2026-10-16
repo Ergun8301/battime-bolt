@@ -16,6 +16,7 @@ import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchMyMissions, setTaskDone, type DayTask, type Meeting } from '@/lib/missions';
 import { keep } from '@/lib/same';
+import { useUi2 } from '@/components/design/salarie/shell-v2';
 import { meetingsFor, meetingTimeLabel, sortTasks, taskPartInfo, taskTimeLabel } from '@/supabase/functions/_shared/missions';
 
 interface State { on: boolean; tasks: DayTask[]; meetings: Meeting[]; participants: Record<string, string[]> }
@@ -76,12 +77,16 @@ export function useMyMissions(user: { id: string; company_id: string; role?: str
 
 /** Les réunions du jour : une carte rose chacune, sans heures à saisir. */
 export function MyMeetings({ meetings }: { meetings: Meeting[] }) {
+  const ui2 = useUi2();
   if (!meetings.length) return null;
   return (
     <div data-testid="my-meetings">
       {meetings.map((m) => (
         <div key={m.id} className="bt-meet" data-testid="my-meeting">
-          <div className="bt-meet-k"><span aria-hidden="true">👥 </span>Réunion · {meetingTimeLabel(m.start_time, m.end_time)}</div>
+          {/* ?ui=2 (planche) : le titre à gauche, l'heure à droite, sans barre ; le mot « Réunion » reste lu par les lecteurs d'écran. */}
+          {ui2
+            ? <div className="bt-meet-k"><span className="dz-sr">Réunion · </span>{meetingTimeLabel(m.start_time, m.end_time)}</div>
+            : <div className="bt-meet-k"><span aria-hidden="true">👥 </span>Réunion · {meetingTimeLabel(m.start_time, m.end_time)}</div>}
           <div className="bt-meet-t">{m.title}</div>
           {(m.place || m.all_team) && (
             <div className="bt-meet-s">{[m.place, m.all_team ? 'Toute l’équipe' : null].filter(Boolean).join(' · ')}</div>

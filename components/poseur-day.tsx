@@ -50,7 +50,9 @@ import { choosableWorksites } from '@/supabase/functions/_shared/chantier-statut
 // Design salarié, étape 4 : mini-frise de la journée (visible seulement avec ?ui=2).
 import { MiniFrise, type SegFrise } from '@/components/design/salarie/mini-frise';
 import { useUi2 } from '@/components/design/salarie/shell-v2';
-import { etatLigne } from '@/supabase/functions/_shared/salarie-vue';
+import { reperesCarte } from '@/components/design/salarie/carte-chantier';
+import { BarresSemaine, barresAvecTotal, minutesSemaine, type BarreJour } from '@/components/design/salarie/carte-total';
+import { aideEnvoi, etatLigne, hm as hmV2, LIBELLE_LIGNE, type EtatEnvoi } from '@/supabase/functions/_shared/salarie-vue';
 // Lot 4 : les réunions et les tâches du jour (lecture à part, rien sur les heures).
 import { MyMeetings, MyTasks, useMyMissions } from '@/components/missions-worker';
 
@@ -267,7 +269,7 @@ async function readLiveWithin(userId: string, ms: number): Promise<OwnLiveSessio
   }
 }
 
-export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { date?: string; topBanner?: ReactNode; /** Lot 6 : bouton ✨ dans la barre (si l'assistant est activé). */ onAssistant?: () => void } = {}) {
+export default function PoseurDay({ date: dateProp, topBanner, onAssistant, semaine, onScan, onScanWarm }: { date?: string; topBanner?: ReactNode; /** Lot 6 : bouton ✨ dans la barre (si l'assistant est activé). */ onAssistant?: () => void; /** Coque v2 (?ui=2) : les 7 jours de la semaine (barres de la carte Total). */ semaine?: BarreJour[]; /** Coque v2 : le bouton QR de la barre du bas (une tablette est reliée). */ onScan?: () => void; onScanWarm?: () => void } = {}) {
   const ui2 = useUi2();
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
@@ -1639,6 +1641,45 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
    * `app/poseur/layout.tsx` : on répare la serrure et on laisse le verrou.
    */
   const canSend = hasRealDrafts || plannedToSend.length > 0;
+  // Coque v2 : la phrase d'aide sous « Envoyer ma journée ».
+  const etatEnvoiV2: EtatEnvoi = !isOnline ? 'hors-ligne' : submitting ? 'envoi' : pendingEntries.length > 0 ? 'pret' : canSend ? 'pret' : allSubmitted ? 'envoye' : 'rien';
+  const aideV2 = ui2 ? aideEnvoi(etatEnvoiV2, { pointageEnCours: !!live.session && live.session.work_date === date, brouillons: liveEntries.filter((e) => e.status === 'draft').length, enAttente: pendingEntries.length, finACompleter: false, cloture: false }) : null;
+  /* PANIER REPAS — la case EST l'interrupteur (lot 9) : un appui,
+      pris / non pris. Mêmes données qu'avant (meal_allowance, une
+      ligne par jour), mêmes garde-fous : mois clos → fenêtre « Mois
+      clôturé », journée envoyée → confirmation, lignes chez le
+      comptable → grisée. La ligne blanche « Panier repas » a disparu.
+      Lot 3 bis : absente si l'entreprise n'utilise pas le panier. */
+  const panierBtn = meal !== false ? (
+    <button
+      type="button"
+      className={ui2 ? 'bt-stat dz-compteur dz-compteur-panier' : `bt-stat${dayMeal ? ' on' : ''}`}
+      data-ton={ui2 && dayMeal ? 'pris' : undefined}
+      aria-label="Panier repas"
+      aria-pressed={dayMeal}
+      data-testid="panier"
+      data-guide="journee.panier"
+      disabled={mealLocked}
+      title={mealLocked ? 'Journée chez le comptable : vois avec la secrétaire.' : undefined}
+      onClick={() => {
+        if (monthLocked) { setLateOpen(true); return; }
+        if (frozen) { askCorrect(() => toggleDayMeal(!dayMeal, true)); return; }
+        toggleDayMeal(!dayMeal);
+      }}
+    >
+      {ui2 ? (
+        <>
+          <span className="dz-compteur-cle">Panier</span>
+          <span className="bt-stat-n">{dayMeal ? 'Pris ✓' : 'Non pris'}</span>
+        </>
+      ) : (
+        <>
+          <span className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</span>
+          <span className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</span>
+        </>
+      )}
+    </button>
+  ) : null;
 
   /**
    * Lot 1 : « travaillées » = les heures SAISIES (lignes, file du téléphone,
@@ -1654,6 +1695,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     : 0;
   const shownMinutes = totalMinutes + liveMinutes;
   const shownChantiers = nbChantiers;
+  // Coque v2 : les barres des 7 jours, le jour affiché prenant le total de la carte (pointage en cours compris).
+  const barresV2: BarreJour[] = ui2 && semaine ? barresAvecTotal(semaine, shownMinutes) : [];
 
   const gaps = computePauses([
     ...liveEntries.map((e) => ({
@@ -1863,7 +1906,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       )}
 
       {/* ===== ZONE SCROLLABLE ===== */}
-      <div className="bt-day-scroll">
+      {/* ?ui=2 : tant qu'un pointage tourne, la ligne des deux pastilles (réserves, formations) se masque (CSS) ; les deux rubriques restent dans « Plus ». */}
+      <div className="bt-day-scroll" data-pointage={ui2 && live.session && live.session.work_date === date ? 'en-cours' : undefined}>
 
         {/* rappel « jours oubliés » (rendu par le parent) — défile avec la liste */}
         {topBanner}
@@ -1896,65 +1940,80 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           />
         )}
         {/* ----- TOTAL DU JOUR ----- */}
-        <div className="bt-total">
-          <div className="bt-total-ruban" />
-          <div className="bt-total-k">Total aujourd&apos;hui</div>
-          <div style={{ display: 'flex', alignItems: 'baseline' }}>
-            <span className="bt-total-big">{fmtHM(shownMinutes)}</span>
-            <span className="bt-total-unit">travaillées</span>
-          </div>
-          {plannedMinutes > 0 && (
-            <div className="bt-total-prevu" data-testid="total-prevu">
-              + {fmtHM(plannedMinutes)} prévue{plannedMinutes >= 120 ? 's' : ''} par le bureau, pas encore confirmée{plannedMinutes >= 120 ? 's' : ''}
-            </div>
-          )}
-          <div className="bt-stats">
-            <div className="bt-stat">
-              <div className="bt-stat-n">{shownChantiers}</div>
-              <div className="bt-stat-l">chantier{shownChantiers > 1 ? 's' : ''}</div>
-            </div>
-            <div className="bt-stat">
-              <div className="bt-stat-n">{fmtHM(pauseMinutes)}</div>
-              <div className="bt-stat-l">
-                pause{pauses.length + breakCount > 1 ? 's' : ''}
-                {unansweredGaps > 0 && ` · ${unansweredGaps} à préciser`}
+        {ui2 ? (
+          <>
+            {/* Coque v2 (planche du designer) : une carte crème compacte — petit chiffre à gauche, barres des 7 jours à droite — puis quatre tuiles et la frise. Jamais un bloc noir. */}
+            <div className="bt-total dz-total" data-testid="dz-total">
+              <div className="dz-total-gauche">
+                <div className="bt-total-k">Total aujourd&apos;hui</div>
+                <div className="dz-total-valeur">
+                  <span className="bt-total-big">{fmtHM(shownMinutes)}</span>
+                  <span className="dz-total-unite">h</span>
+                </div>
+                <div className="dz-total-detail">
+                  {shownChantiers} chantier{shownChantiers > 1 ? 's' : ''}
+                  {barresV2.length > 0 && ` · semaine ${hmV2(minutesSemaine(barresV2))}`}
+                </div>
+                {plannedMinutes > 0 && (
+                  <div className="bt-total-prevu" data-testid="total-prevu">
+                    + {fmtHM(plannedMinutes)} prévue{plannedMinutes >= 120 ? 's' : ''} par le bureau, pas encore confirmée{plannedMinutes >= 120 ? 's' : ''}
+                  </div>
+                )}
               </div>
+              {barresV2.length > 0 && <BarresSemaine barres={barresV2} />}
             </div>
-            {routeMinutes > 0 && (
+            <div className="bt-stats dz-compteurs">
+              <div className="bt-stat dz-compteur">
+                <span className="dz-compteur-cle">Chantiers</span>
+                <span className="bt-stat-n">{shownChantiers}</span>
+              </div>
+              <div className="bt-stat dz-compteur" data-ton={unansweredGaps > 0 ? 'a-preciser' : undefined}>
+                <span className="dz-compteur-cle">Pauses</span>
+                <span className="bt-stat-n">{unansweredGaps > 0 ? `${unansweredGaps} à préciser` : fmtHM(pauseMinutes)}</span>
+              </div>
+              <div className="bt-stat dz-compteur">
+                <span className="dz-compteur-cle">Route</span>
+                <span className="bt-stat-n">{fmtHM(routeMinutes)}</span>
+              </div>
+              {panierBtn}
+            </div>
+            <MiniFrise segments={friseSegments} />
+          </>
+        ) : (
+          <div className="bt-total">
+            <div className="bt-total-ruban" />
+            <div className="bt-total-k">Total aujourd&apos;hui</div>
+            <div style={{ display: 'flex', alignItems: 'baseline' }}>
+              <span className="bt-total-big">{fmtHM(shownMinutes)}</span>
+              <span className="bt-total-unit">travaillées</span>
+            </div>
+            {plannedMinutes > 0 && (
+              <div className="bt-total-prevu" data-testid="total-prevu">
+                + {fmtHM(plannedMinutes)} prévue{plannedMinutes >= 120 ? 's' : ''} par le bureau, pas encore confirmée{plannedMinutes >= 120 ? 's' : ''}
+              </div>
+            )}
+            <div className="bt-stats">
               <div className="bt-stat">
-                <div className="bt-stat-n">{fmtHM(routeMinutes)}</div>
-                <div className="bt-stat-l">route{travelPaid ? ' · payée' : ''}</div>
+                <div className="bt-stat-n">{shownChantiers}</div>
+                <div className="bt-stat-l">chantier{shownChantiers > 1 ? 's' : ''}</div>
               </div>
-            )}
-            {/* PANIER REPAS — la case EST l'interrupteur (lot 9) : un appui,
-                pris / non pris. Mêmes données qu'avant (meal_allowance, une
-                ligne par jour), mêmes garde-fous : mois clos → fenêtre « Mois
-                clôturé », journée envoyée → confirmation, lignes chez le
-                comptable → grisée. La ligne blanche « Panier repas » a disparu.
-                Lot 3 bis : absente si l'entreprise n'utilise pas le panier. */}
-            {meal !== false && (
-            <button
-              type="button"
-              className={`bt-stat${dayMeal ? ' on' : ''}`}
-              aria-label="Panier repas"
-              aria-pressed={dayMeal}
-              data-testid="panier"
-              data-guide="journee.panier"
-              disabled={mealLocked}
-              title={mealLocked ? 'Journée chez le comptable : vois avec la secrétaire.' : undefined}
-              onClick={() => {
-                if (monthLocked) { setLateOpen(true); return; }
-                if (frozen) { askCorrect(() => toggleDayMeal(!dayMeal, true)); return; }
-                toggleDayMeal(!dayMeal);
-              }}
-            >
-              <span className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</span>
-              <span className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</span>
-            </button>
-            )}
+              <div className="bt-stat">
+                <div className="bt-stat-n">{fmtHM(pauseMinutes)}</div>
+                <div className="bt-stat-l">
+                  pause{pauses.length + breakCount > 1 ? 's' : ''}
+                  {unansweredGaps > 0 && ` · ${unansweredGaps} à préciser`}
+                </div>
+              </div>
+              {routeMinutes > 0 && (
+                <div className="bt-stat">
+                  <div className="bt-stat-n">{fmtHM(routeMinutes)}</div>
+                  <div className="bt-stat-l">route{travelPaid ? ' · payée' : ''}</div>
+                </div>
+              )}
+              {panierBtn}
+            </div>
           </div>
-          {ui2 && <MiniFrise segments={friseSegments} />}
-        </div>
+        )}
 
         {/* Lot 4 : les réunions du jour, au-dessus des chantiers (jamais des heures). */}
         <MyMeetings meetings={missions.meetings} />
@@ -1998,7 +2057,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           if (item.kind === 'live') {
             const ws = worksites.find((w) => w.id === item.data.worksiteId);
             return (
-              <div key={item.key} className="bt-iv live bt-iv-tap" onClick={tapLive} data-testid="card-live">
+              <div key={item.key} className="bt-iv live bt-iv-tap" onClick={tapLive} data-testid="card-live" {...reperesCarte(ui2, 'en-cours')}>
                 <div className="bt-iv-live-k">Pointage en cours</div>
                 <div className="bt-iv-top">
                   <span className="bt-iv-name">{ws?.client_name || 'Chantier'}</span>
@@ -2015,12 +2074,18 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             const isLive = p.id === liveSlotId;
             const onTap = isLive ? tapLive : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p);
             return (
-              <div key={item.key} className={`bt-iv-plan bt-iv-tap${isLive ? ' live' : ''}`} onClick={onTap} data-testid={isLive ? 'card-live' : 'card-planned'} data-guide={isLive ? undefined : 'journee.chantier'}>
+              <div key={item.key} className={`bt-iv-plan bt-iv-tap${isLive ? ' live' : ''}`} onClick={onTap} data-testid={isLive ? 'card-live' : 'card-planned'} data-guide={isLive ? undefined : 'journee.chantier'} {...reperesCarte(ui2, isLive ? 'en-cours' : 'prevue', p.estimated_start, p.estimated_end)}>
                 <div className="bt-plan-k" style={isLive ? { color: '#1F7A4D' } : undefined}>
                   {/* Lot 11 : une heure de début seule (« à 14:00 ») se voit aussi. */}
-                  {p.estimated_start && p.estimated_end
-                    ? `Prévu · ${p.estimated_start.substring(0, 5)}–${p.estimated_end.substring(0, 5)}`
-                    : p.estimated_start ? `Prévu · ${p.estimated_start.substring(0, 5)} · fin à préciser` : 'Prévu · heures à préciser'}
+                  {(() => {
+                    const heures = p.estimated_start && p.estimated_end
+                      ? `${p.estimated_start.substring(0, 5)}–${p.estimated_end.substring(0, 5)}`
+                      : p.estimated_start ? `${p.estimated_start.substring(0, 5)} · fin à préciser` : 'heures à préciser';
+                    // ?ui=2 : l'étiquette d'état à gauche, les heures à droite (le texte lu reste « Prévu · 08:00–12:00 »).
+                    return ui2
+                      ? <><span className="dz-etiquette">{isLive ? 'En cours' : 'Prévu'}</span><span className="dz-sep" aria-hidden="true"> · </span><span className="dz-heures">{heures}</span></>
+                      : `Prévu · ${heures}`;
+                  })()}
                 </div>
                 <div className="bt-iv-row">
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -2051,7 +2116,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             const isDraft = entry.status === 'draft' && !entry.locked;
             const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
             return withGap(
-              <div key={item.key} className={`bt-iv${entry.locked ? ' ok' : entry.status === 'submitted' ? ' sent' : isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap} data-testid="card-entry" data-guide={onTap ? 'journee.chantier' : undefined}>
+              <div key={item.key} className={`bt-iv${entry.locked ? ' ok' : entry.status === 'submitted' ? ' sent' : isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap} data-testid="card-entry" data-guide={onTap ? 'journee.chantier' : undefined} {...reperesCarte(ui2, etatLigne(entry), entry.start_time, entry.end_time)}>
                 <div className="bt-iv-top">
                   <span className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</span>
                   {entry.worksite_id && (docsByWorksite.get(entry.worksite_id) || 0) > 0 && (
@@ -2066,6 +2131,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                     <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
                   ) : isDraft && ui2 && etatLigne(entry) === 'renvoyee' ? (
                     <div className="bt-badge bt-badge-wait dz-badge-renvoye" data-testid="badge-renvoyee">● À corriger</div>
+                  ) : isDraft && ui2 && (etatLigne(entry) === 'fin-a-completer' || etatLigne(entry) === 'sortie-oubliee') ? (
+                    <div className="bt-badge bt-badge-wait dz-badge-oubli" data-testid="badge-oubli">● {LIBELLE_LIGNE[etatLigne(entry)]}</div>
                   ) : isDraft ? (
                     <div className="bt-badge bt-badge-wait">● À envoyer</div>
                   ) : null}
@@ -2186,7 +2253,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           if (item.kind === 'cancelled') {
             const entry = item.data;
             return (
-              <div key={item.key} className="bt-iv-cancel">
+              <div key={item.key} className="bt-iv-cancel" {...reperesCarte(ui2, 'retiree', entry.start_time, entry.end_time)}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="bt-cancel-name">{entry.worksite?.client_name || OTHER_NAME}</div>
                   <div className="bt-cancel-time">{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)} · {fmtHM(entry.total_minutes)}</div>
@@ -2199,7 +2266,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           // pending (offline)
           const entry = item.data;
           return withGap(
-            <div key={item.key} className="bt-iv off">
+            <div key={item.key} className="bt-iv off" {...reperesCarte(ui2, 'sur-le-telephone', entry.start_time, entry.end_time)}>
               <div className="bt-iv-top">
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="bt-iv-name">{entry._worksite_name}</div>
@@ -2224,6 +2291,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         {isEmpty && plannedTodo.length === 0 && !liveSynthetic && (
           <div className="bt-empty">
             <div>Aucun chantier aujourd&apos;hui.</div>
+            {/* ?ui=2 : la phrase d'aide de la planche (E03), vraie selon ce que la journée permet. */}
+            {ui2 && <div className="dz-vide-aide">Ajoute une intervention avec « + »{isOnline && !monthLocked ? ', ou reprends la journée d’hier' : ''}.</div>}
             {isOnline && !monthLocked && (
               <button type="button" className="bt-ghostbtn" data-guide="journee.copier" onClick={handleCopyYesterday} disabled={copyingYesterday}>
                 {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Copier la journée d&apos;hier
@@ -2268,6 +2337,11 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           +
         </button>
 
+        {/* Coque v2 : le QR de la borne vit ici (il était dans l'en-tête) ; mêmes repères que l'ancien bouton. */}
+        {ui2 && onScan && (
+          <button type="button" className="dz-qr" aria-label="Scanner la borne" onPointerDown={onScanWarm} onClick={onScan} data-testid="scan-open" data-guide="entete.scanner">QR</button>
+        )}
+
         {!isOnline ? (
           <button type="button" className="bt-send" data-guide="journee.envoyer" disabled>Envoyer ma journée</button>
         ) : pendingEntries.length > 0 ? (
@@ -2292,6 +2366,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             <Sparkles className="h-6 w-6" />
           </button>
         )}
+        {/* Coque v2 : UNE phrase d'aide, seulement quand elle a quelque chose à dire (règle testée : salarie-vue.ts). */}
+        {ui2 && aideV2 && <div className="dz-aide" data-testid="dz-aide">{aideV2}</div>}
       </div>
 
       {/* ===== ÉDITEUR PLEIN ÉCRAN — Ajouter / modifier une intervention ===== */}
@@ -2513,7 +2589,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5" /> Dupliquer cette journée</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">Choisis les jours où copier cette journée (mêmes chantiers + heures).</p>
-          <div className="flex justify-center">
+          <div className={ui2 ? 'flex justify-center dz-calendrier' : 'flex justify-center'}>
             <CalendarLazy mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
           </div>
           <Button className="w-full h-11" data-guide="copier.valider" disabled={copying || copyTargetStrs.length === 0} onClick={() => copyToDates(copyTargetStrs)}>

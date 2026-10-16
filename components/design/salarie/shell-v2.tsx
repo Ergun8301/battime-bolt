@@ -4,7 +4,7 @@
 // Des composants de présentation : aucune lecture de base, aucune règle (les règles sont dans supabase/functions/_shared/salarie-vue.ts, testées).
 // VISIBLE SEULEMENT avec `?ui=2` sur un hôte d'aperçu (jamais sur bemexo.com) : `useUi2()`. Rien ne change pour les salariés tant que ce n'est pas décidé.
 // Le contenu (carte de pointage, chantiers, feuilles) reste celui d'aujourd'hui dans cette coque ; les étapes suivantes le remplaceront morceau par morceau.
-import { useEffect, useState } from 'react';
+import { forwardRef, useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { isPreviewHost } from '@/lib/hosting';
 import { kicker, type CaseBande, type EtatJour } from '@/supabase/functions/_shared/salarie-vue';
 
@@ -29,10 +29,13 @@ export function Kicker({ date, aujourdhui, etat }: { date: string; aujourdhui: b
   return <div className="dz-kicker" data-testid="dz-kicker">{kicker({ date, aujourdhui, etat })}</div>;
 }
 
-const PASTILLE: Record<EtatJour, string> = { vide: '', prevu: '', 'a-envoyer': '●', renvoye: '!', oublie: '!', envoye: '✓', cloture: '', absence: '' };
+const PASTILLE: Record<EtatJour, string> = { vide: '', prevu: '·', 'a-envoyer': '!', renvoye: '↺', oublie: '!', envoye: '✓', cloture: '▣', absence: '' };
 const LIBELLE: Record<EtatJour, string> = {
   vide: 'rien de prévu', prevu: 'prévu', 'a-envoyer': 'à envoyer', renvoye: 'renvoyée par le bureau', oublie: 'sortie oubliée', envoye: 'envoyée', cloture: 'clôturée', absence: 'absence',
 };
+
+/** Aujourd'hui, pas encore envoyé : un anneau (la journée est en cours), comme sur la planche. */
+const anneau = (j: CaseBande) => !j.lettre && j.aujourdhui && (j.etat === 'vide' || j.etat === 'prevu' || j.etat === 'a-envoyer');
 
 /** Les 7 jours de la semaine, lundi → dimanche : l'état de chaque jour d'un coup d'œil. */
 export function BandeJours({ jours, onSelect }: { jours: CaseBande[]; onSelect: (date: string) => void }) {
@@ -48,7 +51,7 @@ export function BandeJours({ jours, onSelect }: { jours: CaseBande[]; onSelect: 
         >
           <span className="dz-jour-l">{j.jour}</span>
           <span className="dz-jour-n">{j.numero}</span>
-          <span className="dz-jour-p" aria-hidden="true">{j.lettre ?? PASTILLE[j.etat]}</span>
+          <span className={`dz-jour-p${anneau(j) ? ' dz-jour-anneau' : ''}`} aria-hidden="true">{j.lettre ?? (anneau(j) ? '' : PASTILLE[j.etat])}</span>
         </button>
       ))}
     </div>
@@ -70,3 +73,23 @@ export function OngletsBas({ actif, onGo, badgePlus }: { actif: OngletBas | null
     </nav>
   );
 }
+
+/** Le bouton ✦ rond jaune de l'en-tête : ouvre l'assistant existant (même repère que l'ancien bouton de la barre du bas, que les guides et les scripts visent). */
+export function BoutonAssistant({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" className="dz-assistant" aria-label="Assistant BEMEXO" onClick={onClick} data-testid="dock-assistant" data-guide="journee.assistant">✦</button>
+  );
+}
+
+/** La note de l'en-tête noir (« Mardi 13 à envoyer · Ouvrir › »). Peut servir de déclencheur à une fenêtre Radix (`asChild`). */
+export const NoteEntete = forwardRef<HTMLButtonElement, { texte: ReactNode; label: string; action?: string } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>>(
+  function NoteEntete({ texte, label, action = 'Ouvrir ›', ...rest }, ref) {
+    return (
+      <button ref={ref} type="button" className="dz-note" aria-label={label} data-testid="dz-note-entete" {...rest}>
+        <span className="dz-note-point" aria-hidden="true" />
+        <span>{texte}</span>
+        <span className="dz-note-action" aria-hidden="true">{action}</span>
+      </button>
+    );
+  },
+);

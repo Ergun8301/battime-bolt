@@ -394,7 +394,7 @@ Deno.test('Dépôt réel : comptes comparés au §0.2 (écarts expliqués)', asy
   // (menu.semaine, menu.historique) » : les 129 sont toutes littérales ; ces deux-là ne sont dans AUCUN data-guide littéral,
   // elles vivent dans la table MENU_GUIDE (app/poseur/page.tsx:65) lue par data-guide={MENU_GUIDE[t.value]} (page.tsx:599).
   // Les expressions sont 5 : celle-là + `data-guide={guide}` relayé par 4 composants (leurs valeurs sont les `guide="…"` littéraux).
-  egal([parType.ancre.cles, parType.ancre.occurrences], [129, 163], 'ancres littérales : 129 valeurs, 163 occurrences');
+  egal([parType.ancre.cles, parType.ancre.occurrences], [129, 166], 'ancres littérales : 129 valeurs, 166 occurrences (+3 : ✦ de l’en-tête, QR de la barre du bas, ligne de la Semaine, coque v2 ?ui=2)');
   egal(Array.from(new Set(reel.occurrences.filter((o) => o.type === 'ancre-dynamique').map((o) => o.fichier))).sort(), [
     'app/poseur/page.tsx', 'components/admin-planning.tsx', 'components/company-settings.tsx', 'components/export-menu.tsx', 'components/leave-fund-setting.tsx',
   ], 'ancre-dynamique : 5 expressions');
@@ -413,7 +413,7 @@ Deno.test('Dépôt réel : les ancres du scanner sont exactement celles d\'ancho
   }
   const scanner = new Map<string, number>();
   for (const o of reel.occurrences) if (o.type === 'ancre') scanner.set(o.cle.slice('ancre:'.length), (scanner.get(o.cle.slice('ancre:'.length)) ?? 0) + 1);
-  egal([reference.size, Array.from(reference.values()).reduce((a, b) => a + b, 0)], [129, 163], 'anchors() : 129 valeurs, 163 occurrences');
+  egal([reference.size, Array.from(reference.values()).reduce((a, b) => a + b, 0)], [129, 166], 'anchors() : 129 valeurs, 166 occurrences');
   egal(Array.from(scanner.entries()).sort(), Array.from(reference.entries()).sort(), 'mêmes valeurs, mêmes nombres d\'occurrences');
   // Ce que anchors() ne fait pas et le scanner fait : lire l\'attribut lui-même (une ancre sans point comme « data-guide="x" » passerait), et signaler les expressions.
 });
@@ -475,9 +475,9 @@ Deno.test('Dépôt réel : les deux .from(variable) de lib/erase.ts se déclaren
   }
 });
 
-Deno.test('Dépôt réel : T10 — 554 gestionnaires onClick / onSelect / onSubmit dans 73 fichiers, tous dans app/ ou components/', async () => {
+Deno.test('Dépôt réel : T10 — 566 gestionnaires onClick / onSelect / onSubmit dans 74 fichiers, tous dans app/ ou components/', async () => {
   const { reel } = await depot();
-  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [73, 554], 'clics.snapshot de départ (étape 1 : −3 avec le code mort de poseur-day.tsx, la liste des formations a son fichier)');
+  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [74, 566], 'clics.snapshot (étape 1 : −3 avec le code mort de poseur-day.tsx, la liste des formations a son fichier ; puis +1 fichier, +10 gestionnaires : coque v2 shell-v2.tsx, carte-total, mini-frise, Semaine v2 ; puis +2 : entrées « Réserves à lever » et « Formations à voir » du menu Plus, ?ui=2)');
   const dehors = Object.keys(reel.clics).filter((f) => !/^(app|components)\//.test(f));
   egal(dehors, [], 'aucun gestionnaire JSX hors app/ et components/');
 });

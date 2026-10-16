@@ -13,8 +13,15 @@ export function MiniFrise({ segments }: { segments: SegFrise[] }) {
   const axe = friseAxe(segments);
   const pct = (m: number) => `${(((m - axe.debut) / axe.largeur) * 100).toFixed(2)}%`;
   const resume = segments.map((s, i) => `${axe.segments[i] ? `${s.debut} à ${s.fin}` : ''} ${LIB[s.type]}`).join(', ');
+  // « 07:30 → 17:00 » : du premier début à la dernière fin de ce qui est dessiné.
+  const debuts = segments.map((x) => x.debut).filter(Boolean).sort();
+  const fins = segments.map((x) => x.fin).filter(Boolean).sort();
+  const plage = debuts.length && fins.length ? `${debuts[0]} → ${fins[fins.length - 1]}` : '';
+  // Le trait « maintenant » : la fin du segment du pointage en cours.
+  const iCours = segments.findIndex((x) => x.type === 'en-cours');
   return (
     <div className="dz-frise" role="img" aria-label={`Ma journée en un coup d’œil : ${resume}`} data-testid="dz-frise">
+      <div className="dz-frise-tete" aria-hidden="true"><span>Ma journée</span><span>{plage}</span></div>
       <div className="dz-frise-piste">
         {axe.segments.map((a, i) => (
           <span
@@ -25,6 +32,7 @@ export function MiniFrise({ segments }: { segments: SegFrise[] }) {
           />
         ))}
         {axe.minuit !== null && <span className="dz-frise-minuit" style={{ left: pct(axe.minuit) }} />}
+        {iCours >= 0 && axe.segments[iCours] && <span className="dz-frise-maintenant" style={{ left: pct(axe.segments[iCours].fin) }} />}
       </div>
       <div className="dz-frise-ticks" aria-hidden="true">
         {axe.ticks.filter((_, i) => i % Math.max(1, Math.round(axe.ticks.length / 6)) === 0).map((t) => (

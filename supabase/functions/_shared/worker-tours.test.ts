@@ -50,6 +50,8 @@ const REPETEES: Record<string, string> = {
   'journee.envoyer': 'les 5 états du bouton « Envoyer ma journée » : un seul à l’écran',
   'journee.terminer': 'pointage du jour OU sortie oubliée : un seul à l’écran',
   'editeur.horaires': 'cartes « Début » et « Fin »',
+  'journee.assistant': 'bouton ✦ de l’ancienne barre du bas OU du nouvel en-tête (?ui=2) : jamais les deux à l’écran',
+  'entete.scanner': 'icône QR de l’ancien en-tête OU bouton QR de la nouvelle barre du bas (?ui=2) : jamais les deux',
   'semaine.jour': 'la semaine en liste (téléphone) ou en grille (large) : un seul visible',
 };
 

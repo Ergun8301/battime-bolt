@@ -118,7 +118,7 @@ export const hm = (min: number) => `${Math.floor(Math.max(0, min) / 60)}:${pad(M
 // ── 4. Aide sous le bouton d'envoi ──────────────────────────────────────────
 export type EtatEnvoi = 'rien' | 'pret' | 'envoi' | 'envoye' | 'hors-ligne' | 'echec';
 export interface ContexteEnvoi { pointageEnCours: boolean; brouillons: number; enAttente: number; finACompleter: boolean; cloture: boolean }
-/** UNE phrase d'aide, choisie selon ce qui est vrai (la planche la codait en dur sur 8 écrans où elle était fausse). null = aucune aide. */
+/** UNE phrase d'aide (une seule ligne à 360 px : 12 px en capitales, jamais plus de 34 caractères pour le pointage), choisie selon ce qui est vrai (la planche la codait en dur sur 8 écrans où elle était fausse). null = aucune aide. */
 export function aideEnvoi(etat: EtatEnvoi, c: ContexteEnvoi): string | null {
   if (c.cloture) return 'Ces heures sont clôturées : rapproche-toi de la secrétaire.';
   if (c.finACompleter) return 'Une sortie oubliée n’a pas d’heure de fin : mets-la avant d’envoyer.';
@@ -129,8 +129,8 @@ export function aideEnvoi(etat: EtatEnvoi, c: ContexteEnvoi): string | null {
       return n > 1 ? `Pas de réseau : ${n} lignes partiront toutes seules au retour du réseau.` : 'Pas de réseau : 1 ligne partira toute seule au retour du réseau.';
     }
     case 'echec': return 'L’envoi a échoué : touche pour réessayer.';
-    case 'envoye': return c.pointageEnCours ? 'Envoyé. Le pointage en cours ne part pas : termine-le d’abord.' : null;
-    case 'pret': return c.pointageEnCours ? 'Le pointage en cours ne part pas : termine-le d’abord.' : null;
+    case 'envoye': return c.pointageEnCours ? 'Envoyé. Le pointage reste ouvert.' : null;
+    case 'pret': return c.pointageEnCours ? 'Le pointage en cours ne part pas' : null;
     default: return null;
   }
 }

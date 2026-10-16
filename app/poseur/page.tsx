@@ -32,10 +32,11 @@ import { isPreviewHost } from '@/lib/hosting';
 import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 // Formations (lot 6, oct. 2026) : rien ne s'affiche tant que la migration n'est pas passée.
 import { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
-import { GraduationCap } from 'lucide-react';
+import { AlertTriangle, GraduationCap } from 'lucide-react';
 // Design salarié, étape 3 : la coque v2 (visible seulement avec ?ui=2 sur un aperçu, voir components/design/salarie/shell-v2.tsx).
-import { BandeJours, Kicker, OngletsBas, useUi2, type OngletBas } from '@/components/design/salarie/shell-v2';
-import { bandeJours, etatJour, type JourBrut } from '@/supabase/functions/_shared/salarie-vue';
+import { BandeJours, BoutonAssistant, Kicker, NoteEntete, OngletsBas, useUi2, type OngletBas } from '@/components/design/salarie/shell-v2';
+import type { BarreJour } from '@/components/design/salarie/carte-total';
+import { bandeJours, etatJour, minutesDe, type JourBrut } from '@/supabase/functions/_shared/salarie-vue';
 
 // Lot 5 « site rapide 1 » : les onglets Semaine / Mois / Historique et les fenêtres fermées ne pèsent plus
 // dans le premier chargement. Ils arrivent au repos (file de préchauffage, lib/lazy-window.tsx) ou à
@@ -89,6 +90,7 @@ export default function PoseurPage() {
   const ui2Ref = useRef(false);
   ui2Ref.current = ui2;
   const [joursBrut, setJoursBrut] = useState<Record<string, Omit<JourBrut, 'date'>>>({});
+  const [prevuMin, setPrevuMin] = useState<Record<string, number>>({});
   // Jours qui portent des heures jamais parties. Le travail est fait, il manque
   // le geste d'envoi. C'est le piège le plus fréquent — celui qui a fait
   // disparaître 11 h un dimanche. Fusionné avec `pending` dans un seul bandeau.
@@ -118,6 +120,9 @@ export default function PoseurPage() {
   // Le menu du compte est piloté d'ici pour que le guide puisse l'ouvrir à l'étape qui le demande.
   const [tour, setTour] = useState<WorkerTour | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // ?ui=2 : « Réserves à lever » du menu Plus demande l'ouverture de la liste des réserves (elle vit dans WorkerReserves, monté par la journée).
+  const [reservesAsk, setReservesAsk] = useState(false);
+  const reservesAskDone = useCallback(() => setReservesAsk(false), []);
   const tourEnd = useRef(0); // quand le dernier guide s'est arrêté (le menu met un instant à se démonter)
   // Lot 12 : l'icône du scanner ne s'affiche que si une tablette est VRAIMENT
   // reliée (company_has_kiosk : borne allumée ET une tablette non retirée).
@@ -153,8 +158,8 @@ export default function PoseurPage() {
     // levées par le bureau ni par moi (définition partagée : lib/reserves.ts).
     // Une lecture en échec garde le bandeau tel quel (pas de « 0 » à tort).
     const [planRes, entRes, { data: res, error: resErr }] = await Promise.all([
-      supabase.from('planning').select('work_date, absence_type').eq('user_id', user.id).gte('work_date', windowStart),
-      supabase.from('time_entries').select(ui2Ref.current ? 'work_date, status, submitted_at, locked, exported_at, exit_forgotten, start_time, end_time' : 'work_date, status').eq('user_id', user.id).in('status', ['draft', 'submitted', 'validated']).gte('work_date', windowStart),
+      supabase.from('planning').select(ui2Ref.current ? 'work_date, absence_type, estimated_start, estimated_end' : 'work_date, absence_type').eq('user_id', user.id).gte('work_date', windowStart),
+      supabase.from('time_entries').select(ui2Ref.current ? 'work_date, status, submitted_at, locked, exported_at, exit_forgotten, start_time, end_time, total_minutes' : 'work_date, status').eq('user_id', user.id).in('status', ['draft', 'submitted', 'validated']).gte('work_date', windowStart),
       supabase.from('time_entries')
         .select('id, work_date, observation, worksite_id, worksite:worksites(client_name, city)')
         .eq('user_id', user.id).eq('reception', 'avec')
@@ -162,10 +167,10 @@ export default function PoseurPage() {
         .is('reserve_resolved_at', null).is('reserve_fixed_at', null)
         .order('work_date', { ascending: false }).limit(50),
     ]);
-    const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
+    const rows = (planRes.data || []) as unknown as { work_date: string; absence_type: string | null; estimated_start?: string | null; estimated_end?: string | null }[];
     const absenceDays = new Set(rows.filter((p) => p.absence_type).map((p) => p.work_date));
     const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
-    const entries = (entRes.data || []) as unknown as { work_date: string; status: string; submitted_at?: string | null; locked?: boolean | null; exported_at?: string | null; exit_forgotten?: boolean | null; start_time?: string | null; end_time?: string | null }[];
+    const entries = (entRes.data || []) as unknown as { work_date: string; status: string; submitted_at?: string | null; locked?: boolean | null; exported_at?: string | null; exit_forgotten?: boolean | null; start_time?: string | null; end_time?: string | null; total_minutes?: number | null }[];
     const declared = new Set<string>(entries.filter((e) => e.status !== 'draft').map((e) => e.work_date));
     const missing = computeMissingDays(planned, declared);
     setPending((prev) => (sameList(prev, missing) ? prev : missing));
@@ -181,6 +186,13 @@ export default function PoseurPage() {
       for (const r of rows) { const j = jour(r.work_date); if (r.absence_type) j.absence = r.absence_type; else j.prevu = true; }
       for (const e of entries) jour(e.work_date).lignes.push(e);
       setJoursBrut((prev) => (JSON.stringify(prev) === JSON.stringify(brut) ? prev : brut));
+      // Heures prévues par jour (barres des jours à venir) : de l'heure de début à l'heure de fin du planning, sans pause.
+      const prevus: Record<string, number> = {};
+      for (const r of rows) {
+        const d = minutesDe(r.estimated_start), f = minutesDe(r.estimated_end);
+        if (!r.absence_type && d !== null && f !== null && f > d) prevus[r.work_date] = (prevus[r.work_date] ?? 0) + (f - d);
+      }
+      setPrevuMin((prev) => (JSON.stringify(prev) === JSON.stringify(prevus) ? prev : prevus));
     }
     const unsent = Array.from(new Set(entries.filter((e) => e.status === 'draft' && e.work_date <= todayStr).map((e) => e.work_date)))
       .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0)); // plus récent d'abord, comme avant
@@ -408,31 +420,43 @@ export default function PoseurPage() {
    * « journée du 18 septembre saisie mais pas envoyée ». On garde la phrase,
    * on change le vocabulaire.
    */
-  const toSendBanner = toSend.length === 1 ? (
+  // Coque v2 : la note de l'en-tête (« Mardi 13 à envoyer · Ouvrir › ») montre les AUTRES jours à envoyer (le jour affiché a déjà son bouton « Envoyer ma journée »).
+  const jourNote = selectedDate || format(new Date(), 'yyyy-MM-dd');
+  const toSendShown = ui2 ? toSend.filter((d) => d !== jourNote) : toSend;
+  const jourCourt = (d: string) => { const t = format(parseISO(d), 'EEEE d', { locale: fr }); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const toSendBanner = toSendShown.length === 1 ? (
+    ui2 ? (
+      <NoteEntete texte={`${jourCourt(toSendShown[0])} à envoyer`} label={`Journée du ${format(parseISO(toSendShown[0]), 'd MMMM', { locale: fr })} à envoyer`} onClick={() => openDay(toSendShown[0])} />
+    ) : (
     <button
       className="bt-alert"
-      onClick={() => openDay(toSend[0])}
-      aria-label={`Journée du ${format(parseISO(toSend[0]), 'd MMMM', { locale: fr })} à envoyer`}
+      onClick={() => openDay(toSendShown[0])}
+      aria-label={`Journée du ${format(parseISO(toSendShown[0]), 'd MMMM', { locale: fr })} à envoyer`}
     >
       <span className="bt-alert-badge">1</span>
       <span className="bt-alert-txt">
-        journée du {format(parseISO(toSend[0]), 'd MMMM', { locale: fr })} à envoyer
+        journée du {format(parseISO(toSendShown[0]), 'd MMMM', { locale: fr })} à envoyer
       </span>
       <span className="bt-alert-chev">›</span>
     </button>
-  ) : toSend.length > 1 ? (
+    )
+  ) : toSendShown.length > 1 ? (
     <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
       <PopoverTrigger asChild>
+        {ui2 ? (
+          <NoteEntete texte={`${toSendShown.length} journées à envoyer`} label="Journées à envoyer" />
+        ) : (
         <button className="bt-alert" aria-label="Journées à envoyer">
-          <span className="bt-alert-badge">{toSend.length}</span>
+          <span className="bt-alert-badge">{toSendShown.length}</span>
           <span className="bt-alert-txt">journées à envoyer</span>
           <span className="bt-alert-chev">›</span>
         </button>
+        )}
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 bt-skin">
         <p className="text-sm font-medium mb-2">Journées à envoyer</p>
         <div className="space-y-1.5">
-          {toSend.map((d) => (
+          {toSendShown.map((d) => (
             <button
               key={d}
               onClick={() => openDay(d)}
@@ -448,7 +472,7 @@ export default function PoseurPage() {
 
   // Lot 11 : « ⚠ N réserves à lever › » — même habillage, liste + formulaire.
   // (Rien à l'écran tant qu'il n'y en a pas : le composant ne rend rien.)
-  const reservesBanner = <WorkerReserves items={reserves} onChanged={fetchPending} />;
+  const reservesBanner = <WorkerReserves items={reserves} onChanged={fetchPending} openAsk={reservesAsk} onAskDone={reservesAskDone} />;
   // Formations : « 2 formations à voir › » tant qu'il en reste à cocher « Vue ».
   const trainingsBanner = <TrainingsBanner count={trainings.unseen} onOpen={() => goTo('formations')} />;
 
@@ -479,6 +503,11 @@ export default function PoseurPage() {
   const jourAffiche = selectedDate || todayIso;
   const etatAffiche = ui2 ? etatJour({ date: jourAffiche, ...(joursBrut[jourAffiche] ?? { lignes: [] }) }) : 'vide';
   const ongletActif: OngletBas | null = selectedDate || view === 'day' ? 'day' : view === 'week' ? 'week' : view === 'month' ? 'month' : 'plus';
+  // Les 7 barres de la carte Total : les minutes notées de chaque jour de la semaine affichée (les mêmes lectures que la bande).
+  const barres: BarreJour[] | undefined = ui2 ? bande.map((c) => ({
+    date: c.date, jour: c.jour, etat: c.etat, aujourdhui: c.aujourdhui, affiche: c.affiche, prevu: prevuMin[c.date],
+    minutes: (joursBrut[c.date]?.lignes ?? []).reduce((t, l) => t + (Number((l as { total_minutes?: number | null }).total_minutes) || 0), 0),
+  })) : undefined;
   const allerOnglet = (o: OngletBas) => { if (o === 'day') goHome(); else if (o === 'plus') setMenuOpen(true); else goTo(o); };
 
   return (
@@ -503,11 +532,13 @@ export default function PoseurPage() {
               )}
             </div>
 
-            {kioskOn && (
+            {kioskOn && !ui2 && (
               <button type="button" className="bt-phdr-scan" onPointerDown={() => QrScanner.preload()} onClick={() => setScanOpen(true)} aria-label="Scanner la borne" data-testid="scan-open" data-guide="entete.scanner">
                 <ScanLine className="h-5 w-5" />
               </button>
             )}
+            {/* Coque v2 : le ✦ jaune rond, à gauche de l'avatar, ouvre l'assistant existant en un seul geste (même `setAssistantOpen` que l'ancien bouton de la barre du bas). */}
+            {ui2 && (aiOn || demoSalarie) && <BoutonAssistant onClick={() => setAssistantOpen(true)} />}
             {/* Identité du salarié = déclencheur du menu (nom + rond photo/initiales). */}
             <input type="file" accept="image/*" hidden ref={photoInputRef} onChange={(e) => onPickPhoto(e.target.files?.[0])} />
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -559,7 +590,21 @@ export default function PoseurPage() {
                     {!selectedDate && view === t.value && <Check className="h-4 w-4 ml-auto" />}
                   </DropdownMenuItem>
                 ))}
-                {trainingsMenu && (
+                {/* ?ui=2 : les deux rubriques des pastilles de la journée (masquées pendant un pointage) vivent AUSSI ici, toujours, avec leur compteur. */}
+                {ui2 && (
+                  <DropdownMenuItem disabled={reserves.length === 0} data-testid="menu-reserves"
+                    onClick={() => { if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); }}>
+                    <AlertTriangle className="h-4 w-4 mr-2" /> Réserves à lever
+                    {reserves.length > 0 && <span className="ml-auto rounded-full bg-[#B5472E] px-1.5 text-[12px] font-extrabold leading-[17px] text-white" data-testid="menu-reserves-compteur">{reserves.length}</span>}
+                  </DropdownMenuItem>
+                )}
+                {ui2 && trainingsMenu && (
+                  <DropdownMenuItem onClick={() => goTo('formations')} data-testid="menu-formations">
+                    <GraduationCap className="h-4 w-4 mr-2" /> Formations à voir
+                    {trainings.unseen > 0 && <span className="ml-auto rounded-full bg-[#B5472E] px-1.5 text-[12px] font-extrabold leading-[17px] text-white" data-testid="menu-formations-badge">{trainings.unseen}</span>}
+                  </DropdownMenuItem>
+                )}
+                {!ui2 && trainingsMenu && (
                   <DropdownMenuItem onClick={() => goTo('formations')} data-testid="menu-formations">
                     <GraduationCap className="h-4 w-4 mr-2" /> Formations
                     {trainings.unseen > 0 && <span className="ml-auto rounded-full bg-[#B5472E] px-1.5 text-[10.5px] font-extrabold leading-[17px] text-white" data-testid="menu-formations-badge">{trainings.unseen}</span>}
@@ -571,15 +616,16 @@ export default function PoseurPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          {ui2 && <BandeJours jours={bande} onSelect={openDay} />}
+          {ui2 && (isToday || selectedDate) && <BandeJours jours={bande} onSelect={openDay} />}
+          {ui2 && (isToday || selectedDate) && toSendBanner}
         </header>
 
         {/* ===== CORPS ===== */}
         <div className="bt-phbody">
           {selectedDate ? (
-            <PoseurDay key={dayKey} date={selectedDate} topBanner={offlineBanner} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
+            <PoseurDay key={dayKey} date={selectedDate} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : offlineBanner} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
           ) : view === 'day' ? (
-            <PoseurDay key={dayKey} topBanner={<>{offlineBanner}{toSendBanner}{reservesBanner}{trainingsBanner}</>} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
+            <PoseurDay key={dayKey} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : <>{offlineBanner}{toSendBanner}{reservesBanner}{trainingsBanner}</>} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'formations' ? (
@@ -595,7 +641,7 @@ export default function PoseurPage() {
           )}
         </div>
 
-        {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} badgePlus={trainings.unseen} />}
+        {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} badgePlus={(reserves.length > 0 ? 1 : 0) + (trainings.unseen > 0 ? 1 : 0)} />}
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
         {/* Lot 12 : un QR fixe (/pointer#f=…) s'ouvre par une vraie navigation, pour que la page lise le fragment. */}

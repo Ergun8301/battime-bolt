@@ -1,47 +1,321 @@
-/* Design salarié · étape 3 — la coque v2. TOUT est sous `.bt-ui2` : sans `?ui=2` (hôte d'aperçu), aucune règle ne s'applique. */
-.bt-ui2 .bt-phdr{padding-bottom:10px}
-.bt-ui2 .dz-kicker{font:700 12px/1 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.14em;color:#FFC21A;margin:0 0 4px}
-.bt-ui2 .bt-phdr-logo{display:none}
-.bt-ui2 .bt-phdr-date{font:800 22px/1.15 Archivo,system-ui,sans-serif;text-transform:capitalize}
-.bt-ui2 .bt-phdr-id-name{display:none}
-.bt-ui2 .bt-phdr-id{min-width:44px;min-height:44px}
-.bt-ui2 .bt-phdr-id-av{width:44px;height:44px;border-radius:999px;border:2px solid rgba(242,237,227,.45);background:transparent;display:grid;place-items:center;overflow:hidden}
-.bt-ui2 .bt-phdr-id-ini{font:800 14px/1 Archivo,system-ui,sans-serif;color:#F2EDE3}
-.bt-ui2 .dz-bande{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:12px}
-.bt-ui2 .dz-jour{display:flex;flex-direction:column;align-items:center;gap:1px;min-height:60px;padding:6px 0 4px;border-radius:14px;border:2px solid transparent;background:#241F1A;color:#F2EDE3;font-family:Archivo,system-ui,sans-serif;cursor:pointer}
-.bt-ui2 .dz-jour-l{font:700 11px/1 'JetBrains Mono',ui-monospace,monospace;color:rgba(242,237,227,.75)}
-.bt-ui2 .dz-jour-n{font:800 18px/1.1 Archivo,system-ui,sans-serif}
-.bt-ui2 .dz-jour-p{font:800 12px/1 Archivo,system-ui,sans-serif;min-height:12px}
-.bt-ui2 .dz-jour-envoye .dz-jour-p{color:#2ED3A0}
-.bt-ui2 .dz-jour-a-envoyer .dz-jour-p{color:#FFC21A}
-.bt-ui2 .dz-jour-renvoye,.bt-ui2 .dz-jour-oublie{border-color:#FF6B3D}
-.bt-ui2 .dz-jour-renvoye .dz-jour-p,.bt-ui2 .dz-jour-oublie .dz-jour-p{color:#FF6B3D}
-.bt-ui2 .dz-jour-prevu{border-style:dashed;border-color:rgba(242,237,227,.4)}
-.bt-ui2 .dz-jour-vide{background:transparent;opacity:.8}
-.bt-ui2 .dz-jour-absence,.bt-ui2 .dz-jour-cloture{background:repeating-linear-gradient(135deg,#3A332B 0 6px,#2A241E 6px 12px)}
-.bt-ui2 .dz-jour.is-today{background:#FFC21A;color:#15120F}
-.bt-ui2 .dz-jour.is-today .dz-jour-l{color:#15120F}
-.bt-ui2 .dz-jour.is-today .dz-jour-p{color:#15120F}
-.bt-ui2 .dz-jour.is-shown:not(.is-today){border-color:#F2EDE3}
-.bt-ui2 .dz-jour:focus-visible,.bt-ui2 .dz-onglet:focus-visible{outline:3px solid #FFC21A;outline-offset:2px}
-.bt-ui2 .dz-onglets{flex:none;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:8px 12px calc(env(safe-area-inset-bottom) + 8px);background:#F2EDE3;border-top:1px solid #DDD4C6}
-.bt-ui2 .dz-onglet{position:relative;min-height:48px;border-radius:14px;border:0;background:transparent;color:#5B534A;font:700 15px/1 Archivo,system-ui,sans-serif;cursor:pointer}
-.bt-ui2 .dz-onglet.is-on{background:#15120F;color:#FFC21A}
-.bt-ui2 .dz-onglet-badge{position:absolute;top:6px;right:14px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#E53935;color:#fff;font:800 12px/20px Archivo,system-ui,sans-serif}
-@media (prefers-reduced-motion:reduce){.bt-ui2 *{transition:none!important}}
-/* Étape 4 — mini-frise de la journée (dans la carte « Total aujourd'hui »). */
-.bt-ui2 .dz-frise{margin-top:14px}
-.bt-ui2 .dz-frise-piste{position:relative;height:18px;border-radius:9px;background:rgba(242,237,227,.14);overflow:hidden}
-.bt-ui2 .dz-frise-seg{position:absolute;top:2px;bottom:2px;border-radius:7px;min-width:6px}
-.bt-ui2 .dz-frise-fait{background:#2ED3A0}
-.bt-ui2 .dz-frise-a-envoyer{background:#FFC21A}
-.bt-ui2 .dz-frise-prevu{background:repeating-linear-gradient(135deg,rgba(242,237,227,.55) 0 4px,rgba(242,237,227,.18) 4px 8px)}
-.bt-ui2 .dz-frise-en-cours{background:#2FA36B;box-shadow:0 0 0 2px rgba(46,211,160,.45)}
-.bt-ui2 .dz-frise-oublie{background:#FF6B3D}
-.bt-ui2 .dz-frise-seg.is-point{width:8px;border-radius:999px}
-.bt-ui2 .dz-frise-minuit{position:absolute;top:0;bottom:0;width:2px;background:#F2EDE3}
-.bt-ui2 .dz-frise-ticks{position:relative;height:16px;margin-top:4px;font:600 11px/1 'JetBrains Mono',ui-monospace,monospace;color:rgba(242,237,227,.75)}
-.bt-ui2 .dz-frise-ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
-.bt-ui2 .dz-frise-ticks span:first-child{transform:none}
-/* Étape 4 — une ligne renvoyée par le bureau : « À corriger » en orange (le brouillon qui a déjà été envoyé une fois). */
-.bt-ui2 .dz-badge-renvoye{background:#FFE3D6;color:#8A2A0A;border-color:#FF6B3D}
+/* Design salarié · coque v2, fidèle à la planche du designer (docs/design-brief/designer-final/salarie.css).
+   TOUT est sous `.bt-ui2` : sans `?ui=2` (hôte d'aperçu), aucune règle ne s'applique et l'ancienne interface reste octet pour octet la même.
+   Les couleurs, tailles et rayons viennent des jetons (dz-jetons.css) : aucune couleur écrite en dur ici.
+   Spécificité : `.bt-ui2 .x` (0,2,0) passe devant les règles `.bt-x` (0,1,0) de poseur-day.css / live-timer.css, sans `!important`.
+   Couches (z-index) : contrat dans dz-jetons.css (--dz-z-*) : barre du bas 5 · pastille 6 · en-tête 30 · retour 31 · éditeur 40 · fenêtres Radix 50. */
+
+/* ── Focus : anneau double visible sur clair ET sur noir, composé dans :focus-visible (jamais retiré par un `outline:none` voisin) ── */
+.bt-ui2 :focus-visible { outline: 2px solid transparent; box-shadow: var(--dz-focus); }
+.bt-ui2 .dz-envoyer:focus-visible, .bt-ui2 .bt-send:not(:disabled):focus-visible { box-shadow: var(--dz-focus-bouton); }
+.bt-ui2 .dz-bouton[data-ton="principal"]:focus-visible { box-shadow: var(--dz-focus), inset 0 -3px 0 var(--dz-jaune-ombre); }
+.bt-ui2 .bt-iv-go:focus-visible { box-shadow: var(--dz-focus), 0 3px 0 var(--dz-jaune-ombre); }
+/* Couches */
+.bt-ui2 .bt-day-dock, .bt-ui2 .dz-onglets { position: relative; z-index: var(--dz-z-barre); }
+.bt-ui2 .bt-phdr { z-index: var(--dz-z-entete); }
+.bt-ui2 .bt-phdr-back { position: relative; z-index: var(--dz-z-retour); }
+/* Cibles : toute alerte (« Relancer », « appuyer pour envoyer ») fait 44 px au moins */
+.bt-ui2 .bt-alert { min-height: 44px; }
+/* Calendrier de « Dupliquer cette journée » (fenêtre Radix hors de l'écran) : jours de 44 px */
+.dz-calendrier th, .dz-calendrier td, .dz-calendrier td button { width: 44px; height: 44px; }
+.dz-calendrier th { height: auto; }
+@media (prefers-reduced-motion: reduce) { .bt-ui2 * { transition: none !important; } }
+
+/* ── En-tête noir : petit mot, date, ✦ assistant, avatar ── */
+.bt-ui2 .bt-phdr { background: var(--dz-encre); color: var(--dz-creme); padding: calc(env(safe-area-inset-top) + 14px) 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+.bt-ui2 .bt-phdr-row { gap: 8px; }
+.bt-ui2 .bt-phdr-left { flex: 1; min-width: 0; }
+.bt-ui2 .bt-phdr-logo, .bt-ui2 .bt-phdr-id-name, .bt-ui2 .bt-phdr-scan { display: none; }
+.bt-ui2 .dz-kicker { font: 700 var(--dz-fs-12)/1 var(--dz-font-chiffres); letter-spacing: .16em; color: var(--dz-jaune); margin: 0 0 4px; }
+.bt-ui2 .bt-phdr-date { display: block; font: 900 var(--dz-fs-22)/1.1 var(--dz-font-ui); letter-spacing: var(--dz-tracking-titre); text-transform: none; }
+.bt-ui2 .bt-phdr-date::first-letter { text-transform: uppercase; }
+.bt-ui2 .bt-phdr-back { gap: 10px; color: var(--dz-creme); min-height: 44px; }
+.bt-ui2 .bt-phdr-back > svg { width: 44px; height: 44px; padding: 10px; flex: none; border-radius: 50%; border: 1px solid var(--dz-creme-30); box-sizing: border-box; }
+.bt-ui2 .dz-assistant { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--dz-jaune); color: var(--dz-encre); font: 900 17px/1 var(--dz-font-ui); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.bt-ui2 .bt-phdr-id { min-width: 44px; min-height: 44px; padding: 0; gap: 0; max-width: none; border-radius: 50%; background: transparent; }
+.bt-ui2 .bt-phdr-id:hover, .bt-ui2 .bt-phdr-id:active { background: transparent; }
+.bt-ui2 .bt-phdr-id-av { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--dz-creme-35); background: transparent; display: grid; place-items: center; overflow: hidden; }
+.bt-ui2 .bt-phdr-id-ini { font: 900 13px/1 var(--dz-font-ui); color: var(--dz-creme); }
+
+/* ── Bande des 7 jours : 8 états, chacun avec sa forme (jamais la couleur seule) ── */
+.bt-ui2 .dz-bande { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.bt-ui2 .dz-jour { height: 60px; min-width: 0; padding: 0; border-radius: 14px; border: 1.5px solid transparent; background: var(--dz-encre-3); color: var(--dz-creme); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-family: var(--dz-font-ui); cursor: pointer; }
+.bt-ui2 .dz-jour-l { font: 700 var(--dz-fs-12)/1 var(--dz-font-ui); }
+.bt-ui2 .dz-jour-n { font: 900 var(--dz-fs-16)/1 var(--dz-font-ui); }
+.bt-ui2 .dz-jour-p { height: 16px; min-width: 16px; padding: 0 3px; border-radius: 8px; font: 900 var(--dz-fs-12)/16px var(--dz-font-ui); text-align: center; box-sizing: border-box; }
+.bt-ui2 .dz-jour-envoye .dz-jour-p { background: var(--dz-envoye-pastille); color: var(--dz-blanc); box-shadow: 0 0 0 1.5px var(--dz-vert-trait); } /* le vert plein sur le noir ne fait que 3,0:1 : un anneau plus clair le sépare */
+.bt-ui2 .dz-jour-a-envoyer, .bt-ui2 .dz-jour-oublie { background: var(--dz-oubli-sombre); border: 2px solid var(--dz-oubli); }
+.bt-ui2 .dz-jour-a-envoyer .dz-jour-p, .bt-ui2 .dz-jour-oublie .dz-jour-p { background: var(--dz-oubli); color: var(--dz-encre); }
+.bt-ui2 .dz-jour-renvoye { background: var(--dz-erreur-sombre); border: 2px solid var(--dz-erreur); }
+.bt-ui2 .dz-jour-renvoye .dz-jour-p { background: var(--dz-erreur); color: var(--dz-blanc); }
+.bt-ui2 .dz-jour-prevu { background: transparent; border: 1.5px dashed var(--dz-creme-30); }
+.bt-ui2 .dz-jour-prevu .dz-jour-l, .bt-ui2 .dz-jour-prevu .dz-jour-n, .bt-ui2 .dz-jour-vide .dz-jour-l, .bt-ui2 .dz-jour-vide .dz-jour-n { opacity: .6; }
+.bt-ui2 .dz-jour-vide { background: var(--dz-encre-3); }
+.bt-ui2 .dz-jour-absence { background: repeating-linear-gradient(135deg, var(--dz-absence-sombre-a) 0 6px, var(--dz-absence-sombre-b) 6px 12px); }
+.bt-ui2 .dz-jour-absence .dz-jour-p { background: var(--dz-sable); color: var(--dz-encre); }
+.bt-ui2 .dz-jour-cloture { background: var(--dz-cloture-sombre); border-color: var(--dz-creme-35); }
+.bt-ui2 .dz-jour.is-today { background: var(--dz-jaune); color: var(--dz-encre); border: 2px solid var(--dz-creme); }
+.bt-ui2 .dz-jour.is-today .dz-jour-l, .bt-ui2 .dz-jour.is-today .dz-jour-n { opacity: 1; }
+.bt-ui2 .dz-jour .dz-jour-anneau { width: 16px; padding: 0; background: transparent; border: 3px solid var(--dz-encre); border-radius: 50%; }
+.bt-ui2 .dz-jour.is-shown:not(.is-today) { border: 2px solid var(--dz-creme); }
+
+/* ── Note d'en-tête : « Mardi 13 à envoyer · Ouvrir › » ── */
+.bt-ui2 .dz-note { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 12px; border: 0; background: var(--dz-oubli-sombre); color: var(--dz-creme); font: 700 13px/1.3 var(--dz-font-ui); text-align: left; cursor: pointer; }
+.bt-ui2 .dz-note-point { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--dz-oubli); }
+.bt-ui2 .dz-note-action { margin-left: auto; flex: none; color: var(--dz-jaune); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); }
+
+/* ── Contenu défilant : une colonne, 10 px entre les blocs ── */
+.bt-ui2 .bt-day-scroll { display: flex; flex-direction: column; gap: 10px; padding: calc(var(--phdr-h, 132px) + 12px) 14px 24px; }
+.bt-ui2 .bt-day-scroll > * { margin-top: 0; margin-bottom: 0; flex: none; }
+.bt-ui2 .bt-day:has(.bt-net) .bt-day-scroll { padding-top: 12px; }
+.bt-ui2 .bt-sec { font: 400 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .16em; color: var(--dz-titre-section); margin: 6px 4px 0; }
+.bt-ui2 .bt-phscroll { padding: calc(var(--phdr-h, 132px) + 12px) 14px 16px; }
+
+/* Rappels : « 1 réserve à lever › » · « 2 formations à voir › » */
+.bt-ui2 .dz-rappels { display: flex; gap: 6px; }
+.bt-ui2 .dz-rappels:empty { display: none; }
+.bt-ui2 [data-pointage="en-cours"] .dz-rappels { display: none; } /* pointage en cours : la ligne des pastilles se masque, les entrées restent dans « Plus » */
+.bt-ui2 .dz-rappels .bt-alert { flex: 1; min-width: 0; min-height: 44px; margin: 0; padding: 0 8px; border-radius: 14px; border: 1px solid var(--dz-trait); background: var(--dz-carte); justify-content: center; gap: 4px; }
+.bt-ui2 .dz-rappels .bt-alert-badge { display: none; }
+.bt-ui2 .dz-rappels .bt-alert-txt { flex: none; font: 800 var(--dz-fs-16)/1.15 var(--dz-font-ui); color: var(--dz-encre); text-align: center; }
+.bt-ui2 .dz-rappels .bt-alert-chev { font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .dz-rappels .bt-alert[data-testid="reserves-banner"] { background: var(--dz-erreur-fond); border: 0; }
+.bt-ui2 .dz-rappels .bt-alert[data-testid="reserves-banner"] .bt-alert-txt, .bt-ui2 .dz-rappels .bt-alert[data-testid="reserves-banner"] .bt-alert-chev { color: var(--dz-erreur-texte); }
+.bt-ui2 .bt-day-scroll > .bt-alert { margin: 0; }
+
+/* ── Carte de pointage : noire, petite, avec le chrono et « Terminer ma journée » ── */
+.bt-ui2 .bt-lt { background: var(--dz-encre-2); color: var(--dz-creme); border: 0; border-radius: var(--dz-r-l); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.bt-ui2 .bt-lt.late { background: var(--dz-erreur-sombre); }
+.bt-ui2 .dz-pointage-k { display: flex; align-items: center; gap: 8px; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .14em; text-transform: uppercase; color: var(--dz-en-cours-vif); }
+.bt-ui2 .dz-pointage-point { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--dz-en-cours-vif); }
+.bt-ui2 .dz-pointage-ligne { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.bt-ui2 .dz-pointage-temps { font: 700 var(--dz-fs-total)/1 var(--dz-font-chiffres); letter-spacing: -.04em; color: var(--dz-creme); }
+.bt-ui2 .dz-pointage-lieu { min-width: 0; font: 400 13px/1.3 var(--dz-font-ui); color: var(--dz-creme-75); text-align: right; overflow-wrap: anywhere; }
+.bt-ui2 .bt-lt .bt-lt-btn.stop { flex: none; width: 100%; min-height: 52px; border-radius: 999px; border: 0; background: var(--dz-creme); color: var(--dz-encre); box-shadow: none; font: 800 var(--dz-fs-16)/1.1 var(--dz-font-ui); }
+.bt-ui2 .bt-lt .bt-lt-btn.stop:active { transform: none; }
+.bt-ui2 .bt-lt-one { gap: 10px; }
+
+/* ── Carte Total : petit chiffre à gauche, barres des 7 jours à droite ── */
+.bt-ui2 .bt-total { background: var(--dz-carte); color: var(--dz-encre); border: 1px solid var(--dz-trait); border-radius: 18px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; overflow: visible; }
+.bt-ui2 .dz-total-gauche { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.bt-ui2 .bt-total-k { font: 400 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .12em; color: var(--dz-texte-2); margin: 0; }
+.bt-ui2 .dz-total-valeur { display: flex; align-items: baseline; }
+.bt-ui2 .bt-total-big { font: 700 var(--dz-fs-44)/1 var(--dz-font-chiffres); letter-spacing: -.04em; color: var(--dz-encre); }
+.bt-ui2 .dz-total-unite { font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); margin-left: 3px; color: var(--dz-encre); }
+.bt-ui2 .dz-total-detail, .bt-ui2 .bt-total-prevu { margin: 0; font: 600 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .dz-barres { flex: none; display: flex; gap: 4px; align-items: flex-end; }
+.bt-ui2 .dz-barre-jour { width: 14px; display: flex; flex-direction: column; align-items: center; gap: 3px; font: 600 var(--dz-fs-12)/1 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .dz-barre-piste { width: 14px; height: 48px; display: flex; align-items: flex-end; }
+.bt-ui2 .dz-barre-valeur { display: block; width: 14px; min-height: 6%; border-radius: 4px; box-sizing: border-box; }
+.bt-ui2 .dz-barre-jour[data-etat="envoye"] .dz-barre-valeur { background: var(--dz-encre); }
+.bt-ui2 .dz-barre-jour[data-etat="a-envoyer"] .dz-barre-valeur { background: var(--dz-a-envoyer-fond); border: 2px solid var(--dz-a-envoyer-trait); }
+.bt-ui2 .dz-barre-jour[data-etat="aujourdhui"] { color: var(--dz-encre); font-weight: 900; }
+.bt-ui2 .dz-barre-jour[data-etat="aujourdhui"] .dz-barre-valeur { background: var(--dz-jaune); border: 1.5px solid var(--dz-encre); }
+.bt-ui2 .dz-barre-jour[data-etat="absence"] .dz-barre-valeur { background: repeating-linear-gradient(135deg, var(--dz-test-absence) 0 3px, var(--dz-trait-fort) 3px 6px); }
+.bt-ui2 .dz-barre-jour[data-etat="a-venir"] .dz-barre-valeur { border: 1.5px dashed var(--dz-prevu-trait); }
+.bt-ui2 .dz-barre-jour[data-etat="cloture"] .dz-barre-valeur { background: var(--dz-trait-fort); }
+.bt-ui2 .dz-barre-jour[data-etat="renvoye"] .dz-barre-valeur { background: var(--dz-erreur-fond); border: 2px solid var(--dz-erreur); }
+.bt-ui2 .dz-barre-jour[data-etat="vide"] .dz-barre-valeur { background: var(--dz-trait-doux); }
+
+/* ── Quatre tuiles : Chantiers · Pauses · Route · Panier ── */
+.bt-ui2 .bt-stats { margin: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
+.bt-ui2 .bt-stat { min-height: 64px; min-width: 0; border-radius: 14px; border: 1px solid var(--dz-trait); background: var(--dz-carte); padding: 8px 9px; display: flex; flex-direction: column; justify-content: space-between; gap: 2px; text-align: left; margin: 0; box-sizing: border-box; font-family: var(--dz-font-ui); }
+.bt-ui2 button.bt-stat { cursor: pointer; color: var(--dz-encre); }
+.bt-ui2 button.bt-stat:active { transform: none; }
+.bt-ui2 button.bt-stat:disabled { opacity: 1; background: var(--dz-verrou-fond); border-color: var(--dz-trait-fort); color: var(--dz-verrou-texte); }
+.bt-ui2 .dz-compteur-cle { display: block; font: 400 var(--dz-fs-12)/1.1 var(--dz-font-chiffres); letter-spacing: .04em; text-transform: uppercase; color: var(--dz-encre); }
+.bt-ui2 .bt-stat-n, .bt-ui2 .bt-stat.on .bt-stat-n { font: 900 var(--dz-fs-16)/1.15 var(--dz-font-chiffres); color: var(--dz-encre); }
+.bt-ui2 .dz-compteur[data-ton="a-preciser"] { background: var(--dz-a-envoyer-fond); border: 2px solid var(--dz-a-envoyer-trait); color: var(--dz-a-envoyer-texte-2); }
+.bt-ui2 .dz-compteur[data-ton="a-preciser"] .dz-compteur-cle, .bt-ui2 .dz-compteur[data-ton="a-preciser"] .bt-stat-n { color: var(--dz-a-envoyer-texte-2); }
+.bt-ui2 .dz-compteur[data-ton="a-preciser"] .bt-stat-n { font: 900 13px/1.15 var(--dz-font-ui); }
+.bt-ui2 .dz-compteur[data-ton="pris"], .bt-ui2 .bt-stat.on { background: var(--dz-encre); border-color: var(--dz-encre); }
+.bt-ui2 .dz-compteur[data-ton="pris"] .dz-compteur-cle, .bt-ui2 .dz-compteur[data-ton="pris"] .bt-stat-n, .bt-ui2 .bt-stat.on .bt-stat-n { color: var(--dz-jaune); }
+.bt-ui2 .dz-compteur-panier .bt-stat-n, .bt-ui2 .dz-compteur[data-ton="pris"] .bt-stat-n { font: 900 var(--dz-fs-13)/1.15 var(--dz-font-ui); }
+
+/* ── Mini-frise : une carte claire « Ma journée » ── */
+.bt-ui2 .dz-frise { margin: 0; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 6px; }
+.bt-ui2 .dz-frise-tete { display: flex; justify-content: space-between; gap: 8px; font: 400 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .12em; text-transform: uppercase; color: var(--dz-texte-2); }
+.bt-ui2 .dz-frise-piste { position: relative; height: 18px; border-radius: 8px; background: var(--dz-trait-doux); overflow: visible; }
+.bt-ui2 .dz-frise-seg { position: absolute; top: 0; bottom: 0; min-width: 6px; border-radius: 6px; box-sizing: border-box; }
+.bt-ui2 .dz-frise-fait { background: var(--dz-encre); }
+.bt-ui2 .dz-frise-a-envoyer { background: var(--dz-carte); border: 1.5px solid var(--dz-encre); }
+.bt-ui2 .dz-frise-prevu { background: var(--dz-apres-midi); border: 1.5px dashed var(--dz-prevu-trait); }
+.bt-ui2 .dz-frise-en-cours { background: var(--dz-vert-trait); box-shadow: none; }
+.bt-ui2 .dz-frise-oublie { background: var(--dz-oubli); }
+.bt-ui2 .dz-frise-seg.is-point { width: 8px; border-radius: 999px; }
+.bt-ui2 .dz-frise-maintenant { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--dz-maintenant); }
+.bt-ui2 .dz-frise-minuit { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--dz-encre); }
+.bt-ui2 .dz-frise-ticks { position: relative; height: 16px; margin: 0; font: 400 var(--dz-fs-12)/1 var(--dz-font-chiffres); color: var(--dz-texte-2); }
+.bt-ui2 .dz-frise-ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.bt-ui2 .dz-frise-ticks span:first-child { transform: none; }
+
+/* ── Cartes de chantier (étape 4) : étiquette d'état en haut à gauche, heures à droite, nom, ville ; liseré = créneau (matin / après-midi / soir) ──
+   Les repères viennent de carte-chantier.ts (data-dz-etat, data-dz-creneau) ; sans eux (journée entière, sans horaire) la carte reste blanche. */
+.bt-ui2 .bt-iv:where(:not(.off)), .bt-ui2 .bt-iv-plan, .bt-ui2 .bt-iv-cancel { /* :where(:not(.off)) ne compte pas dans la spécificité : le créneau et l'état, plus bas, l'emportent à égalité */
+  --dz-carte-lisere: var(--dz-journee-trait);
+  position: relative; margin: 0; padding: 10px 14px 12px 18px; overflow: hidden; box-shadow: none; opacity: 1;
+  border-radius: var(--dz-r-m); border: 1.5px solid var(--dz-encre); background: var(--dz-carte); color: var(--dz-encre); text-align: left; min-height: 44px; box-sizing: border-box;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 4px; align-items: center;
+}
+.bt-ui2 .bt-iv.draft, .bt-ui2 .bt-iv.sent, .bt-ui2 .bt-iv.ok, .bt-ui2 .bt-iv.live, .bt-ui2 .bt-iv-plan.live { box-shadow: none; } /* l'ancien liseré en box-shadow cède la place au ::before par créneau */
+.bt-ui2 .bt-iv:not(.off)::before, .bt-ui2 .bt-iv-plan::before, .bt-ui2 .bt-iv-cancel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--dz-carte-lisere); }
+.bt-ui2 [data-dz-creneau="matin"] { background: var(--dz-matin); --dz-carte-lisere: var(--dz-matin-trait); }
+.bt-ui2 [data-dz-creneau="apres-midi"] { background: var(--dz-apres-midi); --dz-carte-lisere: var(--dz-apres-midi-trait); }
+.bt-ui2 [data-dz-creneau="soir"] { background: var(--dz-soir); --dz-carte-lisere: var(--dz-soir-trait); }
+/* placement : étiquette (col. 1) · heures (col. 2) · nom · ville ; tout le reste (encadrés, boutons) sur la largeur */
+.bt-ui2 .bt-iv:not(.off) > *, .bt-ui2 .bt-iv-plan > *, .bt-ui2 .bt-iv-cancel > * { grid-column: 1 / -1; min-width: 0; margin: 0; }
+.bt-ui2 .bt-iv:not(.off) > .bt-iv-top, .bt-ui2 .bt-iv:not(.off) > .bt-iv-times, .bt-ui2 .bt-iv-plan > .bt-plan-k, .bt-ui2 .bt-iv-plan > .bt-iv-row, .bt-ui2 .bt-iv-plan > .bt-iv-row > div:first-child, .bt-ui2 .bt-iv-cancel > div:first-child { display: contents; }
+.bt-ui2 .bt-iv:not(.off) .bt-badge, .bt-ui2 .bt-iv-plan .dz-etiquette, .bt-ui2 .bt-iv .bt-iv-live-k, .bt-ui2 .bt-iv-cancel .bt-cancel-badge { grid-column: 1; grid-row: 1; justify-self: start; }
+.bt-ui2 .bt-iv:not(.off) .bt-iv-times-v, .bt-ui2 .bt-iv-plan .dz-heures, .bt-ui2 .bt-iv-cancel .bt-cancel-time, .bt-ui2 .bt-iv-plan .bt-pl-bub-live, .bt-ui2 .bt-iv .bt-pl-bub-live { grid-column: 2; grid-row: 1; justify-self: end; text-align: right; }
+.bt-ui2 .bt-iv:not(.off) .bt-iv-name, .bt-ui2 .bt-iv-plan .bt-iv-name, .bt-ui2 .bt-iv-cancel .bt-cancel-name { grid-column: 1 / -1; grid-row: 2; }
+.bt-ui2 .bt-iv:not(.off) .bt-iv-city, .bt-ui2 .bt-iv-plan .bt-iv-city { grid-column: 1 / -1; grid-row: 3; }
+.bt-ui2 .bt-iv-plan .bt-iv-cta { grid-column: 2; grid-row: 3; justify-self: end; }
+.bt-ui2 .bt-iv-docs { grid-column: 1; justify-self: start; font: 700 var(--dz-fs-12)/1 var(--dz-font-chiffres); color: inherit; }
+.bt-ui2 .bt-iv-name, .bt-ui2 .bt-cancel-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); color: inherit; text-decoration: none; }
+.bt-ui2 .bt-iv-city { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 13px/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .bt-iv-times-v, .bt-ui2 .dz-heures, .bt-ui2 .bt-cancel-time { white-space: normal; font: 700 var(--dz-fs-125)/1.3 var(--dz-font-chiffres); color: inherit; text-decoration: none; }
+.bt-ui2 .bt-iv-tap:hover { border-color: var(--dz-encre); }
+.bt-ui2 .bt-iv-tap:active { transform: none; }
+/* étiquettes d'état */
+.bt-ui2 .bt-badge, .bt-ui2 .dz-etiquette, .bt-ui2 .bt-iv-live-k, .bt-ui2 .bt-plan-k, .bt-ui2 .bt-cancel-badge { font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px; border-radius: var(--dz-r-xs); }
+.bt-ui2 .dz-etiquette { color: var(--dz-texte-2); }
+.bt-ui2 .dz-sep { display: none; }
+.bt-ui2 .bt-plan-k, .bt-ui2 .bt-iv-cancel .bt-cancel-badge { padding: 0; }
+.bt-ui2 .bt-badge .dot { display: none; }
+.bt-ui2 .bt-badge-sent::after { content: "✓"; margin-left: 4px; }
+.bt-ui2 .bt-badge-ok::after { content: "✓"; margin-left: 4px; }
+.bt-ui2 .bt-badge-sent, .bt-ui2 .bt-badge-ok { background: var(--dz-vert-plein); border: 0; color: var(--dz-blanc); }
+.bt-ui2 .bt-badge-wait, .bt-ui2 .bt-badge-draft { background: var(--dz-a-envoyer-fond); border: 0; color: var(--dz-a-envoyer-texte); }
+.bt-ui2 .dz-badge-renvoye { background: var(--dz-erreur-fond); border: 0; color: var(--dz-erreur-texte); }
+.bt-ui2 .dz-badge-oubli { background: var(--dz-erreur); border: 0; color: var(--dz-blanc); }
+/* états */
+.bt-ui2 [data-dz-etat="envoyee"] { background: var(--dz-encre); color: var(--dz-creme); }
+.bt-ui2 [data-dz-etat="envoyee"] .bt-iv-times-v { color: var(--dz-jaune); }
+.bt-ui2 [data-dz-etat="envoyee"] .bt-iv-city, .bt-ui2 [data-dz-etat="envoyee"] .bt-iv-docs { color: var(--dz-creme-75); }
+.bt-ui2 [data-dz-etat="comptable"] { background: var(--dz-comptable-fond); border-color: var(--dz-trait-fort); }
+.bt-ui2 [data-dz-etat="comptable"] .bt-badge-ok { background: var(--dz-encre); color: var(--dz-jaune); }
+.bt-ui2 [data-dz-etat="renvoyee"] { border: 2px solid var(--dz-erreur); }
+.bt-ui2 [data-dz-etat="sortie-oubliee"], .bt-ui2 [data-dz-etat="fin-a-completer"] { background: var(--dz-erreur-fond); border-color: var(--dz-erreur); --dz-carte-lisere: var(--dz-erreur); }
+.bt-ui2 .bt-iv-live-k { color: var(--dz-blanc); background: var(--dz-vert-plein); }
+.bt-ui2 .bt-iv[data-dz-etat="en-cours"], .bt-ui2 .bt-iv-plan[data-dz-etat="en-cours"] { background: var(--dz-en-cours-fond); border-color: var(--dz-en-cours); --dz-carte-lisere: var(--dz-en-cours); }
+.bt-ui2 [data-dz-etat="en-cours"] .dz-etiquette { background: var(--dz-vert-plein); color: var(--dz-blanc); padding: 4px 7px; }
+.bt-ui2 [data-dz-etat="en-cours"] .bt-pl-bub-live, .bt-ui2 .bt-iv.live .bt-pl-bub-live { margin: 0; gap: 0; font: 700 var(--dz-fs-125)/1.3 var(--dz-font-chiffres); text-transform: lowercase; color: var(--dz-en-cours-texte); }
+.bt-ui2 [data-dz-etat="en-cours"] .bt-pl-live-dot { display: none; }
+.bt-ui2 [data-dz-etat="prevue"] { border: 1.5px dashed var(--dz-prevu-trait); }
+.bt-ui2 .bt-iv-plan:not([data-dz-creneau]) { background: transparent; }
+.bt-ui2 [data-dz-etat="retiree"] { background: var(--dz-comptable-fond); border-color: var(--dz-trait-fort); color: var(--dz-texte-2); }
+.bt-ui2 .bt-iv-cancel .bt-cancel-badge { background: var(--dz-sable); color: var(--dz-texte-2); border: 0; padding: 4px 7px; border-radius: var(--dz-r-xs); }
+.bt-ui2 .bt-iv-cancel .bt-cancel-name { text-decoration: line-through; color: var(--dz-texte-2); }
+.bt-ui2 .bt-iv-cancel .bt-cancel-time { color: var(--dz-texte-2); text-decoration: none; }
+.bt-ui2 .bt-iv.off { margin: 0; border: 1.5px dashed var(--dz-prevu-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); padding: 10px 14px 12px 18px; }
+.bt-ui2 .bt-iv.off .bt-badge-off { background: var(--dz-telephone-fond); border: 0; color: var(--dz-encre); }
+/* mention d'état de la carte : encre pour les heures du prévu, brun de titre pour « Mes heures › » (≥ 4,5:1 sur les trois créneaux) */
+.bt-ui2 .bt-plan-k { color: var(--dz-encre); }
+.bt-ui2 .bt-iv-cta { font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); color: var(--dz-titre-section); }
+.bt-ui2 .bt-iv-geo-v { font-size: var(--dz-fs-12); }
+.bt-ui2 .bt-sentnote { color: var(--dz-texte-2); }
+/* « Terminé le … » : un encadré sable (style en ligne du composant : seul !important le passe) */
+.bt-ui2 .bt-iv [data-testid="termine-le"], .bt-ui2 .bt-iv-plan [data-testid="termine-le"] { grid-column: 1 / -1; display: block; margin: 3px 0 0 !important; padding: 8px 10px; border-radius: 10px; background: var(--dz-sable); color: var(--dz-texte-note) !important; font: 400 var(--dz-fs-125)/1.35 var(--dz-font-ui) !important; }
+/* encadrés dans la carte : réserve, correction du bureau, endroit noté, observation, avertissement du prévu */
+.bt-ui2 .bt-iv-reserve, .bt-ui2 .bt-iv-corr, .bt-ui2 .bt-iv-geo, .bt-ui2 .bt-iv-note, .bt-ui2 .bt-plan-warn { display: block; width: auto; margin: 3px 0 0; padding: 8px 10px; border: 0; border-radius: 10px; font: 400 var(--dz-fs-125)/1.35 var(--dz-font-ui); color: var(--dz-encre); box-sizing: border-box; }
+.bt-ui2 .bt-iv-reserve.avec, .bt-ui2 .bt-plan-warn, .bt-ui2 [data-dz-etat="sortie-oubliee"] .bt-iv-reserve.avec, .bt-ui2 [data-dz-etat="fin-a-completer"] .bt-iv-reserve.avec { background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); font-weight: 600; }
+.bt-ui2 [data-dz-etat="sortie-oubliee"] .bt-iv-reserve.avec, .bt-ui2 [data-dz-etat="fin-a-completer"] .bt-iv-reserve.avec { background: var(--dz-carte); }
+.bt-ui2 .bt-iv-reserve.sans, .bt-ui2 .bt-iv-reserve.levee, .bt-ui2 .bt-iv-reserve.encours { background: var(--dz-en-cours-fond); color: var(--dz-en-cours-texte); }
+.bt-ui2 .bt-iv-reserve.corrige { background: var(--dz-sable); color: var(--dz-texte-note); }
+.bt-ui2 .bt-iv-corr { display: flex; background: var(--dz-jaune-pale); color: var(--dz-jaune-texte); }
+.bt-ui2 .bt-iv-corr-t { font: 600 var(--dz-fs-125)/1.35 var(--dz-font-ui); color: inherit; }
+.bt-ui2 .bt-iv-geo, .bt-ui2 .bt-iv-note { background: var(--dz-sable); color: var(--dz-texte-note); }
+.bt-ui2 .bt-iv-geo { display: flex; font-weight: 600; }
+.bt-ui2 .bt-iv-geo-v { color: inherit; }
+.bt-ui2 .bt-iv-fixbtn { display: inline-flex; align-items: center; min-height: 44px; margin-top: 6px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--dz-vert-plein); background: var(--dz-carte); color: var(--dz-en-cours-texte); font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); }
+.bt-ui2 .bt-iv-acts { margin-top: 10px; }
+.bt-ui2 .bt-iv-mod, .bt-ui2 .bt-iv-del { min-height: 44px; border-radius: 12px; }
+.bt-ui2 .bt-day-scroll > div:has(> .bt-gap) { display: flex; flex-direction: column; gap: 10px; }
+.bt-ui2 .bt-gap { margin: 0; background: var(--dz-a-envoyer-fond); border: 2px solid var(--dz-a-envoyer-trait); border-radius: 14px; padding: 10px 12px; }
+.bt-ui2 .bt-gap-t { font: 600 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-a-envoyer-texte-2); }
+.bt-ui2 .bt-gap-d { color: var(--dz-encre); }
+.bt-ui2 .bt-gap-ask { color: var(--dz-a-envoyer-texte); }
+.bt-ui2 .bt-gap-b { min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); }
+.bt-ui2 .bt-gap-b.on { background: var(--dz-encre); color: var(--dz-jaune); border-color: var(--dz-encre); }
+.bt-ui2 .bt-dup { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; margin: 0; border: 1px solid var(--dz-trait-fort); border-radius: 999px; background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); }
+.bt-ui2 .bt-dup svg { display: none; }
+.bt-ui2 .bt-retour { margin: 0; background: var(--dz-a-envoyer-fond); border: 2px solid var(--dz-a-envoyer-trait); border-radius: 14px; color: var(--dz-a-envoyer-texte-2); }
+.bt-ui2 .bt-empty { color: var(--dz-texte-2); }
+
+/* ── Réunion (sans barre à gauche), tâches du jour, journée vide (étape 4) ── */
+.bt-ui2 .dz-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.bt-ui2 [data-testid="my-meetings"] { display: flex; flex-direction: column; gap: 10px; }
+.bt-ui2 .bt-meet { margin: 0; background: var(--dz-reunion); border: 1.5px solid var(--dz-reunion-trait); border-radius: var(--dz-r-m); padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: baseline; }
+.bt-ui2 .bt-meet-t { grid-column: 1; grid-row: 1; font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .bt-meet-k { grid-column: 2; grid-row: 1; margin: 0; font: 700 13px/1.2 var(--dz-font-chiffres); letter-spacing: 0; text-transform: none; color: var(--dz-reunion-trait); }
+.bt-ui2 .bt-meet-s { grid-column: 1 / -1; grid-row: 2; margin: 0; font: 400 13px/1.35 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .bt-tasks { margin: 0; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); padding: 10px 14px; }
+.bt-ui2 .bt-tasks-h { align-items: center; min-height: 28px; }
+.bt-ui2 .bt-tasks-h .bt-sec { margin: 0; }
+.bt-ui2 .bt-tasks-n { font: 700 13px/1 var(--dz-font-chiffres); color: var(--dz-encre); }
+.bt-ui2 .bt-task { position: relative; gap: 12px; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; }
+.bt-ui2 .bt-task.done { background: none; }
+.bt-ui2 .bt-task-t { order: 1; font: 700 14px/1.25 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .bt-task.done .bt-task-t { color: var(--dz-texte-2); }
+.bt-ui2 .bt-task-p { order: 2; border: 0 !important; background: none !important; padding: 0; font: 400 13px/1 var(--dz-font-chiffres); color: var(--dz-texte-2); text-transform: lowercase; } /* !important : la teinte du moment est posée en ligne par le composant */
+.bt-ui2 .bt-task-ok { order: 0; position: static; width: 26px; height: 26px; min-height: 0; padding: 0; gap: 0; border: 0; background: none; font-size: 0; } /* le libellé « Fait » reste dans aria-label ; toute la ligne (44 px) est la cible, via ::after */
+.bt-ui2 .bt-task-ok::after { content: ""; position: absolute; inset: 0; }
+.bt-ui2 .bt-task-ok .bx { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--dz-encre); background: var(--dz-carte); box-sizing: border-box; }
+.bt-ui2 .bt-task-ok .bx svg { width: 16px; height: 16px; }
+.bt-ui2 .bt-task-ok[aria-pressed="true"] .bx { background: var(--dz-encre); color: var(--dz-jaune); }
+.bt-ui2 .bt-task-ok:disabled { opacity: 1; }
+.bt-ui2 .bt-task-ok:disabled .bx { background: var(--dz-sable); }
+.bt-ui2 .bt-task-ok[aria-pressed="true"]:disabled .bx { background: var(--dz-encre); }
+.bt-ui2 .bt-tasks-off { font: 400 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .bt-sec:has(+ .bt-empty) { display: none; }
+.bt-ui2 .bt-empty { border: 1.5px dashed var(--dz-trait-fort); border-radius: var(--dz-r-l); padding: 22px 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--dz-texte-2); }
+.bt-ui2 .bt-empty > div:first-child { font: 900 var(--dz-fs-19)/1.2 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .dz-vide-aide { font: 400 var(--dz-fs-13)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .bt-empty .bt-ghostbtn { min-height: 44px; margin-top: 6px; padding: 0 22px; border-radius: 999px; border: 1.5px solid var(--dz-encre); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); }
+.bt-ui2 .bt-empty .bt-ghostbtn svg { display: none; }
+
+/* ── Barre du bas : « + », QR, Envoyer ma journée, ligne d'aide, puis Journée · Semaine · Mois · Plus ── */
+.bt-ui2 .bt-day-dock { flex-wrap: wrap; gap: 8px; padding: 10px 14px 6px; background: var(--dz-creme); border-top: 1px solid var(--dz-trait); }
+.bt-ui2 .bt-fab, .bt-ui2 .dz-qr { flex: none; width: 56px; height: 56px; border-radius: 16px; border: 2px solid var(--dz-encre); background: var(--dz-carte); color: var(--dz-encre); display: flex; align-items: center; justify-content: center; font: 400 26px/1 var(--dz-font-ui); cursor: pointer; padding: 0; }
+.bt-ui2 .dz-qr { font: 900 var(--dz-fs-12)/1 var(--dz-font-chiffres); letter-spacing: .04em; }
+.bt-ui2 .bt-send { flex: 1; min-width: 0; min-height: 56px; border-radius: 16px; padding: 0 4px; gap: 4px; white-space: nowrap; background: var(--dz-jaune); color: var(--dz-encre); box-shadow: var(--dz-ombre-bouton); font: 900 var(--dz-fs-16)/1.1 var(--dz-font-ui); }
+.bt-ui2 .bt-send:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
+.bt-ui2 .bt-send.done { background: var(--dz-vert-plein); color: var(--dz-blanc); box-shadow: none; }
+.bt-ui2 .bt-send span { font-size: inherit; }
+.bt-ui2 .dz-aide { flex: 0 0 100%; margin: 0; text-align: center; font: 400 var(--dz-fs-12)/1.3 var(--dz-font-chiffres); letter-spacing: .08em; text-transform: uppercase; color: var(--dz-texte-3); }
+.bt-ui2 .dz-onglets { flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 6px 14px calc(env(safe-area-inset-bottom) + 10px); background: var(--dz-creme); border-top: 1px solid var(--dz-trait); }
+.bt-ui2 .bt-phbody:has(.bt-day-dock) + .dz-onglets { border-top: 0; }
+.bt-ui2 .dz-onglet { position: relative; height: 44px; border-radius: 12px; border: 0; background: transparent; color: var(--dz-texte-2); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; }
+.bt-ui2 .dz-onglet.is-on { background: var(--dz-encre); color: var(--dz-jaune); }
+.bt-ui2 .dz-onglet-badge { position: relative; z-index: var(--dz-z-pastille); min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; box-sizing: border-box; background: var(--dz-erreur); color: var(--dz-blanc); font: 900 var(--dz-fs-12)/18px var(--dz-font-ui); text-align: center; }
+
+/* ── Semaine : carte à barres puis une ligne par jour ── */
+.bt-ui2 .dz-semaine { display: flex; flex-direction: column; gap: 10px; }
+.bt-ui2 .dz-sem-carte { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: 18px; padding: 12px 14px; }
+.bt-ui2 .dz-sem-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bt-ui2 .dz-sem-nav-t { text-align: center; font: 800 14px/1.2 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .dz-sem-nav button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.bt-ui2 .dz-sem-jour { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 16px; border: 1px solid var(--dz-trait); background: var(--dz-carte); cursor: pointer; text-align: left; min-height: 44px; }
+.bt-ui2 .dz-sem-jour.is-today { background: var(--dz-jour-courant-case); border: 2px solid var(--dz-jaune); }
+.bt-ui2 .dz-sem-ligne { display: flex; align-items: center; gap: 12px; }
+.bt-ui2 .dz-sem-date { flex: none; width: 40px; text-align: center; font: 600 var(--dz-fs-14)/1.1 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .dz-sem-date b { display: block; font: 900 var(--dz-fs-22)/1.1 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .dz-sem-centre { flex: 1; min-width: 0; }
+.bt-ui2 .dz-sem-nom { font: 900 var(--dz-fs-14)/1.25 var(--dz-font-ui); color: var(--dz-encre); overflow-wrap: anywhere; }
+.bt-ui2 .dz-sem-sous { font: 400 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .dz-sem-pastille { flex: none; padding: 6px 9px; border-radius: 10px; font: 900 var(--dz-fs-14)/1 var(--dz-font-chiffres); white-space: nowrap; }
+.bt-ui2 .dz-sem-pastille[data-etat="envoye"] { background: var(--dz-vert-plein); color: var(--dz-blanc); }
+.bt-ui2 .dz-sem-pastille[data-etat="a-envoyer"] { background: var(--dz-a-envoyer-fond); color: var(--dz-a-envoyer-texte); border: 1.5px solid var(--dz-a-envoyer-trait); }
+.bt-ui2 .dz-sem-pastille[data-etat="en-cours"] { background: var(--dz-jaune); color: var(--dz-encre); }
+.bt-ui2 .dz-sem-pastille[data-etat="absence"] { background: var(--dz-sable); color: var(--dz-encre); }
+.bt-ui2 .dz-sem-pastille[data-etat="prevu"] { background: transparent; color: var(--dz-texte-2); font-family: var(--dz-font-ui); }
+.bt-ui2 .dz-sem-extra { display: flex; flex-direction: column; gap: 4px; }
+.bt-ui2 .dz-sem-reunion { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: var(--dz-reunion); border: 1.5px solid var(--dz-reunion-trait); font: 600 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .dz-sem-reunion b { font-family: var(--dz-font-chiffres); color: var(--dz-reunion-trait); }
+.bt-ui2 .dz-sem-taches { padding: 6px 10px; border-radius: 10px; background: var(--dz-carte); border: 1px solid var(--dz-trait); font: 600 var(--dz-fs-125)/1.4 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .dz-sem-tache-fait { color: var(--dz-texte-2); text-decoration: line-through; }
+
+/* Étape 4 — une ligne renvoyée par le bureau (inchangé). */
+.bt-ui2 .dz-badge-renvoye { background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); border-color: var(--dz-erreur); }
+
+/* Écran court (360 × 640) : la frise (décor, lue aussi dans la Semaine) s'efface pour que le premier chantier du jour reste visible. */
+@media (max-height: 700px) { .bt-ui2 .dz-frise { display: none; } }

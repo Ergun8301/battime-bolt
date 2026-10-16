@@ -1,0 +1,99 @@
+/* Design salarié · jetons de la planche du designer (copie de docs/design-brief/designer-final/tokens.css, sans les noms shadcn).
+   Portée : `.bt-ui2` (l'écran avec ?ui=2) et `.dz-portail` (à poser sur une fenêtre Radix, rendue hors de l'écran, dans <body>).
+   AUCUNE règle ne vise `.bt-skin` ni `:root` : sans ?ui=2, l'ancienne interface ne change pas d'un octet. */
+.bt-ui2, .dz-portail {
+  /* --- ajouts de l'intégration (valeurs de la planche, nommées pour ne laisser aucune couleur en dur dans les règles) --- */
+  --dz-blanc: #FFFFFF;
+  --dz-creme-30: rgba(242,237,227,.3);   /* contour d'un bouton rond sur le noir */
+  --dz-creme-35: rgba(242,237,227,.35);  /* contour de l'avatar */
+  --dz-creme-75: rgba(242,237,227,.75);  /* lieu du pointage, légendes sur noir */
+  --dz-focus-bouton: 0 0 0 2px #FFFDF8, 0 0 0 4px #15120F, inset 0 -4px 0 #D9A200; /* anneau + relief du bouton jaune (l'un ne remplace pas l'autre) */
+
+  /* --- couleurs de base --- */
+  --dz-encre: #15120F;
+  --dz-encre-2: #1B1713;           /* cartes sombres */
+  --dz-encre-3: #25201B;           /* jours de la bande */
+  --dz-creme: #F2EDE3;
+  --dz-carte: #FFFDF8;
+  --dz-sable: #E6DDCD;
+  --dz-telephone-fond: #E6DDCD; --dz-comptable-fond: #EFE9DE;   /* « Sur le téléphone » ; « Chez le comptable » et « Retiré » */
+  --dz-jaune-pale: #FFF3CC; --dz-jaune-texte: #5C4300;           /* encadré de correction du bureau */
+  --dz-texte-note: #3A332B;                                      /* texte des notes sur sable, 9:1 */
+  --dz-trait: #E3DACB;
+  --dz-trait-fort: #D6CBB7;
+  --dz-texte-2: #5B534A;
+  --dz-texte-3: #655B50;
+  --dz-inactif-fond: #E6DDCD; --dz-inactif-texte: #655B50;      /* bouton inactif : 4,92:1 (plus d'opacité) */
+  --dz-verrou-fond: #EFE9DE;  --dz-verrou-texte: #5B534A;       /* tuiles verrouillées : 5,6:1 (plus d'opacité) */
+  --dz-trait-doux: #EFE7D9;        /* séparateurs de listes, piste de la frise */
+  --dz-jaune: #FFC21A;
+  --dz-titre-section: #755800;     /* étiquettes « CHANTIERS DU JOUR » (était #8A6A00, 4,35:1) → 5,7:1 */
+
+  /* --- focus : anneau double, visible sur clair ET sur noir --- */
+  /* --- couches (contrat z-index, de bas en haut) : contenu 0 · barre du bas 5 · pastille de la barre 6 · anciennes feuilles du jour 8-9 · en-tête 30 · retour de l'en-tête 31 · éditeur plein écran 40 · fenêtres Radix 50 · informations 95 --- */
+  --dz-z-barre: 5; --dz-z-pastille: 6; --dz-z-entete: 30; --dz-z-retour: 31; --dz-z-fenetre: 50;
+
+  --dz-focus: 0 0 0 2px #FFFDF8, 0 0 0 4px #15120F;
+
+  /* --- états des heures --- */
+  --dz-envoye-fond: #15120F;  --dz-envoye-heure: #FFC21A;  --dz-envoye-pastille: #1F7A4D; /* blanc dessus 5,32:1 (était #2FA36B, 3,20:1) */
+  --dz-vert-plein: #1F7A4D;        /* sous texte blanc : ENVOYÉ, EN COURS, coche de la bande, « Journée envoyée ✓ » (5,32:1) */
+  --dz-test-absence: #E7E1D5;      /* repère de missions.test.ts (contrôle 32), gardé */
+  --dz-vert-trait: #2FA36B;        /* traits et segments seulement (jamais sous du texte) */
+  --dz-a-envoyer-fond: #FFE4A8; --dz-a-envoyer-texte: #9A3412; --dz-a-envoyer-trait: #C98500; --dz-a-envoyer-texte-2: #7A3A00;
+  /* à envoyer ≠ après-midi : fond ΔE 20,3 (était 2,1), trait séparé du trait après-midi. Texte 5,89:1 */
+  --dz-en-cours-fond: #E7F6EE; --dz-en-cours: #2FA36B; --dz-en-cours-texte: #17663F; --dz-en-cours-vif: #2ED3A0;
+  --dz-prevu-trait: #7D7261;  /* pointillé 1.5px : 4,0:1 sur crème (était #9C907E, 2,68:1) */
+  --dz-erreur-fond: #FCE4E1; --dz-erreur: #C62828; --dz-erreur-bord-doux: #F0B8AE; --dz-erreur-texte-2: #7A2A22; --dz-erreur-vif: #FF6B6B; --dz-erreur-texte: #8E1B14; --dz-erreur-sombre: #3A1414;
+  --dz-oubli: #FF6B3D; --dz-oubli-sombre: #3A1A14;
+  --dz-cloture: #655B50; --dz-cloture-sombre: #1F1B17;
+  --dz-maintenant: #C62828;
+
+  /* --- créneaux (constantes TS : day-part.ts) --- */
+  /* matin inchangé ; soir = valeur rejouée sur le dépôt : matin/soir ΔE 15,02, réunion/soir 11,81 (test:creneaux 5/5) */
+  --dz-matin: #DDEBFA;      --dz-matin-trait: #4A8FE0;
+  --dz-apres-midi: #FCE3CF; --dz-apres-midi-trait: #EE8A43;
+  --dz-soir: #EAD6F4;       --dz-soir-trait: #9A6FD6;
+  --dz-journee: #FFFFFF;    --dz-journee-trait: #15120F;
+  /* réunion : valeurs rejouées sur le dépôt (test:missions 19/19). Pas de barre à gauche (missions.ts:144). */
+  --dz-reunion: #FFE2EC;
+  --dz-reunion-trait: #B7366A;     /* bord ET texte de l'heure (missions-worker.tsx:23) : 4,63:1 sur le fond ; ΔE 10,93 de la barre de chantier la plus proche */
+  --dz-jour-courant-case: #FFF6DB;
+
+  /* --- absences (motif rayé 135°) --- */
+  /* Absences : le salarié reprend l'angle (45°) et les teintes d'admin-planning.tsx:529-534 (bureau = borne = salarié).
+     Les 6 valeurs ci-dessus sont des propositions à remplacer par celles du code ; repos à ajouter côté code si absent. */
+  --dz-absence-sombre-a: #3A3129; --dz-absence-sombre-b: #2A241E;  /* bande des jours (fond noir) */
+
+  /* --- 7 couleurs de chantier (CHANTIER_PALETTES : bar / tagBg / tagText). Barres ≥ ΔE 58 du fond de réunion ;
+         texte d'étiquette ≥ 5,98:1. La bande de gauche des cartes reste le CRÉNEAU ; le chantier n'apparaît qu'en pastille. --- */
+
+  /* --- typographie --- */
+  --dz-font-ui: 'Archivo', system-ui, sans-serif;
+  --dz-font-chiffres: 'JetBrains Mono', ui-monospace, monospace;
+  /* échelle complète : toutes les tailles de la planche */
+  --dz-fs-12: 12px;  --dz-fs-125: 12.5px; --dz-fs-13: 13px; --dz-fs-14: 14px; --dz-fs-15: 15px; --dz-fs-16: 16px;
+  --dz-fs-19: 19px;  --dz-fs-22: 22px; --dz-fs-24: 24px; --dz-fs-26: 26px; --dz-fs-44: 44px;
+  --dz-fs-total: 52px; /* compteur du pointage (mono 700) */
+  --dz-tracking-titre: -.02em;
+
+  /* --- rayons --- */
+  --dz-r-xs: 6px;   /* étiquettes d'état */
+  --dz-r-m: 16px;   /* cartes chantier, tuiles */
+  --dz-r-l: 22px;   /* carte du pointage */
+
+  /* --- espacements --- */
+
+  /* --- zones tactiles --- */
+
+  /* --- ombres --- */
+  --dz-ombre-bouton: inset 0 -4px 0 #D9A200;
+
+  /* --- durées --- */
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .bt-ui2 *, .dz-portail * { animation-duration: 0s !important; transition-duration: 0s !important; }
+}
+
