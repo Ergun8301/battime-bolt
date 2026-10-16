@@ -40,6 +40,8 @@ interface Props {
   extra: DraftExtra; save: SaveLines; onSaved?: () => void;
   /** Lot 7 : la carte pilote le texte de sa bulle (voir ExtraControl). */
   ctl?: ExtraControl;
+  /** Design salarié v2 (planche AS3, AS7) : même logique et mêmes repères ; ni la feuille ci-dessus ni style en ligne, classes `dz-f` (assistant-v2.css). */
+  v2?: boolean;
 }
 const launched = new WeakSet<object>();
 
@@ -73,7 +75,8 @@ export function DraftPause({ value, onChange, testId, ariaLabel = 'Total des pau
   );
 }
 
-export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
+export default function WorkerDraftCard({ extra, save, onSaved, ctl, v2 = false }: Props) {
+  const plain = (o: React.CSSProperties) => (v2 ? undefined : o);
   const { chantiers } = extra;
   const [date] = useState(extra.draft.date);
   // Lot 7 : ce qui a déjà été noté survit à un redessin du panneau.
@@ -172,7 +175,7 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
   if (phase === 'done' && done) {
     return <ActionDone message={done} undo={undo} onEdit={undo ? () => { editOf.current = undo; setPhase('form'); } : undefined} />;
   }
-  if (phase === 'auto') return <p className="wd-lbl" style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}><Loader2 className="h-4 w-4 animate-spin" /> Je note vos heures…</p>;
+  if (phase === 'auto') return <p className="wd-lbl" style={plain({ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 })}><Loader2 className="h-4 w-4 animate-spin" /> Je note vos heures…</p>;
   if (phase === 'question') {
     return (
       <ActionAsk
@@ -184,12 +187,12 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
   }
 
   return (
-    <div className="wd" data-testid="draft-card">
-      <style>{CSS}</style>
+    <div className={v2 ? 'wd dz-f' : 'wd'} data-testid="draft-card">
+      {!v2 && <style>{CSS}</style>}
       <p className="wd-date">{dateLabel}</p>
       {lines.map((l, i) => (
         <div key={keyOf(l)} className={`wd-line${l.worksite_id ? '' : ' todo'}`}>
-          <div className="wd-row" style={{ marginBottom: 6 }}>
+          <div className="wd-row" style={plain({ marginBottom: 6 })}>
             <select value={l.worksite_id ?? ''} onChange={(e) => upd(i, { worksite_id: e.target.value || null, from_planning: false })} aria-label="Chantier">
               <option value="">{l.worksite_text ? `« ${l.worksite_text} » → choisir…` : 'Choisir le chantier…'}</option>
               {chantiers.map((c) => <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` · ${c.ville}` : ''}</option>)}
@@ -202,13 +205,14 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
             <span className="wd-lbl">→</span>
             <input type="time" value={l.end} onChange={(e) => upd(i, { end: e.target.value })} aria-label="Fin" />
           </div>
-          <div className="wd-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+          <div className="wd-row" style={plain({ marginTop: 6, flexWrap: 'wrap' })}>
             <span className="wd-lbl">Total des pauses (h:mm)</span>
             <DraftPause value={l.break_minutes} onChange={(m) => upd(i, { break_minutes: m })} testId={`wd-pause-${i}`} />
           </div>
         </div>
       ))}
-      {errors.map((e) => <p key={e} className="wd-err">{e}</p>)}
+      {v2 && errors.length > 0 && <div className="dz-f-stop" role="alert"><p className="dz-f-stop-t">Impossible d’enregistrer :</p>{errors.map((e) => <p key={e} className="dz-f-raison">{e}</p>)}</div>}
+      {!v2 && errors.map((e) => <p key={e} className="wd-err">{e}</p>)}
       <div className="wd-foot">
         <button type="button" className="wd-add" onClick={() => setLines((ls) => [...ls, { worksite_id: null, worksite_text: '', start: '13:00', end: '17:00', break_minutes: 0 }])}><Plus className="h-3.5 w-3.5" /> Créneau</button>
         <span className="wd-total">Total {fmtMin(total)}</span>

@@ -144,9 +144,13 @@ interface Props {
   ctl?: ExtraControl;
   /** Lot 1 : lit les heures qu'« effacer mes heures » retirerait (rien n'est écrit). Absent en démo. */
   preview?: WorkerErasePreviewer;
+  /** Design salarié v2 (planche AS3) : même logique et mêmes repères, classes `dz-f` (assistant-v2.css), ni feuille ci-dessus ni style en ligne. */
+  v2?: boolean;
 }
 
-export default function WorkerActionCard({ extra, execute, onDone, ctl, preview }: Props) {
+export default function WorkerActionCard({ extra, execute, onDone, ctl, preview, v2 = false }: Props) {
+  const Sty = v2 ? null : <style>{CSS}</style>;
+  const plain = (o: React.CSSProperties) => (v2 ? undefined : o);
   // Lot 7 : ce qui a déjà été fait survit à un redessin du panneau.
   const mem = readCard<{ phase: Phase; result: WorkerActionResult; done: string; cancelled: boolean; d: WorkerActionDraft }>(extra);
   const [d, setD] = useState<WorkerActionDraft>(mem.d ?? extra.workerAction.draft);
@@ -259,9 +263,9 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl, preview 
   if (phase === 'done' && result) {
     return <ActionDone message={result.message} undo={result.undo} onEdit={result.undo ? () => { editOf.current = result.undo!; setPhase('form'); } : undefined} />;
   }
-  if (done && phase !== 'form') return <div className="wa-done"><style>{CSS}</style><CheckCircle2 className="h-5 w-5" /> {done}</div>;
-  if (cancelled) return <p className="wa-info" style={{ fontWeight: 600, color: '#6E6A63', fontSize: 12.5 }}>Annulé : rien n’a été fait.</p>;
-  if (phase === 'auto') return <p className="wa-info" style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 600 }}><Loader2 className="h-4 w-4 animate-spin" /> Je le fais…</p>;
+  if (done && phase !== 'form') return <div className="wa-done">{Sty}<CheckCircle2 className="h-5 w-5" /> {done}</div>;
+  if (cancelled) return <p className="wa-info" style={plain({ fontWeight: 600, color: '#6E6A63', fontSize: 12.5 })}>Annulé : rien n’a été fait.</p>;
+  if (phase === 'auto') return <p className="wa-info" style={plain({ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 600 })}><Loader2 className="h-4 w-4 animate-spin" /> Je le fais…</p>;
   if (phase === 'question' && question) {
     return (
       <ActionAsk text={question.text} chips={question.chips} onPick={(value) => {
@@ -359,7 +363,7 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl, preview 
           <div><label>Début</label><input type="time" value={d.debut} onChange={(e) => set({ debut: e.target.value })} /></div>
           <div><label>Fin</label><input type="time" value={d.fin} onChange={(e) => set({ fin: e.target.value })} /></div>
         </div>
-        {d.choix.find((c) => c.id === d.entry_id)?.envoyee && <p className="wa-p" style={{ color: '#6E6A63' }}>Journée déjà envoyée : le bureau sera prévenu de la modification.</p>}
+        {d.choix.find((c) => c.id === d.entry_id)?.envoyee && <p className="wa-p" style={plain({ color: '#6E6A63' })}>Journée déjà envoyée : le bureau sera prévenu de la modification.</p>}
       </>);
       break;
     case 'panier_repas':
@@ -461,8 +465,8 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl, preview 
   }
 
   return (
-    <div className="wa" data-testid="worker-action-card" data-type={d.type}>
-      <style>{CSS}</style>
+    <div className={v2 ? 'wa dz-f' : 'wa'} data-testid="worker-action-card" data-type={d.type}>
+      {Sty}
       <p className="wa-h"><span className="i"><Icon className="h-3.5 w-3.5" /></span>{title}</p>
       {extra.attachment && <p className="wa-att"><Paperclip className="h-3.5 w-3.5" /> {extra.attachment.name}</p>}
       <div className="wa-f">{body}</div>

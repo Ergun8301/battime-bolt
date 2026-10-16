@@ -41,22 +41,126 @@
 .dz-as-suggestions button > span:first-child { flex: 1; min-width: 0; }
 .dz-as-chevron { color: var(--dz-texte-3); }
 
-/* ── Les cartes de l'assistant (heures, actions, fiche à confirmer), restylées SANS toucher à leur code : elles posent leur propre <style>, on passe devant par la portée ── */
+/* ── La fiche à confirmer et les cartes d'action de l'assistant (AS3, AS7) : carte claire, champs de 48 px alignés, une raison visible quand « Tout confirmer » est inactif.
+   Mêmes jetons que le reste de /poseur v2 ; aucune de ces classes n'existe sans `?ui=2` (les cartes posent `dz-f` et ne posent plus leur ancienne feuille). ── */
 .dz-as-extra { display: block; }
-.dz-as .wd, .dz-as .wa, .dz-as .wm { margin-top: 0; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); }
-.dz-as .wd, .dz-as .wa { padding: 12px; }
-.dz-as .wd input, .dz-as .wd select, .dz-as .wa input, .dz-as .wa select, .dz-as .wa textarea, .dz-as .wm input, .dz-as .wm select, .dz-as .wm textarea { min-height: 44px; font-size: var(--dz-fs-16); border: 1.5px solid var(--dz-trait-fort); border-radius: 12px; }
-.dz-as .wd .pause, .dz-as .wm .pause { min-height: 44px; }
-.dz-as .wd-date, .dz-as .wd-lbl, .dz-as .wd-plan, .dz-as .wa label, .dz-as .wa-rm-h, .dz-as .wm-lbl, .dz-as .wm-plan, .dz-as .wa-att, .dz-as .ad-s, .dz-as .aq-h { font-size: var(--dz-fs-12); }
-.dz-as .wd-date, .dz-as .wm-lbl, .dz-as .wa label { letter-spacing: .08em; }
-.dz-as .wd-x { min-width: 44px; min-height: 44px; }
-.dz-as .wm-check { min-height: 44px; }
-.dz-as .wd-add, .dz-as .wm-retirer, .dz-as .wm-undo { min-height: 44px; border-radius: 999px; font-size: var(--dz-fs-14); }
-.dz-as .wd-total, .dz-as .wd-err, .dz-as .wa-p, .dz-as .wm-help { font-size: var(--dz-fs-14); }
-.dz-as .wd-save, .dz-as .wa-b.ok, .dz-as .wm-confirm { min-height: 48px; padding: 0 18px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
-.dz-as .wd-save:disabled, .dz-as .wa-b.ok:disabled, .dz-as .wm-confirm:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
-.dz-as .wa-b.no, .dz-as .wm-dismiss { min-height: 48px; padding: 0 18px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
-.dz-as .wm-bar { background: var(--dz-carte); }
+.dz-f { display: flex; flex-direction: column; gap: 14px; padding: 16px; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); color: var(--dz-encre); font-family: var(--dz-font-ui); }
+.dz-f :focus-visible { outline: none; box-shadow: var(--dz-focus); }
+.dz-f-tete { display: flex; flex-direction: column; gap: 4px; }
+.dz-f-kicker { display: block; margin: 0; font: 700 var(--dz-fs-12)/1.3 var(--dz-font-chiffres); letter-spacing: .16em; text-transform: uppercase; color: var(--dz-titre-section); }
+.dz-f-titre { margin: 0; font: 900 var(--dz-fs-22)/1.1 var(--dz-font-ui); letter-spacing: var(--dz-tracking-titre); }
+.dz-f-sous { margin: 0; font: 700 var(--dz-fs-14)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); overflow-wrap: anywhere; }
+.dz-f-note, .dz-f-avis { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--dz-sable); color: var(--dz-texte-note); font: 400 var(--dz-fs-13)/1.4 var(--dz-font-ui); overflow-wrap: anywhere; }
+.dz-f-avis { background: var(--dz-jaune-pale); color: var(--dz-jaune-texte); font-weight: 700; }
+.dz-f-aide { margin: 0; font: 400 var(--dz-fs-13)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); overflow-wrap: anywhere; }
+.dz-f-aide.is-attention { color: var(--dz-jaune-texte); font-weight: 700; }
+.dz-f-sec { display: flex; flex-direction: column; gap: 10px; }
+.dz-f-err { margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--dz-erreur-fond); border: 1px solid var(--dz-erreur-bord-doux); color: var(--dz-erreur-texte); font: 700 var(--dz-fs-13)/1.4 var(--dz-font-ui); overflow-wrap: anywhere; }
+
+/* Champs : étiquette sur UNE ligne, champ de 48 px — la même hauteur partout, les rangées s'alignent par le haut */
+.dz-f-champ { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dz-f-lbl { display: block; min-height: 16px; font: 800 var(--dz-fs-13)/16px var(--dz-font-ui); color: var(--dz-encre); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dz-f input:not([type="checkbox"]), .dz-f select, .dz-f textarea { box-sizing: border-box; width: 100%; min-width: 0; height: 48px; margin: 0; padding: 0 14px; border: 1.5px solid var(--dz-trait-fort); border-radius: 12px; background: var(--dz-blanc); color: var(--dz-encre); font: 400 var(--dz-fs-16)/1.2 var(--dz-font-ui); -webkit-appearance: none; appearance: none; }
+.dz-f textarea { height: auto; min-height: 72px; padding: 12px 14px; resize: vertical; }
+.dz-f input[type="time"], .dz-f input[type="date"], .dz-f .pause { font-family: var(--dz-font-chiffres); font-weight: 600; }
+.dz-f input[type="time"], .dz-f input[type="date"] { padding: 0 10px; font-size: var(--dz-fs-15); }
+.dz-f select { padding-right: 40px; font-weight: 700; text-overflow: ellipsis; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' fill='none'%3E%3Cpath d='M1 1l6 6 6-6' stroke='%2315120F' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; }
+.dz-f input:read-only:not([type="checkbox"]), .dz-f input:disabled { background: var(--dz-verrou-fond); color: var(--dz-verrou-texte); }
+.dz-f input.is-erreur, .dz-f select.is-erreur, .dz-f .todo:is(input, select, textarea) { border-color: var(--dz-erreur); background: var(--dz-erreur-fond); }
+.dz-f input[aria-invalid="true"] { border-color: var(--dz-erreur); }
+.dz-f input[type="checkbox"] { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--dz-encre); }
+.dz-f-grille { display: flex; flex-direction: column; gap: 12px; }
+.dz-f-cp-ville { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; align-items: start; }
+
+/* Nouveau chantier, créneaux, annexes : la même carte crème */
+.dz-f-bloc, .dz-f-creneau, .dz-f-annexe { display: flex; flex-direction: column; gap: 12px; padding: 14px; background: var(--dz-creme); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); }
+.dz-f-bloc.off { border-style: dashed; }
+.dz-f-bloc.todo, .dz-f-creneau.is-erreur { border-color: var(--dz-a-envoyer-trait); background: var(--dz-jaune-pale); }
+.dz-f-creneau.is-erreur select { border-color: var(--dz-erreur); }
+.dz-f-resume { display: flex; align-items: flex-start; gap: 8px; margin: 0; }
+.dz-f-resume > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dz-f-resume-txt { font: 800 var(--dz-fs-15)/1.3 var(--dz-font-ui); overflow-wrap: anywhere; }
+.dz-f-pin { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--dz-texte-2); }
+.dz-f-creneau-bloc { display: flex; flex-direction: column; gap: 8px; }
+.dz-f-ecart { align-self: flex-start; margin: 0; padding: 6px 12px; border-radius: 999px; background: var(--dz-sable); color: var(--dz-texte-note); font: 700 var(--dz-fs-13)/1.3 var(--dz-font-ui); }
+.dz-f-ecart.is-pause { background: var(--dz-en-cours-fond); color: var(--dz-en-cours-texte); }
+.dz-f-rang { display: flex; align-items: center; gap: 8px; }
+.dz-f-rang select { flex: 1; }
+.dz-f-x { flex: none; width: 48px; height: 48px; padding: 0; border-radius: 12px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-blanc); color: var(--dz-erreur-texte); display: grid; place-items: center; cursor: pointer; }
+.dz-f-horaires { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+.dz-f-pause { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.dz-f-pause .dz-f-lbl { flex: 1 1 auto; }
+.dz-f .dz-f-pause .pause { flex: none; width: 112px; text-align: center; }
+.dz-f .wd-err { flex-basis: 100%; margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--dz-erreur-fond); border: 1px solid var(--dz-erreur-bord-doux); color: var(--dz-erreur-texte); font: 700 var(--dz-fs-13)/1.4 var(--dz-font-ui); }
+.dz-f-plan { margin: 0; font: 700 var(--dz-fs-13)/1.3 var(--dz-font-ui); color: var(--dz-en-cours-texte); }
+.dz-f-total { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--dz-encre); color: var(--dz-creme); text-align: right; font: 700 var(--dz-fs-14)/1.2 var(--dz-font-ui); }
+.dz-f-total b { margin-left: 6px; font: 700 var(--dz-fs-19)/1.2 var(--dz-font-chiffres); color: var(--dz-jaune); }
+.dz-f-annexe-h { display: flex; align-items: center; gap: 8px; font: 800 var(--dz-fs-15)/1.25 var(--dz-font-ui); }
+.dz-f-annexe-h > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dz-f-retirer, .dz-f-remettre { flex: none; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-blanc); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1.2 var(--dz-font-ui); cursor: pointer; }
+.dz-f-remettre { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; border-style: dashed; }
+.dz-f-coche { display: flex; align-items: center; gap: 10px; min-height: 44px; font: 700 var(--dz-fs-15)/1.3 var(--dz-font-ui); }
+
+/* Le bas de la fiche : la raison COMPLÈTE au-dessus des boutons, jamais sous eux ; la zone défilante garde de la place */
+.dz-as-corps { padding-bottom: 24px; }
+.dz-f-barre { position: sticky; bottom: -24px; z-index: 1; display: flex; flex-direction: column; gap: 10px; max-height: 45vh; overflow-y: auto; margin: 0 -16px -16px; padding: 12px 16px 16px; background: var(--dz-carte); border-top: 1px solid var(--dz-trait); border-radius: 0 0 var(--dz-r-m) var(--dz-r-m); }
+.dz-f-stop { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 10px 14px; border-radius: 12px; background: var(--dz-erreur-fond); border: 1.5px solid var(--dz-erreur); color: var(--dz-erreur-texte); }
+.dz-f-stop-t { flex: 1; order: 0; margin: 0; font: 900 var(--dz-fs-14)/1.25 var(--dz-font-ui); }
+.dz-f-raison { flex-basis: 100%; order: 2; margin: 0; font: 700 var(--dz-fs-13)/1.4 var(--dz-font-ui); overflow-wrap: anywhere; }
+.dz-f-voir { order: 1; flex: none; min-height: 44px; padding: 0; border: 0; background: none; color: var(--dz-erreur-texte); font: 800 var(--dz-fs-14)/1.2 var(--dz-font-ui); text-decoration: underline; cursor: pointer; }
+.dz-f-besoin { margin: 0; font: 700 var(--dz-fs-13)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-f-btns { display: flex; gap: 10px; }
+.dz-f-ok, .dz-f-non { min-height: 52px; padding: 0 18px; border-radius: 999px; font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.dz-f-ok { flex: 1 1 auto; white-space: nowrap; border: 0; background: var(--dz-jaune); color: var(--dz-encre); box-shadow: var(--dz-ombre-bouton); }
+.dz-f-ok:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; cursor: default; }
+.dz-f-non { flex: 0 1 auto; padding: 0 24px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font-weight: 800; }
+.dz-f-non:disabled { color: var(--dz-inactif-texte); cursor: default; }
+.dz-f-ignoree { margin: 0; font: 400 var(--dz-fs-13)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-f-msg { margin: 0; font: 800 var(--dz-fs-15)/1.4 var(--dz-font-ui); }
+.dz-f-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font: 400 var(--dz-fs-14)/1.4 var(--dz-font-ui); }
+.dz-f-liste li { display: flex; gap: 8px; }
+.dz-f-liste li b { flex: none; width: 16px; text-align: center; }
+.dz-f-res .s-done b { color: var(--dz-en-cours-texte); }
+.dz-f-res .s-failed b { color: var(--dz-erreur-texte); }
+.dz-f .wm-live:focus { outline: none; }
+[data-dz-erreur] { scroll-margin-bottom: 220px; }
+
+/* Heures dites (journée simple) et action seule : les mêmes primitives sur le balisage d'origine */
+.dz-f.wd .wd-date, .dz-f.wa .wa-h { margin: 0; }
+.dz-f.wd .wd-date { font: 700 var(--dz-fs-12)/1.3 var(--dz-font-chiffres); letter-spacing: .16em; text-transform: uppercase; color: var(--dz-titre-section); }
+.dz-f.wd .wd-line { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 14px; background: var(--dz-creme); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); }
+.dz-f.wd .wd-line.todo { border-color: var(--dz-a-envoyer-trait); background: var(--dz-jaune-pale); }
+.dz-f.wd .wd-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.dz-f.wd .wd-row > select { flex: 1 1 0; }
+.dz-f.wd .wd-row > input[type="time"] { flex: 1 1 96px; width: auto; }
+.dz-f.wd .wd-lbl { font: 800 var(--dz-fs-13)/16px var(--dz-font-ui); color: var(--dz-encre); }
+.dz-f.wd .wd-row > .pause { flex: none; width: 112px; text-align: center; }
+.dz-f.wd .wd-plan { margin: 0; font: 700 var(--dz-fs-13)/1.3 var(--dz-font-ui); color: var(--dz-en-cours-texte); }
+.dz-f.wd .wd-x { flex: none; width: 48px; height: 48px; padding: 0; border-radius: 12px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-blanc); color: var(--dz-erreur-texte); display: grid; place-items: center; cursor: pointer; }
+.dz-f.wd .wd-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0; }
+.dz-f.wd .wd-add { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px dashed var(--dz-trait-fort); background: var(--dz-blanc); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1.2 var(--dz-font-ui); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.dz-f.wd .wd-total { flex: 1; text-align: right; font: 700 var(--dz-fs-19)/1.2 var(--dz-font-chiffres); white-space: nowrap; }
+.dz-f.wd .wd-save, .dz-f.wa .wa-b.ok { flex: 1 1 100%; order: 3; min-height: 52px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); box-shadow: var(--dz-ombre-bouton); display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.dz-f.wd .wd-save:disabled, .dz-f.wa .wa-b.ok:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; cursor: default; }
+.dz-f.wa .wa-h { display: flex; align-items: center; gap: 10px; font: 900 var(--dz-fs-19)/1.2 var(--dz-font-ui); letter-spacing: var(--dz-tracking-titre); }
+.dz-f.wa .wa-h .i { flex: none; width: 32px; height: 32px; border-radius: 10px; background: var(--dz-encre); color: var(--dz-jaune); display: grid; place-items: center; }
+.dz-f.wa .wa-att { margin: 0; display: flex; align-items: center; gap: 6px; font: 700 var(--dz-fs-13)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-f.wa .wa-f { display: flex; flex-direction: column; gap: 12px; }
+.dz-f.wa .wa-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; align-items: start; }
+.dz-f.wa label { display: block; min-height: 16px; margin: 0 0 6px; font: 800 var(--dz-fs-13)/16px var(--dz-font-ui); text-transform: none; letter-spacing: 0; color: var(--dz-encre); }
+.dz-f.wa label.wa-check { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 0; font: 700 var(--dz-fs-15)/1.3 var(--dz-font-ui); }
+.dz-f.wa .wa-info { margin: 0; font: 700 var(--dz-fs-14)/1.4 var(--dz-font-ui); }
+.dz-f.wa .wa-p { margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--dz-erreur-fond); border: 1px solid var(--dz-erreur-bord-doux); color: var(--dz-erreur-texte); font: 700 var(--dz-fs-13)/1.4 var(--dz-font-ui); overflow-wrap: anywhere; }
+.dz-f.wa .wa-rm { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--dz-erreur-fond); border: 1px solid var(--dz-erreur-bord-doux); }
+.dz-f.wa .wa-rm-h { margin: 0 0 4px; font: 700 var(--dz-fs-12)/1.3 var(--dz-font-chiffres); letter-spacing: .16em; text-transform: uppercase; color: var(--dz-erreur-texte); }
+.dz-f.wa .wa-rm ul { margin: 0; padding: 0 0 0 18px; font: 400 var(--dz-fs-14)/1.45 var(--dz-font-ui); }
+.dz-f.wa .wa-rm .ok { color: var(--dz-en-cours-texte); }
+.dz-f.wa .wa-foot { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; }
+.dz-f.wa .wa-b.no { flex: 1 1 100px; min-height: 52px; padding: 0 18px; border: 1.5px solid var(--dz-trait-fort); border-radius: 999px; background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); cursor: pointer; }
+.dz-f.wa .wa-b.no { order: 2; }
+.dz-f.wa .wa-b.ok { flex: 1 1 140px; order: 3; }
+.dz-as .wa-done { display: flex; align-items: center; gap: 8px; color: var(--dz-en-cours-texte); font: 800 var(--dz-fs-15)/1.3 var(--dz-font-ui); }
+.dz-as .wa-info { margin: 0; font: 700 var(--dz-fs-14)/1.4 var(--dz-font-ui); }
 /* « Fait — … » + Annuler / Modifier (AS2, AS8) */
 .dz-as .ad { margin-top: 0; padding: 14px 16px; background: var(--dz-en-cours-fond); border: 1.5px solid var(--dz-en-cours); border-radius: var(--dz-r-m); }
 .dz-as .ad-m { color: var(--dz-en-cours-texte); font: 900 var(--dz-fs-15)/1.25 var(--dz-font-ui); }
@@ -76,7 +180,6 @@
 .dz-as-pied { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 10px 14px calc(16px + env(safe-area-inset-bottom)); background: var(--dz-creme); border-top: 1px solid var(--dz-trait); }
 .dz-as-barre { display: flex; align-items: flex-end; gap: 6px; }
 .dz-as-rond { flex: none; width: 48px; height: 48px; padding: 0; border-radius: 50%; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 400 18px/1 var(--dz-font-ui); display: grid; place-items: center; cursor: pointer; }
-.dz-as-micro { font: 700 var(--dz-fs-12)/1 var(--dz-font-chiffres); }
 .dz-as-micro.is-on { background: var(--dz-erreur); border-color: var(--dz-erreur); color: var(--dz-blanc); animation: dz-as-pouls 1.2s infinite; }
 .dz-as-envoyer { border: 0; background: var(--dz-jaune); font-weight: 900; }
 .dz-as-envoyer:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); cursor: default; }
@@ -86,10 +189,6 @@
 .dz-as-aide { margin: 0; text-align: center; font-size: var(--dz-fs-12); color: var(--dz-texte-2); }
 .dz-as-compte { margin: 0 6px; text-align: right; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); color: var(--dz-texte-2); }
 .dz-as-compte.is-plein { color: var(--dz-erreur-texte); }
-.dz-as-langues { display: flex; align-items: center; gap: 6px; font: 800 var(--dz-fs-12)/1.2 var(--dz-font-ui); color: var(--dz-texte-2); }
-.dz-as-langues button { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); cursor: pointer; }
-.dz-as-langues button[aria-pressed="true"] { background: var(--dz-encre); border-color: var(--dz-encre); color: var(--dz-creme); }
-.dz-as-langues button:disabled { background: var(--dz-inactif-fond); border-color: var(--dz-inactif-fond); color: var(--dz-inactif-texte); }
 .dz-as-puce { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; max-width: 100%; padding: 0 0 0 12px; border-radius: 999px; border: 1px solid var(--dz-trait-fort); background: var(--dz-carte); font: 700 var(--dz-fs-13)/1.2 var(--dz-font-ui); }
 .dz-as-puce span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
 .dz-as-puce button { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--dz-texte-2); display: grid; place-items: center; cursor: pointer; }

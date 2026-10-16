@@ -21,6 +21,7 @@ import { plagesDuTexte, profilSaisie, type PlageTexte } from './saisie-profil.ts
 import {
   checkDraft, checkWorkerAction, fillUnsaid, fromWorkerCall, norm, parseTime, prepareWorkerAction, resolveWorksite, shiftMinutes, toMin, workerActionMode,
   type Draft, type DraftLine, type NewWorksite, type WorkerAction, type WorkerFullReply, type WorkerLive, type WorkerSnapshot,
+  dateDeclarable, reponseHorsPeriode,
 } from './worker-assistant-core.ts';
 
 export type { NewWorksite } from './worker-assistant-core.ts';
@@ -226,7 +227,18 @@ export function villeDepuisCodePostal(nc: NewWorksite, text: string): NewWorksit
   return { ...nc, ville: v, adresse: memeQueAdresse ? '' : nc.adresse };
 }
 /** Le bloc « nouveau chantier » d'un appel du modèle, proprement écrit ET complété (R1). */
-const lireBloc = (raw: unknown, text: string): NewWorksite => villeDepuisCodePostal(cleanNewWorksite(raw), text);
+/**
+ * Les travaux ne sont JAMAIS inventés : une description dont aucun mot (4 lettres ou plus, à l'inflexion près) n'est dans la phrase est un
+ * remplissage du modèle (« Volet » que personne n'a dit) → vidée, la fiche laisse le champ vide. En turc la description est TRADUITE en français
+ * (consigne) : aucun mot commun possible, la garde ne s'y applique pas. Décidé sur la donnée rendue par le modèle, pas sur des mots-clés.
+ */
+export function travauxDits(nc: NewWorksite, text: string): NewWorksite {
+  if (!nc.description || profilSaisie(text).langue === 'tr') return nc;
+  const dits = jetonsDe(text);
+  const ok = jetonsDe(nc.description).some((w) => w.length >= 4 && contientMot(dits, w));
+  return ok ? nc : { ...nc, description: '' };
+}
+const lireBloc = (raw: unknown, text: string): NewWorksite => travauxDits(villeDepuisCodePostal(cleanNewWorksite(raw), text), text);
 
 const MOTS_VIDES = new Set(['monsieur', 'madame', 'mme', 'mr', 'bay', 'bayan', 'chez', 'le', 'la', 'les', 'de', 'du', 'des', 'd', 'l', 'et', 'sarl', 'sas', 'ets']);
 // Les chiffres et les lettres seules DISTINGUENT : « Villa 1 » ≠ « Villa 2 », « Bâtiment A » ≠ « Bâtiment B ». « M. » (civilité) est retiré avant.
@@ -713,6 +725,16 @@ export function buildLongReply(calls: Appel[], text: string, snapshot: WorkerSna
   const pieces: Piece[] = [];
   let heures: Draft | null = null;
   let creneauxEnTrop = 0;
+
+  // Date CALCULÉE hors période (futur au-delà de demain, ou plus de 31 jours en arrière) : une réponse en texte, jamais une fiche impossible à confirmer.
+  if (H.length) {
+    const jourH = lireDate(H[0].args.date, today).date;
+    if (!dateDeclarable(jourH, today)) {
+      if (uniq.every((c) => c.name === 'declarer_heures' || c.name === 'repondre')) return { kind: 'answer', answer: reponseHorsPeriode(jourH, today, text) };
+      ignorer('declarer_heures', reponseHorsPeriode(jourH, today, text));
+      H.splice(0, H.length);
+    }
+  }
 
   // 5. Un seul declarer_heures par jour : même date → lignes fusionnées ; autre jour → laissé de côté.
   if (H.length) {

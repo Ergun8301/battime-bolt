@@ -112,9 +112,16 @@ interface Props {
   meal: boolean | null;
   onDone?: () => void;
   ctl?: ExtraControl;
+  /** Design salarié v2 (planche AS3) : même logique, mêmes repères, autre balisage (classes `dz-f-*`, components/design/salarie/assistant-v2.css). */
+  v2?: boolean;
 }
 
-export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Props) {
+export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl, v2 = false }: Props) {
+  /** Classe v1 (ancienne feuille, dans CSS ci-dessus) ou v2 (feuille de l'assistant) ; en v2 rien de l'ancienne feuille n'est posé. */
+  const k = (v1: string, d: string) => (v2 ? d : v1);
+  const Sty = v2 ? null : <style>{CSS}</style>;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const plainR = (o: React.CSSProperties) => (v2 ? undefined : o);
   const m = extra.multi;
   const uid = useId();
   const mem = readCard<Memo>(extra);
@@ -227,6 +234,8 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
   const nbElements = (lines.length ? 1 : 0) + m.items.filter((i) => i.kind !== 'heures' && actif(i.id)).length;
   const peutConfirmer = phase === 'edit' && nbElements > 0 && !aCompleter.length && !bloquants.length && !pauseBad;
   const besoin = [aCompleter.length ? `Complétez : ${aCompleter.join(', ')}.` : '', bloquants.length ? 'Corrigez les points en rouge.' : '', !nbElements ? 'Il ne reste rien à confirmer.' : ''].filter(Boolean).join(' ');
+  // v2 : la raison complète est affichée au-dessus des boutons (« Impossible de confirmer : … ») ; ce texte-ci ne garde que ce qui est à compléter.
+  const besoin2 = v2 ? [aCompleter.length ? `Complétez : ${aCompleter.join(', ')}.` : '', !nbElements ? 'Il ne reste rien à confirmer.' : ''].filter(Boolean).join(' ') : besoin;
 
   // ── Modifications ─────────────────────────────────────────────────────────────────────────────
   const upd = (i: number, patch: Partial<DraftLine>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -304,29 +313,29 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
   // ── Rendu : fiche ignorée, en cours, terminée ─────────────────────────────────────────────────
   // La zone annoncée (aria-live) est toujours le 2e enfant de la carte : elle existe déjà (vide) avant que le résultat n'y arrive.
   const live = (content: ReactNode) => <div ref={resultRef} tabIndex={-1} aria-live="polite" data-testid="wm-result" className="wm-live">{content}</div>;
-  if (phase === 'dismissed') return <p className="wm-help" data-testid="multi-card-ignoree"><style>{CSS}</style>Fiche ignorée.</p>;
+  if (phase === 'dismissed') return <p className={k('wm-help', 'dz-f-ignoree')} data-testid="multi-card-ignoree">{Sty}Fiche ignorée.</p>;
 
   if (phase === 'done' && run) {
     const symbole = (s: ItemResult['status']) => (s === 'done' ? '✓' : s === 'failed' ? '✗' : s === 'ignored' ? '○' : '–');
     return (
-      <div className="wm wm-res" role="group" aria-label="Fiche récapitulative" data-testid="multi-card" style={{ paddingBottom: 11 }}>
-        <style>{CSS}</style>
+      <div className={k('wm wm-res', 'dz-f dz-f-res')} role="group" aria-label="Fiche récapitulative" data-testid="multi-card" style={plainR({ paddingBottom: 11 })}>
+        {Sty}
         {live(<>
-          <p className="wm-msg">{run.message || messageFinal(run.results)}</p>
-          {undone && <p className="wm-help" data-testid="wm-undone"><Undo2 className="h-4 w-4" style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> {undone}</p>}
+          <p className={k('wm-msg', 'dz-f-msg')}>{run.message || messageFinal(run.results)}</p>
+          {undone && <p className={k('wm-help', 'dz-f-aide')} data-testid="wm-undone"><Undo2 className="h-4 w-4" style={plainR({ display: 'inline', verticalAlign: 'text-bottom' })} /> {undone}</p>}
         </>)}
-        <ul data-testid="wm-items">
+        <ul data-testid="wm-items" className={k('', 'dz-f-liste')}>
           {run.results.map((r) => (
             <li key={r.id} className={`s-${r.status}`} data-testid={`wm-res-${r.status}`}><b aria-hidden="true">{symbole(r.status)}</b><span>{r.label}{r.message ? ` : ${r.message}` : ''}</span></li>
           ))}
         </ul>
-        {run.sent && <p className="wm-help">Journée envoyée : pour corriger, passez par « Ma journée ».</p>}
+        {run.sent && <p className={k('wm-help', 'dz-f-aide')}>Journée envoyée : pour corriger, passez par « Ma journée ».</p>}
         {!undone && run.undo && (
           <>
-            <button type="button" className="wm-undo" data-testid="wm-undo" disabled={busyUndo} onClick={annuler}>
+            <button type="button" className={k('wm-undo', 'dz-f-non')} data-testid="wm-undo" disabled={busyUndo} onClick={annuler}>
               {busyUndo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />} Annuler
             </button>
-            {undoErr && <p className="wm-err" role="alert">{undoErr}</p>}
+            {undoErr && <p className={k('wm-err', 'dz-f-err')} role="alert">{undoErr}</p>}
           </>
         )}
       </div>
@@ -336,11 +345,11 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
   if (phase === 'running') {
     const liste = progress ?? [];
     return (
-      <div className="wm" role="group" aria-label="Fiche récapitulative" data-testid="multi-card" style={{ paddingBottom: 11 }}>
-        <style>{CSS}</style>
-        {live(<p className="wm-msg"><Loader2 className="h-4 w-4 animate-spin" style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> Enregistrement en cours…</p>)}
-        {liste.length > 0 && <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, fontSize: 13.5 }}>{liste.map((r) => <li key={r.id}>{r.status === 'running' ? '… ' : r.status === 'done' ? '✓ ' : r.status === 'todo' ? '○ ' : '– '}{r.label}</li>)}</ul>}
-        <button type="button" className="wm-confirm" disabled data-testid="wm-confirm" style={{ marginTop: 10, width: '100%' }}>Tout confirmer</button>
+      <div className={k('wm', 'dz-f')} role="group" aria-label="Fiche récapitulative" data-testid="multi-card" style={plainR({ paddingBottom: 11 })}>
+        {Sty}
+        {live(<p className={k('wm-msg', 'dz-f-msg')}><Loader2 className="h-4 w-4 animate-spin" style={plainR({ display: 'inline', verticalAlign: 'text-bottom' })} /> Enregistrement en cours…</p>)}
+        {liste.length > 0 && <ul className={k('', 'dz-f-liste')} style={plainR({ listStyle: 'none', margin: '8px 0 0', padding: 0, fontSize: 13.5 })}>{liste.map((r) => <li key={r.id}>{r.status === 'running' ? '… ' : r.status === 'done' ? '✓ ' : r.status === 'todo' ? '○ ' : '– '}{r.label}</li>)}</ul>}
+        <button type="button" className={k('wm-confirm', 'dz-f-ok')} disabled data-testid="wm-confirm" style={plainR({ marginTop: 10, width: '100%' })}>Tout confirmer</button>
       </div>
     );
   }
@@ -357,20 +366,31 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
     ];
   };
 
+  // Design v2 : ce qui bloque, dit EN CLAIR au-dessus des boutons (jamais tronqué ni caché), et le premier point en rouge qu'on peut faire défiler en vue.
+  const raisons = [...bloquants, ...(stopped ? [stopped] : [])];
+  const voirErreur = () => { cardRef.current?.querySelector('[data-dz-erreur]')?.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+  const erreurJour = errors.filter((e) => e.indexOf('Date hors période') === 0 || e === DATE_ILLISIBLE);
+  const erreurDate = (dateIllisible ? [DATE_ILLISIBLE] : []).concat(erreurJour.filter((e) => e !== DATE_ILLISIBLE));
+  const erreurHeures = errors.filter((e) => erreurJour.indexOf(e) < 0);
+  const plain = plainR;
+
   return (
-    <div className="wm" role="group" aria-label="Fiche récapitulative" data-testid="multi-card">
-      <style>{CSS}</style>
+    <div className={k('wm', 'dz-f')} role="group" aria-label="Fiche récapitulative" data-testid="multi-card" ref={cardRef}>
+      {Sty}
       {live(null)}
-      <h3>Fiche à confirmer</h3>
-      {dateLabel && <p className="wm-sub">{dateLabel}</p>}
-      {m.note && <p className="wm-note">{m.note}</p>}
-      {m.incertain && <p className="wm-warn">Lecture rapide : vérifiez que tout y est.</p>}
-      {m.non_prepare.length > 0 && <p className="wm-warn" data-testid="wm-nonprepare">Non préparé : {m.non_prepare.join(', ')}. Redemandez-le séparément.</p>}
+      <div className={k('', 'dz-f-tete')}>
+        {v2 && <p className="dz-f-kicker">À vérifier avant d’écrire</p>}
+        <h3 className={k('', 'dz-f-titre')}>Fiche à confirmer</h3>
+        {dateLabel && <p className={k('wm-sub', 'dz-f-sous')}>{dateLabel}</p>}
+      </div>
+      {m.note && <p className={k('wm-note', 'dz-f-note')}>{m.note}</p>}
+      {m.incertain && <p className={k('wm-warn', 'dz-f-avis')}>Lecture rapide : vérifiez que tout y est.</p>}
+      {m.non_prepare.length > 0 && <p className={k('wm-warn', 'dz-f-avis')} data-testid="wm-nonprepare">Non préparé : {m.non_prepare.join(', ')}. Redemandez-le séparément.</p>}
 
       {heuresItem && (
-        <div className="wm-sec">
-          <label className="wm-lbl" htmlFor={`${uid}-jour`}>Jour</label>
-          <input id={`${uid}-jour`} type="date" value={date} min={hier31} max={demain} onChange={(e) => { setDateVue(true); if (e.target.value) setDate(e.target.value); }} onBlur={() => setDateVue(true)} data-testid="wm-jour" />
+        <div className={k('wm-sec', 'dz-f-champ')} data-dz-erreur={v2 && erreurDate.length ? '' : undefined}>
+          <label className={k('wm-lbl', 'dz-f-lbl')} htmlFor={`${uid}-jour`}>Jour</label>
+          <input id={`${uid}-jour`} className={erreurDate.length ? 'is-erreur' : undefined} type="date" value={date} min={hier31} max={demain} onChange={(e) => { setDateVue(true); if (e.target.value) setDate(e.target.value); }} onBlur={() => setDateVue(true)} data-testid="wm-jour" />
         </div>
       )}
 
@@ -380,91 +400,109 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
         const utilise = blocUtilise(it.id, b);
         const vide = !b.ville.trim() && !reuse && utilise;
         return (
-          <div key={`bloc-${it.id}`} className={`wm-block${utilise ? '' : ' off'}${vide ? ' todo' : ''}`} data-testid="wm-nouveau">
-            <p className="wm-sum"><MapPin className="h-4 w-4" style={{ flex: 'none', marginTop: 1 }} aria-hidden="true" /><span><span className="wm-lbl" style={{ margin: 0 }}>{reuse ? 'Chantier existant utilisé' : 'Nouveau chantier'}</span><span data-testid="wm-nouveau-resume">{resume(b) || 'À préciser'}</span></span></p>
-            <div className="wm-grid">
-              <div><label className="wm-lbl" htmlFor={`${uid}-${it.id}-nom`}>Client (prénom et nom)</label>
+          <div key={`bloc-${it.id}`} className={`${k('wm-block', 'dz-f-bloc')}${utilise ? '' : ' off'}${vide ? ' todo' : ''}`} data-testid="wm-nouveau" data-dz-erreur={v2 && vide ? '' : undefined}>
+            <p className={k('wm-sum', 'dz-f-resume')}><MapPin className={v2 ? 'dz-f-pin' : 'h-4 w-4'} style={plain({ flex: 'none', marginTop: 1 })} aria-hidden="true" /><span><span className={k('wm-lbl', 'dz-f-kicker')} style={plain({ margin: 0 })}>{reuse ? 'Chantier existant utilisé' : 'Nouveau chantier'}</span><span data-testid="wm-nouveau-resume" className={k('', 'dz-f-resume-txt')}>{resume(b) || 'À préciser'}</span></span></p>
+            <div className={k('wm-grid', 'dz-f-grille')}>
+              <div className={k('', 'dz-f-champ')}><label className={k('wm-lbl', 'dz-f-lbl')} htmlFor={`${uid}-${it.id}-nom`}>Client (prénom et nom)</label>
                 <input id={`${uid}-${it.id}-nom`} value={b.nom} maxLength={80} readOnly={!!reuse} onChange={(e) => editBloc(it.id, { nom: e.target.value })} data-testid="wm-nom" autoComplete="off" /></div>
-              <div><label className="wm-lbl" htmlFor={`${uid}-${it.id}-adr`}>Adresse</label>
+              <div className={k('', 'dz-f-champ')}><label className={k('wm-lbl', 'dz-f-lbl')} htmlFor={`${uid}-${it.id}-adr`}>Adresse</label>
                 <input id={`${uid}-${it.id}-adr`} value={b.adresse} maxLength={120} readOnly={!!reuse} onChange={(e) => editBloc(it.id, { adresse: e.target.value })} data-testid="wm-adresse" autoComplete="off" /></div>
-              <div className="wm-grid2">
-                <div><label className="wm-lbl" htmlFor={`${uid}-${it.id}-cp`}>Code postal</label>
+              <div className={k('wm-grid2', 'dz-f-cp-ville')}>
+                <div className={k('', 'dz-f-champ')}><label className={k('wm-lbl', 'dz-f-lbl')} htmlFor={`${uid}-${it.id}-cp`}>Code postal</label>
                   <input id={`${uid}-${it.id}-cp`} value={b.code_postal} maxLength={5} inputMode="numeric" readOnly={!!reuse} onChange={(e) => editBloc(it.id, { code_postal: e.target.value.replace(/\D/g, '') })} data-testid="wm-cp" autoComplete="off" /></div>
-                <div><label className="wm-lbl" htmlFor={`${uid}-${it.id}-ville`}>Ville (obligatoire)</label>
-                  <input id={`${uid}-${it.id}-ville`} value={b.ville} maxLength={60} readOnly={!!reuse} className={vide ? 'todo' : undefined} onChange={(e) => editBloc(it.id, { ville: e.target.value })} data-testid="wm-ville" autoComplete="off" aria-required="true" aria-invalid={vide || undefined} aria-describedby={vide ? `${uid}-${it.id}-ask` : undefined} /></div>
+                <div className={k('', 'dz-f-champ')}><label className={k('wm-lbl', 'dz-f-lbl')} htmlFor={`${uid}-${it.id}-ville`}>Ville (obligatoire)</label>
+                  <input id={`${uid}-${it.id}-ville`} value={b.ville} maxLength={60} readOnly={!!reuse} className={vide ? (v2 ? 'is-erreur' : 'todo') : undefined} onChange={(e) => editBloc(it.id, { ville: e.target.value })} data-testid="wm-ville" autoComplete="off" aria-required="true" aria-invalid={vide || undefined} aria-describedby={vide ? `${uid}-${it.id}-ask` : undefined} /></div>
               </div>
-              <div><label className="wm-lbl" htmlFor={`${uid}-${it.id}-trav`}>Travaux</label>
+              <div className={k('', 'dz-f-champ')}><label className={k('wm-lbl', 'dz-f-lbl')} htmlFor={`${uid}-${it.id}-trav`}>Travaux</label>
                 <input id={`${uid}-${it.id}-trav`} value={b.description} maxLength={200} readOnly={!!reuse} onChange={(e) => editBloc(it.id, { description: e.target.value })} data-testid="wm-travaux" autoComplete="off" /></div>
             </div>
-            {reuse ? <p className="wm-help" data-testid="wm-reuse">Ce chantier existe déjà : il sera utilisé, rien ne sera créé.</p>
-              : !utilise ? <p className="wm-help warn">Aucun créneau n’est sur ce chantier : il ne sera pas créé. Choisissez « Nouveau chantier » sur un créneau pour l’utiliser.</p>
-              : <p className="wm-help">Ce chantier sera créé quand vous confirmerez. Vous ne pourrez pas le supprimer vous-même : le bureau pourra l’archiver.</p>}
-            {vide && <p className="wm-ask" id={`${uid}-${it.id}-ask`}>Indiquez la ville du chantier pour confirmer.</p>}
+            {reuse ? <p className={k('wm-help', 'dz-f-aide')} data-testid="wm-reuse">Ce chantier existe déjà : il sera utilisé, rien ne sera créé.</p>
+              : !utilise ? <p className={k('wm-help warn', 'dz-f-aide is-attention')}>Aucun créneau n’est sur ce chantier : il ne sera pas créé. Choisissez « Nouveau chantier » sur un créneau pour l’utiliser.</p>
+              : <p className={k('wm-help', 'dz-f-aide')}>Ce chantier sera créé quand vous confirmerez. Vous ne pourrez pas le supprimer vous-même : le bureau pourra l’archiver.</p>}
+            {vide && <p className={k('wm-ask', 'dz-f-err')} id={`${uid}-${it.id}-ask`}>Indiquez la ville du chantier pour confirmer.</p>}
             {it.kind === 'chantier' && (
-              <button type="button" className="wm-retirer" style={{ marginTop: 8 }} aria-label="Retirer : nouveau chantier" onClick={() => setRemoved((r) => [...r, it.id])}>Retirer</button>
+              <button type="button" className={k('wm-retirer', 'dz-f-retirer')} style={plain({ marginTop: 8 })} aria-label="Retirer : nouveau chantier" onClick={() => setRemoved((r) => [...r, it.id])}>Retirer</button>
             )}
           </div>
         );
       })}
 
       {heuresItem && (
-        <div className="wm-sec" data-testid="wm-heures">
-          <span className="wm-lbl">Heures</span>
-          {lines.length === 0 && <p className="wm-help">Aucun créneau : les heures ne seront pas notées.</p>}
+        <div className={k('wm-sec', 'dz-f-sec')} data-testid="wm-heures" data-dz-erreur={v2 && erreurHeures.length ? '' : undefined}>
+          <span className={k('wm-lbl', 'dz-f-kicker')}>Heures</span>
+          {lines.length === 0 && <p className={k('wm-help', 'dz-f-aide')}>Aucun créneau : les heures ne seront pas notées.</p>}
           {lines.map((l, i) => {
             const prev = i > 0 ? lines[i - 1] : null;
             const ecart = prev ? gapBetween(prev, l) : 0;
             const suiv = i < lines.length - 1 ? gapBetween(l, lines[i + 1]) : 0;
             const doublon = Number.isFinite(l.break_minutes) && l.break_minutes > 0 && [ecart, suiv].some((g) => g > 0 && Math.abs(g - l.break_minutes) <= 10);
+            const aChoisir = !l.nouveau && !l.worksite_id;
             return (
-              <div key={l.key}>
+              <div key={l.key} className={k('', 'dz-f-creneau-bloc')}>
                 {prev && ecart > 0 && ecart <= 240 && (l.gap_before === 'pause'
-                  ? <p className="wm-gap g-pause" data-testid={`wm-pause-${i - 1}`}>Pause {fmtDuree(ecart)} · {prev.end} → {l.start}</p>
-                  : <p className="wm-gap g-ecart" data-testid={`wm-ecart-${i - 1}`}>Écart {fmtDuree(ecart)} · {prev.end} → {l.start} · non compté</p>)}
-                <div className={`wm-line${!l.nouveau && !l.worksite_id ? ' todo' : ''}`} data-testid={`wm-line-${i}`}>
-                  <div className="wm-row" style={{ marginBottom: 6 }}>
+                  ? <p className={k('wm-gap g-pause', 'dz-f-ecart is-pause')} data-testid={`wm-pause-${i - 1}`}>Pause {fmtDuree(ecart)} · {prev.end} → {l.start}</p>
+                  : <p className={k('wm-gap g-ecart', 'dz-f-ecart')} data-testid={`wm-ecart-${i - 1}`}>Écart {fmtDuree(ecart)} · {prev.end} → {l.start} · non compté</p>)}
+                <div className={`${k('wm-line', 'dz-f-creneau')}${aChoisir ? (v2 ? ' is-erreur' : ' todo') : ''}`} data-testid={`wm-line-${i}`} data-dz-erreur={v2 && aChoisir ? '' : undefined}>
+                  <div className={k('wm-row', 'dz-f-rang')} style={plain({ marginBottom: 6 })}>
                     <select value={l.nouveau ? NOUVEAU : l.worksite_id ?? ''} onChange={(e) => choisirChantier(i, e.target.value)} aria-label={`Chantier du créneau ${i + 1}`} data-testid={`wm-chantier-${i}`}>
                       <option value="">{l.worksite_text && !l.a_choisir ? `« ${l.worksite_text} » → choisir…` : 'Choisir le chantier…'}</option>
                       {offreNouveau && <option value={NOUVEAU}>{blocHeures?.nom ? `Nouveau : ${blocHeures.nom}` : 'Nouveau chantier'}</option>}
                       {m.chantiers.map((c) => <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` · ${c.ville}` : ''}</option>)}
                     </select>
-                    <button type="button" className="wm-x" onClick={() => retirerCreneau(i)} aria-label={`Retirer le créneau ${i + 1}`} data-testid={`wm-retirer-${i}`}><Trash2 className="h-4 w-4" /></button>
+                    <button type="button" className={k('wm-x', 'dz-f-x')} onClick={() => retirerCreneau(i)} aria-label={`Retirer le créneau ${i + 1}`} data-testid={`wm-retirer-${i}`}><Trash2 className="h-4 w-4" /></button>
                   </div>
-                  {l.a_choisir && !l.worksite_id && !l.nouveau && <p className="wm-ask">Nouveau chantier « {l.a_choisir.nouveau} » ou « {l.a_choisir.existant} » ?</p>}
-                  {l.from_planning && l.worksite_id && <p className="wm-plan" data-testid="from-planning">📅 D’après votre planning — modifiable</p>}
-                  <div className="wm-row">
-                    <input type="time" value={l.start} onChange={(e) => upd(i, { start: e.target.value })} aria-label={`Début du créneau ${i + 1}`} />
-                    <span className="wm-arrow" aria-hidden="true">→</span>
-                    <input type="time" value={l.end} onChange={(e) => upd(i, { end: e.target.value })} aria-label={`Fin du créneau ${i + 1}`} />
+                  {l.a_choisir && !l.worksite_id && !l.nouveau && <p className={k('wm-ask', 'dz-f-err')}>Nouveau chantier « {l.a_choisir.nouveau} » ou « {l.a_choisir.existant} » ?</p>}
+                  {l.from_planning && l.worksite_id && <p className={k('wm-plan', 'dz-f-plan')} data-testid="from-planning">📅 D’après votre planning — modifiable</p>}
+                  <div className={k('wm-row', 'dz-f-horaires')}>
+                    {v2 ? (
+                      <>
+                        <div className="dz-f-champ">
+                          <span className="dz-f-lbl" aria-hidden="true">Début</span>
+                          <input type="time" value={l.start} onChange={(e) => upd(i, { start: e.target.value })} aria-label={`Début du créneau ${i + 1}`} />
+                        </div>
+                        <div className="dz-f-champ">
+                          <span className="dz-f-lbl" aria-hidden="true">Fin</span>
+                          <input type="time" value={l.end} onChange={(e) => upd(i, { end: e.target.value })} aria-label={`Fin du créneau ${i + 1}`} />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <input type="time" value={l.start} onChange={(e) => upd(i, { start: e.target.value })} aria-label={`Début du créneau ${i + 1}`} />
+                        <span className="wm-arrow" aria-hidden="true">→</span>
+                        <input type="time" value={l.end} onChange={(e) => upd(i, { end: e.target.value })} aria-label={`Fin du créneau ${i + 1}`} />
+                      </>
+                    )}
                   </div>
-                  <div className="wm-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
-                    <span className="wm-lbl" style={{ margin: 0, flex: '1 1 auto' }}>Pause (h:mm)</span>
+                  <div className={k('wm-row', 'dz-f-pause')} style={plain({ marginTop: 6, flexWrap: 'wrap' })}>
+                    <span className={k('wm-lbl', 'dz-f-lbl')} style={plain({ margin: 0, flex: '1 1 auto' })}>Pause (h:mm)</span>
                     <DraftPause value={l.break_minutes} onChange={(v) => upd(i, { break_minutes: v })} testId={`wd-pause-${i}`} ariaLabel={`Pause (h:mm) du créneau ${i + 1}`} />
                   </div>
-                  {doublon && <p className="wm-help warn">Cette pause est déjà comptée par l’écart entre les créneaux : mettez 0 pour ne pas la retirer deux fois.</p>}
+                  {doublon && <p className={k('wm-help warn', 'dz-f-aide is-attention')}>Cette pause est déjà comptée par l’écart entre les créneaux : mettez 0 pour ne pas la retirer deux fois.</p>}
                 </div>
               </div>
             );
           })}
           {retires.map(({ l }) => (
-            <button key={l.key} type="button" className="wm-remettre" data-testid={`wm-remettre-${l.key}`} onClick={() => remettre(l.key)}>
+            <button key={l.key} type="button" className={k('wm-remettre', 'dz-f-remettre')} data-testid={`wm-remettre-${l.key}`} onClick={() => remettre(l.key)}>
               <Undo2 className="h-4 w-4" aria-hidden="true" /> Remettre le créneau {l.start} → {l.end}
             </button>
           ))}
-          {lines.length > 0 && <p className="wm-total" data-testid="wm-total">Total net : {fmtMin(total)}</p>}
+          {lines.length > 0 && <p className={k('wm-total', 'dz-f-total')} data-testid="wm-total">Total net : {v2 ? <b>{fmtMin(total)}</b> : fmtMin(total)}</p>}
         </div>
       )}
 
-      {annexes.length > 0 && <div className="wm-sec"><span className="wm-lbl">Et aussi</span></div>}
+      {annexes.length > 0 && <div className={k('wm-sec', 'dz-f-sec')}><span className={k('wm-lbl', 'dz-f-kicker')}>Et aussi</span></div>}
       {annexes.map((it) => {
         const d = it.action.draft;
-        const retirer = <button type="button" className="wm-retirer" aria-label={`Retirer : ${NOM_RETRAIT[d.type]}`} onClick={() => setRemoved((r) => [...r, it.id])}>Retirer</button>;
+        const retirer = <button type="button" className={k('wm-retirer', 'dz-f-retirer')} aria-label={`Retirer : ${NOM_RETRAIT[d.type]}`} onClick={() => setRemoved((r) => [...r, it.id])}>Retirer</button>;
+        const pb = v2 && !(d.type === 'panier_repas' && meal === false) ? problemesDe(it) : [];
+        const marque = pb.length ? { 'data-dz-erreur': '' } : {};
         if (d.type === 'panier_repas') {
           return (
-            <div key={it.id} className="wm-annexe" data-testid="wm-panier">
-              <div className="wm-annexe-h"><span>Panier repas</span>{retirer}</div>
-              {meal === false ? <p className="wm-help">Votre entreprise n’utilise pas le panier repas : ignoré</p>
-                : <label className="wm-check"><input type="checkbox" checked={valeurs[it.id] ?? d.valeur} onChange={(e) => setValeurs((v) => ({ ...v, [it.id]: e.target.checked }))} /> Cocher le panier repas du jour</label>}
+            <div key={it.id} className={k('wm-annexe', 'dz-f-annexe')} data-testid="wm-panier" {...marque}>
+              <div className={k('wm-annexe-h', 'dz-f-annexe-h')}><span>Panier repas</span>{retirer}</div>
+              {meal === false ? <p className={k('wm-help', 'dz-f-aide')}>Votre entreprise n’utilise pas le panier repas : ignoré</p>
+                : <label className={k('wm-check', 'dz-f-coche')}><input type="checkbox" checked={valeurs[it.id] ?? d.valeur} onChange={(e) => setValeurs((v) => ({ ...v, [it.id]: e.target.checked }))} /> Cocher le panier repas du jour</label>}
             </div>
           );
         }
@@ -473,19 +511,19 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
           const choix = optionsReserve(it);
           const nom = it.cible?.nom ?? choix.find((o) => o.value === e)?.label.split(' · ')[0];
           return (
-            <div key={it.id} className="wm-annexe" data-testid="wm-reserve">
-              <div className="wm-annexe-h"><span>{d.type === 'signaler_reserve' ? 'Réserve' : 'Lever la réserve'}{nom ? ` sur ${nom}` : ''}</span>{retirer}</div>
+            <div key={it.id} className={k('wm-annexe', 'dz-f-annexe')} data-testid="wm-reserve" {...marque}>
+              <div className={k('wm-annexe-h', 'dz-f-annexe-h')}><span>{d.type === 'signaler_reserve' ? 'Réserve' : 'Lever la réserve'}{nom ? ` sur ${nom}` : ''}</span>{retirer}</div>
               {!it.cible && (
-                <div style={{ marginTop: 6 }}>
-                  <label className="wm-lbl" htmlFor={`${uid}-${it.id}-ch`}>Sur quel chantier ?</label>
-                  <select id={`${uid}-${it.id}-ch`} value={e} className={e ? undefined : 'todo'} onChange={(ev) => setEntries((x) => ({ ...x, [it.id]: ev.target.value }))}>
+                <div className={k('', 'dz-f-champ')} style={plain({ marginTop: 6 })}>
+                  <label className={k('wm-lbl', 'dz-f-lbl')} htmlFor={`${uid}-${it.id}-ch`}>Sur quel chantier ?</label>
+                  <select id={`${uid}-${it.id}-ch`} value={e} className={e ? undefined : (v2 ? 'is-erreur' : 'todo')} onChange={(ev) => setEntries((x) => ({ ...x, [it.id]: ev.target.value }))}>
                     <option value="">Choisir…</option>
                     {choix.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
               )}
-              <div style={{ marginTop: 6 }}>
-                <label className="wm-lbl" htmlFor={`${uid}-${it.id}-det`}>{d.type === 'signaler_reserve' ? 'Détail (facultatif)' : 'Commentaire (facultatif)'}</label>
+              <div className={k('', 'dz-f-champ')} style={plain({ marginTop: 6 })}>
+                <label className={k('wm-lbl', 'dz-f-lbl')} htmlFor={`${uid}-${it.id}-det`}>{d.type === 'signaler_reserve' ? 'Détail (facultatif)' : 'Commentaire (facultatif)'}</label>
                 <textarea id={`${uid}-${it.id}-det`} rows={2} value={details[it.id] ?? ''} onChange={(ev) => setDetails((x) => ({ ...x, [it.id]: ev.target.value }))} />
               </div>
             </div>
@@ -493,9 +531,9 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
         }
         if (d.type === 'demander_conge') {
           return (
-            <div key={it.id} className="wm-annexe" data-testid="wm-conge">
-              <div className="wm-annexe-h"><span>Demande de congé · du {jjmm(d.du)} au {jjmm(d.au)}</span>{retirer}</div>
-              <p className="wm-help" style={{ marginTop: 4 }}>{LEAVE_LABEL[d.conge_type] ?? 'Congé'}{d.note ? ` · ${d.note}` : ''}</p>
+            <div key={it.id} className={k('wm-annexe', 'dz-f-annexe')} data-testid="wm-conge" {...marque}>
+              <div className={k('wm-annexe-h', 'dz-f-annexe-h')}><span>Demande de congé · du {jjmm(d.du)} au {jjmm(d.au)}</span>{retirer}</div>
+              <p className={k('wm-help', 'dz-f-aide')} style={plain({ marginTop: 4 })}>{LEAVE_LABEL[d.conge_type] ?? 'Congé'}{d.note ? ` · ${d.note}` : ''}</p>
             </div>
           );
         }
@@ -503,10 +541,10 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
           const deja = it.deja_notees ?? [];
           const n = (heuresItem ? lines.length : 0) + deja.length;
           return (
-            <div key={it.id} className="wm-annexe" data-testid="wm-envoi">
-              <div className="wm-annexe-h"><span>Envoyer la journée au bureau ({n} créneau{n > 1 ? 'x' : ''}{deja.length ? `, dont ${deja.length} déjà noté${deja.length > 1 ? 's' : ''}` : ''})</span>{retirer}</div>
-              {deja.length > 0 && <p className="wm-help">Déjà notés aujourd’hui, ils partiront avec : {deja.map((x) => `${x.debut}–${x.fin} ${x.chantier}`).join(', ')}</p>}
-              {(it.avertissements ?? []).map((a) => <p key={a} className="wm-help warn">{a}</p>)}
+            <div key={it.id} className={k('wm-annexe', 'dz-f-annexe')} data-testid="wm-envoi" {...marque}>
+              <div className={k('wm-annexe-h', 'dz-f-annexe-h')}><span>Envoyer la journée au bureau ({n} créneau{n > 1 ? 'x' : ''}{deja.length ? `, dont ${deja.length} déjà noté${deja.length > 1 ? 's' : ''}` : ''})</span>{retirer}</div>
+              {deja.length > 0 && <p className={k('wm-help', 'dz-f-aide')}>Déjà notés aujourd’hui, ils partiront avec : {deja.map((x) => `${x.debut}–${x.fin} ${x.chantier}`).join(', ')}</p>}
+              {(it.avertissements ?? []).map((a) => <p key={a} className={k('wm-help warn', 'dz-f-aide is-attention')}>{a}</p>)}
             </div>
           );
         }
@@ -514,25 +552,34 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
       })}
 
       {m.ignores.length > 0 && (
-        <div className="wm-sec" data-testid="wm-ignores">
-          <span className="wm-lbl">Laissé de côté</span>
-          {m.ignores.map((x) => <p key={`${x.name}-${x.raison}`} className="wm-help" style={{ marginTop: 3 }}>{x.label} : {x.raison}</p>)}
+        <div className={k('wm-sec', 'dz-f-sec')} data-testid="wm-ignores">
+          <span className={k('wm-lbl', 'dz-f-kicker')}>Laissé de côté</span>
+          {m.ignores.map((x) => <p key={`${x.name}-${x.raison}`} className={k('wm-help', 'dz-f-aide')} style={plain({ marginTop: 3 })}>{x.label} : {x.raison}</p>)}
         </div>
       )}
 
-      {(bloquants.length > 0 || stopped) && (
+      {!v2 && (bloquants.length > 0 || stopped) && (
         <div className="wm-sec wm-bloq" data-testid="wm-bloquants" role="alert">
           {bloquants.map((e) => <p key={e} className="wm-err">{e}</p>)}
           {stopped && <p className="wm-err" data-testid="wm-stop">{stopped}</p>}
         </div>
       )}
 
-      <div className="wm-bar">
-        <div className="wm-btns">
-          <button type="button" className="wm-confirm" data-testid="wm-confirm" disabled={!peutConfirmer} aria-describedby={peutConfirmer ? undefined : `${uid}-besoin`} onClick={confirmer}>Tout confirmer</button>
-          <button type="button" className="wm-dismiss" data-testid="wm-dismiss" onClick={() => { writeCard(extra, { phase: 'dismissed' }); setPhase('dismissed'); }}>Ignorer</button>
+      <div className={k('wm-bar', 'dz-f-barre')}>
+        {v2 && raisons.length > 0 && (
+          <div className="dz-f-stop" data-testid="wm-bloquants" role="alert">
+            <p className="dz-f-stop-t">Impossible de confirmer :</p>
+            {bloquants.map((e) => <p key={e} className="dz-f-raison">{e}</p>)}
+            {stopped && <p className="dz-f-raison" data-testid="wm-stop">{stopped}</p>}
+            {bloquants.length > 0 && <button type="button" className="dz-f-voir" onClick={voirErreur}>Voir le point</button>}
+          </div>
+        )}
+        <div className={k('wm-btns', 'dz-f-btns')}>
+          {v2 && <button type="button" className="dz-f-non" data-testid="wm-dismiss" onClick={() => { writeCard(extra, { phase: 'dismissed' }); setPhase('dismissed'); }}>Ignorer</button>}
+          <button type="button" className={k('wm-confirm', 'dz-f-ok')} data-testid="wm-confirm" disabled={!peutConfirmer} aria-describedby={peutConfirmer ? undefined : `${uid}-besoin`} onClick={confirmer}>Tout confirmer</button>
+          {!v2 && <button type="button" className="wm-dismiss" data-testid="wm-dismiss" onClick={() => { writeCard(extra, { phase: 'dismissed' }); setPhase('dismissed'); }}>Ignorer</button>}
         </div>
-        {!peutConfirmer && besoin && <p className="wm-need" id={`${uid}-besoin`} data-testid="wm-besoin">{besoin}</p>}
+        {!peutConfirmer && besoin2 && <p className={k('wm-need', 'dz-f-besoin')} id={`${uid}-besoin`} data-testid="wm-besoin">{besoin2}</p>}
       </div>
     </div>
   );
