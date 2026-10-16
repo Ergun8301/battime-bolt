@@ -27,10 +27,12 @@ export interface WorkerReserve {
   city: string | null;
 }
 
-export default function WorkerReserves({ items, onChanged }: { items: WorkerReserve[]; onChanged: () => void }) {
+export default function WorkerReserves({ items, onChanged, openAsk, onAskDone }: { items: WorkerReserve[]; onChanged: () => void; /** ?ui=2 : demande d'ouverture de la liste (entrée « Réserves à lever » du menu Plus) ; `onAskDone` la consomme. */ openAsk?: boolean; onAskDone?: () => void }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [liftingId, setLiftingId] = useState<string | null>(null);
+
+  useEffect(() => { if (openAsk) { setOpen(true); onAskDone?.(); } }, [openAsk, onAskDone]);
 
   // Liste vidée (relecture, levée ailleurs) : elle se referme d'elle-même.
   useEffect(() => { if (open && items.length === 0) { setOpen(false); setLiftingId(null); } }, [open, items.length]);

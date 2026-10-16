@@ -62,6 +62,7 @@
 /* Rappels : « 1 réserve à lever › » · « 2 formations à voir › » */
 .bt-ui2 .dz-rappels { display: flex; gap: 6px; }
 .bt-ui2 .dz-rappels:empty { display: none; }
+.bt-ui2 [data-pointage="en-cours"] .dz-rappels { display: none; } /* pointage en cours : la ligne des pastilles se masque, les entrées restent dans « Plus » */
 .bt-ui2 .dz-rappels .bt-alert { flex: 1; min-width: 0; min-height: 44px; margin: 0; padding: 0 8px; border-radius: 14px; border: 1px solid var(--dz-trait); background: var(--dz-carte); justify-content: center; gap: 4px; }
 .bt-ui2 .dz-rappels .bt-alert-badge { display: none; }
 .bt-ui2 .dz-rappels .bt-alert-txt { flex: none; font: 800 var(--dz-fs-16)/1.15 var(--dz-font-ui); color: var(--dz-encre); text-align: center; }

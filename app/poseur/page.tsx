@@ -32,7 +32,7 @@ import { isPreviewHost } from '@/lib/hosting';
 import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 // Formations (lot 6, oct. 2026) : rien ne s'affiche tant que la migration n'est pas passée.
 import { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
-import { GraduationCap } from 'lucide-react';
+import { AlertTriangle, GraduationCap } from 'lucide-react';
 // Design salarié, étape 3 : la coque v2 (visible seulement avec ?ui=2 sur un aperçu, voir components/design/salarie/shell-v2.tsx).
 import { BandeJours, BoutonAssistant, Kicker, NoteEntete, OngletsBas, useUi2, type OngletBas } from '@/components/design/salarie/shell-v2';
 import type { BarreJour } from '@/components/design/salarie/carte-total';
@@ -120,6 +120,9 @@ export default function PoseurPage() {
   // Le menu du compte est piloté d'ici pour que le guide puisse l'ouvrir à l'étape qui le demande.
   const [tour, setTour] = useState<WorkerTour | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // ?ui=2 : « Réserves à lever » du menu Plus demande l'ouverture de la liste des réserves (elle vit dans WorkerReserves, monté par la journée).
+  const [reservesAsk, setReservesAsk] = useState(false);
+  const reservesAskDone = useCallback(() => setReservesAsk(false), []);
   const tourEnd = useRef(0); // quand le dernier guide s'est arrêté (le menu met un instant à se démonter)
   // Lot 12 : l'icône du scanner ne s'affiche que si une tablette est VRAIMENT
   // reliée (company_has_kiosk : borne allumée ET une tablette non retirée).
@@ -469,7 +472,7 @@ export default function PoseurPage() {
 
   // Lot 11 : « ⚠ N réserves à lever › » — même habillage, liste + formulaire.
   // (Rien à l'écran tant qu'il n'y en a pas : le composant ne rend rien.)
-  const reservesBanner = <WorkerReserves items={reserves} onChanged={fetchPending} />;
+  const reservesBanner = <WorkerReserves items={reserves} onChanged={fetchPending} openAsk={reservesAsk} onAskDone={reservesAskDone} />;
   // Formations : « 2 formations à voir › » tant qu'il en reste à cocher « Vue ».
   const trainingsBanner = <TrainingsBanner count={trainings.unseen} onOpen={() => goTo('formations')} />;
 
@@ -587,7 +590,21 @@ export default function PoseurPage() {
                     {!selectedDate && view === t.value && <Check className="h-4 w-4 ml-auto" />}
                   </DropdownMenuItem>
                 ))}
-                {trainingsMenu && (
+                {/* ?ui=2 : les deux rubriques des pastilles de la journée (masquées pendant un pointage) vivent AUSSI ici, toujours, avec leur compteur. */}
+                {ui2 && (
+                  <DropdownMenuItem disabled={reserves.length === 0} data-testid="menu-reserves"
+                    onClick={() => { if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); }}>
+                    <AlertTriangle className="h-4 w-4 mr-2" /> Réserves à lever
+                    <span className={reserves.length > 0 ? 'ml-auto rounded-full bg-[#B5472E] px-1.5 text-[12px] font-extrabold leading-[17px] text-white' : 'ml-auto text-[12px] font-bold text-muted-foreground'} data-testid="menu-reserves-compteur">{reserves.length}</span>
+                  </DropdownMenuItem>
+                )}
+                {ui2 && trainings.available && (
+                  <DropdownMenuItem onClick={() => goTo('formations')} data-testid="menu-formations">
+                    <GraduationCap className="h-4 w-4 mr-2" /> Formations à voir
+                    <span className={trainings.unseen > 0 ? 'ml-auto rounded-full bg-[#B5472E] px-1.5 text-[12px] font-extrabold leading-[17px] text-white' : 'ml-auto text-[12px] font-bold text-muted-foreground'} data-testid="menu-formations-badge">{trainings.unseen}</span>
+                  </DropdownMenuItem>
+                )}
+                {!ui2 && trainingsMenu && (
                   <DropdownMenuItem onClick={() => goTo('formations')} data-testid="menu-formations">
                     <GraduationCap className="h-4 w-4 mr-2" /> Formations
                     {trainings.unseen > 0 && <span className="ml-auto rounded-full bg-[#B5472E] px-1.5 text-[10.5px] font-extrabold leading-[17px] text-white" data-testid="menu-formations-badge">{trainings.unseen}</span>}

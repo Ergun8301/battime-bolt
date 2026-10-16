@@ -1905,7 +1905,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
       )}
 
       {/* ===== ZONE SCROLLABLE ===== */}
-      <div className="bt-day-scroll">
+      {/* ?ui=2 : tant qu'un pointage tourne, la ligne des deux pastilles (réserves, formations) se masque (CSS) ; les deux rubriques restent dans « Plus ». */}
+      <div className="bt-day-scroll" data-pointage={ui2 && live.session && live.session.work_date === date ? 'en-cours' : undefined}>
 
         {/* rappel « jours oubliés » (rendu par le parent) — défile avec la liste */}
         {topBanner}
