@@ -1,7 +1,7 @@
 // Design salarié · étape 2 : les règles pures de l'écran du salarié (salarie-vue.ts).
 //   npm run test:salarie-vue   (npx -y deno@2.9.6 test supabase/functions/_shared/salarie-vue.test.ts)
 import {
-  aideEnvoi, bandeJours, etatJour, etatLigne, friseAxe, hm, kicker, lettreAbsence, lundiDe, raisonEchec, semaineIso, titreSemaine, type JourBrut,
+  aideEnvoi, bandeJours, dateConversation, etatJour, etatLigne, friseAxe, hm, kicker, lettreAbsence, lundiDe, raisonEchec, semaineIso, titreSemaine, type JourBrut,
 } from './salarie-vue.ts';
 
 const egal = (a: unknown, b: unknown, msg: string) => { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) throw new Error(`${msg}\n  obtenu  : ${x}\n  attendu : ${y}`); };
@@ -125,4 +125,18 @@ Deno.test('friseAxe : heures pile — 08:00 reste 08:00 (la graduation avant est
 Deno.test('friseAxe : segments illisibles ignorés, jamais d’exception', () => {
   egal(h(friseAxe([{ debut: 'x', fin: 'y' }, { debut: '09:00', fin: '12:00' }])), [6, 14], 'seul le lisible compte (09 h → 12 h, élargi à 8 h)');
   egal(h(friseAxe([{ debut: 'x', fin: 'y' }])), [7, 18], 'rien de lisible : la base');
+});
+
+// ── Étape 8 : la date d'une conversation de l'historique (planche AS4) ──
+Deno.test('dateConversation : Aujourd’hui · hh:mm, Hier · hh:mm, « 12 oct. · hh:mm » (heure de Paris, jours de calendrier)', () => {
+  const maintenant = new Date('2026-10-15T13:12:00Z'); // jeudi 15 octobre, 15:12 à Paris
+  egal(dateConversation('2026-10-15T07:12:00Z', maintenant), 'Aujourd’hui · 09:12', 'ce matin');
+  egal(dateConversation('2026-10-14T16:40:00Z', maintenant), 'Hier · 18:40', 'hier soir');
+  egal(dateConversation('2026-10-12T05:55:00Z', maintenant), '12 oct. · 07:55', 'plus ancien : jour et mois');
+  egal(dateConversation('2026-10-10T04:58:00Z', maintenant), '10 oct. · 06:58', 'idem');
+});
+Deno.test('dateConversation : minuit à Paris — 23:30 la veille est « Hier » à 00:10 ; passage à l’heure d’hiver ; date illisible', () => {
+  egal(dateConversation('2026-10-14T21:30:00Z', new Date('2026-10-14T22:10:00Z')), 'Hier · 23:30', '00:10 à Paris : la veille est « Hier »');
+  egal(dateConversation('2026-10-25T10:00:00Z', new Date('2026-10-26T10:00:00Z')), 'Hier · 11:00', 'le 25 octobre a 25 h : toujours « Hier »');
+  egal(dateConversation('pas une date'), '', 'illisible');
 });
