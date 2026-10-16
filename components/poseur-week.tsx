@@ -21,6 +21,10 @@ import { formatPause } from '@/supabase/functions/_shared/pause';
 import { fetchMyMissions, type DayTask, type Meeting } from '@/lib/missions';
 import { MEETING_TINT, meetingsFor, meetingTimeLabel, taskTimeLabel, tasksFor } from '@/supabase/functions/_shared/missions';
 import TermineLe from '@/components/termine-le'; // lot 23 : « Terminé le … »
+// Coque v2 (?ui=2) : la Semaine de la planche (E25) — carte à barres puis une ligne par jour.
+import { useUi2 } from '@/components/design/salarie/shell-v2';
+import { BarresSemaine, minutesSemaine, type BarreJour } from '@/components/design/salarie/carte-total';
+import { etatJour, hm, semaineIso } from '@/supabase/functions/_shared/salarie-vue';
 
 /**
  * Horaire prévu, lisible (lot 11). Créneau habituel → « Matin » / « Après-midi »
@@ -61,6 +65,7 @@ const ABSENCE_LABELS: Record<string, string> = {
 
 export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: string) => void } = {}) {
   const { user } = useAuth();
+  const ui2 = useUi2();
   const [weekStart, setWeekStart] = useState(startOfWorkWeek());
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
@@ -137,6 +142,100 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
       <div className="space-y-4">
         <Skeleton className="h-10 w-full" />
         {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}
+      </div>
+    );
+  }
+
+  if (ui2) {
+    const JOURS3 = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    const jours = weekDays.map((day, i) => {
+      const dateStr = format(day, 'yyyy-MM-dd');
+      const plan = planning.filter((p) => p.work_date === dateStr).sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
+      const lignes = entries.filter((e) => e.work_date === dateStr && e.status !== 'cancelled');
+      const absence = plan.find((p) => p.absence_type)?.absence_type ?? null;
+      const etat = etatJour({ date: dateStr, absence, prevu: plan.some((p) => !p.absence_type), lignes });
+      const minutes = lignes.reduce((t, e) => t + (e.total_minutes || 0), 0);
+      return { day, dateStr, i, plan, lignes, absence, etat, minutes, aujourdhui: dateStr === todayStr };
+    });
+    const barres: BarreJour[] = jours.map((j) => ({ date: j.dateStr, jour: 'LMMJVSD'[j.i], etat: j.etat, aujourdhui: j.aujourdhui, affiche: j.aujourdhui, minutes: j.minutes, prevu: j.plan.reduce((t, x) => { const d = x.estimated_start?.substring(0, 5), f = x.estimated_end?.substring(0, 5); return !x.absence_type && d && f && f > d ? t + (Number(f.slice(0, 2)) * 60 + Number(f.slice(3)) - Number(d.slice(0, 2)) * 60 - Number(d.slice(3))) : t; }, 0) }));
+    const envoyes = jours.filter((j) => j.etat === 'envoye').length;
+    const aEnvoyer = jours.filter((j) => j.etat === 'a-envoyer' || j.etat === 'renvoye' || j.etat === 'oublie');
+    const nomsDe = (j: (typeof jours)[number]) => {
+      const noms = Array.from(new Set([...j.lignes.map((e) => e.worksite?.client_name || 'Autre'), ...(j.lignes.length ? [] : j.plan.filter((p) => !p.absence_type).map((p) => p.worksite?.client_name || 'Chantier'))]));
+      return noms.join(' · ');
+    };
+    const sousDe = (j: (typeof jours)[number]) => {
+      if (j.lignes.length) return j.lignes.map((e) => `${e.start_time?.substring(0, 5)}–${e.end_time?.substring(0, 5)}`).join(' · ');
+      const p = j.plan.find((x) => !x.absence_type);
+      return p ? `prévu ${plannedLabel(p.estimated_start, p.estimated_end) ?? ''}`.trim() : '';
+    };
+    return (
+      <div className="dz-semaine" data-testid="dz-semaine">
+        <div className="dz-sem-nav">
+          <button type="button" onClick={() => setWeekStart(subWeeks(weekStart, 1))} aria-label="Semaine précédente"><ChevronLeft className="h-5 w-5" /></button>
+          <div className="dz-sem-nav-t">{format(weekStart, 'd MMMM', { locale: fr })} – {format(weekEnd, 'd MMMM yyyy', { locale: fr })}</div>
+          <button type="button" onClick={() => setWeekStart(addWeeks(weekStart, 1))} aria-label="Semaine suivante"><ChevronRight className="h-5 w-5" /></button>
+        </div>
+        <div className="bt-total dz-total dz-sem-carte" data-testid="dz-sem-total">
+          <div className="dz-total-gauche">
+            <div className="bt-total-k">Semaine {semaineIso(format(weekStart, 'yyyy-MM-dd'))} · heures</div>
+            <div className="dz-total-valeur"><span className="bt-total-big">{hm(minutesSemaine(barres))}</span><span className="dz-total-unite">h</span></div>
+            <div className="dz-total-detail">
+              {envoyes} jour{envoyes > 1 ? 's' : ''} envoyé{envoyes > 1 ? 's' : ''}
+              {aEnvoyer.length > 0 && ` · ${format(aEnvoyer[0].day, 'EEEE d', { locale: fr })} à envoyer`}
+            </div>
+          </div>
+          <BarresSemaine barres={barres} />
+        </div>
+        {jours.map((j) => {
+          const dayMeetings = meetingsOn(j.dateStr);
+          const dayTasks = tasksOn(j.dateStr);
+          const canOpen = !!onSelectDay;
+          const nom = j.absence ? (ABSENCE_LABELS[j.absence] || j.absence) : nomsDe(j);
+          const sous = j.absence ? (j.plan.find((p) => p.absence_type)?.notes ? `« ${j.plan.find((p) => p.absence_type)!.notes} »` : '') : sousDe(j);
+          const pastille = j.absence ? { t: (ABSENCE_LABELS[j.absence] || j.absence).toUpperCase(), e: 'absence' }
+            : j.lignes.length ? (j.etat === 'envoye' ? { t: `${hm(j.minutes)} ✓`, e: 'envoye' } : { t: 'À ENVOYER', e: 'a-envoyer' })
+            : j.plan.length ? { t: 'PRÉVU', e: 'prevu' } : null;
+          return (
+            <div
+              key={j.dateStr}
+              role={canOpen ? 'button' : undefined}
+              tabIndex={canOpen ? 0 : undefined}
+              onClick={canOpen ? () => onSelectDay?.(j.dateStr) : undefined}
+              onKeyDown={canOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectDay?.(j.dateStr); } } : undefined}
+              data-guide={canOpen ? 'semaine.jour' : undefined}
+              aria-label={`${format(j.day, 'EEEE d MMMM', { locale: fr })}${j.aujourdhui ? ', aujourd’hui' : ''}`}
+              className={`dz-sem-jour${j.aujourdhui ? ' is-today' : ''}`}
+            >
+              <div className="dz-sem-ligne">
+                <div className="dz-sem-date">{JOURS3[j.i]}<b>{format(j.day, 'd')}</b></div>
+                <div className="dz-sem-centre">
+                  <div className="dz-sem-nom">{nom || '—'}</div>
+                  {sous && <div className="dz-sem-sous">{sous}</div>}
+                </div>
+                {pastille && <span className="dz-sem-pastille" data-etat={pastille.e}>{pastille.t}</span>}
+              </div>
+              {(dayMeetings.length > 0 || dayTasks.length > 0) && (
+                <div className="dz-sem-extra">
+                  {dayMeetings.map((m) => (
+                    <div key={m.id} className="dz-sem-reunion" data-testid="week-meeting">
+                      <span aria-hidden="true">👥</span><b>{meetingTimeLabel(m.start_time, m.end_time)}</b><span>{m.title}</span>
+                    </div>
+                  ))}
+                  {dayTasks.length > 0 && (
+                    <div className="dz-sem-taches" data-testid="week-tasks">
+                      {dayTasks.map((t) => (
+                        <div key={t.id} className={t.done_at ? 'dz-sem-tache-fait' : undefined} data-testid="week-task">
+                          <span aria-hidden="true">{t.done_at ? '☑' : '☐'}</span> {taskTimeLabel(t) ? `${taskTimeLabel(t)} · ` : ''}{t.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   }
