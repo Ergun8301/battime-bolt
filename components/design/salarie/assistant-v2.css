@@ -1,0 +1,144 @@
+/* Design salarié · étape 8 · l'assistant, fidèle à la planche (AS1 à AS10). Aucune de ces classes n'existe sans `?ui=2` (components/assistant-panel.tsx, prop `v2`) :
+   l'ancien panneau (`.as-*`, utilisé aussi par le bureau) ne change pas d'un octet. Jetons : dz-jetons.css, portée `.dz-portail` (posée sur le panneau et la pastille).
+   Couches : panneau plein écran 70 (couche du dessus de l'app), pastille 71 (au-dessus des feuilles Radix, 50, et de l'éditeur, 40). Clavier : `--dz-kb-h` (clavier.tsx). */
+
+.dz-as { position: fixed; top: 0; left: 0; right: 0; bottom: var(--dz-kb-h, 0px); z-index: 70; width: 100%; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; background: var(--dz-creme); color: var(--dz-encre); font-family: var(--dz-font-ui); }
+.dz-as :focus-visible, .dz-as .wm :focus-visible { outline: none; box-shadow: var(--dz-focus); }
+
+/* ── En-tête : le petit mot (mono jaune), le titre, ✕ ── */
+.dz-as-tete { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: calc(env(safe-area-inset-top) + 14px) 14px 12px; background: var(--dz-encre); color: var(--dz-creme); }
+.dz-as-titres { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dz-as-kicker { font: 700 var(--dz-fs-12)/1.3 var(--dz-font-chiffres); letter-spacing: .16em; color: var(--dz-jaune); overflow-wrap: anywhere; }
+.dz-as-titre { margin: 0; font: 900 var(--dz-fs-22)/1.1 var(--dz-font-ui); letter-spacing: var(--dz-tracking-titre); overflow-wrap: anywhere; }
+.dz-as-x { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 1px solid var(--dz-creme-30); background: none; color: var(--dz-creme); font: 400 16px/1 var(--dz-font-ui); display: grid; place-items: center; cursor: pointer; }
+.dz-as-tete :focus-visible { box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme); }
+
+/* ── Boutons : pastilles de 44 px au moins ── */
+.dz-as-btn { flex: 1; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); text-align: center; cursor: pointer; }
+.dz-as-btn.is-rose { background: var(--dz-erreur-fond); border-color: var(--dz-erreur-bord-doux); color: var(--dz-erreur-texte); }
+.dz-as-btn.is-danger { background: var(--dz-erreur); border-color: var(--dz-erreur); color: var(--dz-blanc); }
+.dz-as-btn:disabled, .dz-as-btn[aria-disabled="true"] { background: var(--dz-inactif-fond); border-color: var(--dz-inactif-fond); color: var(--dz-inactif-texte); cursor: default; }
+.dz-as-choix { display: flex; gap: 6px; }
+.dz-as-choix .dz-as-btn { min-height: 48px; }
+
+/* ── Corps : la conversation ── */
+.dz-as-corps { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.dz-as-outils { flex: none; display: flex; gap: 6px; }
+.dz-as-me, .dz-as-bot { margin: 0; max-width: 84%; padding: 10px 14px; font: 400 var(--dz-fs-15)/1.4 var(--dz-font-ui); white-space: pre-line; overflow-wrap: anywhere; }
+.dz-as-me { align-self: flex-end; background: var(--dz-encre); color: var(--dz-creme); border-radius: 18px 18px 4px 18px; }
+.dz-as-bot { align-self: flex-start; background: var(--dz-carte); color: var(--dz-encre); border: 1px solid var(--dz-trait); border-radius: 18px 18px 18px 4px; }
+.dz-as-bot.is-avis { background: var(--dz-jaune-pale); border-color: var(--dz-jaune); color: var(--dz-jaune-texte); }
+.dz-as-groupe { display: flex; flex-direction: column; gap: 8px; }
+.dz-as-fichier { display: flex; align-items: center; gap: 5px; font-size: var(--dz-fs-12); margin-bottom: 4px; }
+.dz-as-liens { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dz-as-liens button { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-blanc); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); cursor: pointer; }
+.dz-as-note { align-self: center; max-width: 92%; margin: 0; text-align: center; font-size: var(--dz-fs-125); line-height: 1.4; color: var(--dz-texte-2); }
+.dz-as-attente { display: flex; align-items: center; gap: 6px; align-self: flex-start; font-size: var(--dz-fs-14); color: var(--dz-texte-2); }
+.dz-as-etiquette { margin: 4px 0 0; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .16em; color: var(--dz-titre-section); }
+.dz-as-suggestions { flex: none; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: 18px; overflow: hidden; }
+.dz-as-suggestions button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 6px 16px; border: 0; border-top: 1px solid var(--dz-trait-doux); background: none; color: var(--dz-encre); font: 800 var(--dz-fs-15)/1.25 var(--dz-font-ui); text-align: left; cursor: pointer; }
+.dz-as-suggestions button:first-child { border-top: 0; }
+.dz-as-suggestions button > span:first-child { flex: 1; min-width: 0; }
+.dz-as-chevron { color: var(--dz-texte-3); }
+
+/* ── Les cartes de l'assistant (heures, actions, fiche à confirmer), restylées SANS toucher à leur code : elles posent leur propre <style>, on passe devant par la portée ── */
+.dz-as-extra { display: block; }
+.dz-as .wd, .dz-as .wa, .dz-as .wm { margin-top: 0; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); }
+.dz-as .wd, .dz-as .wa { padding: 12px; }
+.dz-as .wd input, .dz-as .wd select, .dz-as .wa input, .dz-as .wa select, .dz-as .wa textarea, .dz-as .wm input, .dz-as .wm select, .dz-as .wm textarea { min-height: 44px; font-size: var(--dz-fs-16); border: 1.5px solid var(--dz-trait-fort); border-radius: 12px; }
+.dz-as .wd .pause, .dz-as .wm .pause { min-height: 44px; }
+.dz-as .wd-date, .dz-as .wd-lbl, .dz-as .wd-plan, .dz-as .wa label, .dz-as .wa-rm-h, .dz-as .wm-lbl, .dz-as .wm-plan, .dz-as .wa-att, .dz-as .ad-s, .dz-as .aq-h { font-size: var(--dz-fs-12); }
+.dz-as .wd-date, .dz-as .wm-lbl, .dz-as .wa label { letter-spacing: .08em; }
+.dz-as .wd-x { min-width: 44px; min-height: 44px; }
+.dz-as .wm-check { min-height: 44px; }
+.dz-as .wd-add, .dz-as .wm-retirer, .dz-as .wm-undo { min-height: 44px; border-radius: 999px; font-size: var(--dz-fs-14); }
+.dz-as .wd-total, .dz-as .wd-err, .dz-as .wa-p, .dz-as .wm-help { font-size: var(--dz-fs-14); }
+.dz-as .wd-save, .dz-as .wa-b.ok, .dz-as .wm-confirm { min-height: 48px; padding: 0 18px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.dz-as .wd-save:disabled, .dz-as .wa-b.ok:disabled, .dz-as .wm-confirm:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
+.dz-as .wa-b.no, .dz-as .wm-dismiss { min-height: 48px; padding: 0 18px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
+.dz-as .wm-bar { background: var(--dz-carte); }
+/* « Fait — … » + Annuler / Modifier (AS2, AS8) */
+.dz-as .ad { margin-top: 0; padding: 14px 16px; background: var(--dz-en-cours-fond); border: 1.5px solid var(--dz-en-cours); border-radius: var(--dz-r-m); }
+.dz-as .ad-m { color: var(--dz-en-cours-texte); font: 900 var(--dz-fs-15)/1.25 var(--dz-font-ui); }
+.dz-as .ad-s { margin-left: 26px; font-size: var(--dz-fs-13); color: var(--dz-en-cours-texte); }
+.dz-as .ad-b { margin: 12px 0 0; }
+.dz-as .ad-b button { flex: 1; min-height: 44px; justify-content: center; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
+.dz-as .ad-b button.strong { background: var(--dz-encre); border-color: var(--dz-encre); color: var(--dz-creme); }
+.dz-as .ad-u, .dz-as .ad-e, .dz-as .ad-l { font-size: var(--dz-fs-14); }
+/* La question en boutons : « Sur quel chantier ? » (AS2) */
+.dz-as .aq { margin: 0; padding: 0; border: 0; background: none; }
+.dz-as .aq-t { font: 800 var(--dz-fs-15)/1.3 var(--dz-font-ui); }
+.dz-as .aq-c { gap: 6px; }
+.dz-as .aq-c button { flex: 1 1 auto; min-height: 44px; padding: 0 16px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
+.dz-as .aq-h { color: var(--dz-texte-2); }
+
+/* ── Pied : pièce jointe, saisie, voix ── */
+.dz-as-pied { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 10px 14px calc(16px + env(safe-area-inset-bottom)); background: var(--dz-creme); border-top: 1px solid var(--dz-trait); }
+.dz-as-barre { display: flex; align-items: flex-end; gap: 6px; }
+.dz-as-rond { flex: none; width: 48px; height: 48px; padding: 0; border-radius: 50%; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 400 18px/1 var(--dz-font-ui); display: grid; place-items: center; cursor: pointer; }
+.dz-as-micro { font: 700 var(--dz-fs-12)/1 var(--dz-font-chiffres); }
+.dz-as-micro.is-on { background: var(--dz-erreur); border-color: var(--dz-erreur); color: var(--dz-blanc); animation: dz-as-pouls 1.2s infinite; }
+.dz-as-envoyer { border: 0; background: var(--dz-jaune); font-weight: 900; }
+.dz-as-envoyer:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); cursor: default; }
+.dz-as-champ { flex: 1; min-width: 0; min-height: 48px; max-height: 40vh; box-sizing: border-box; padding: 11px 16px; border-radius: 24px; border: 1.5px solid var(--dz-encre); background: var(--dz-blanc); color: var(--dz-encre); font: 400 var(--dz-fs-16)/1.4 var(--dz-font-ui); resize: none; }
+.dz-as-champ::placeholder { color: var(--dz-texte-3); opacity: 1; }
+.dz-as-champ:focus-visible { box-shadow: var(--dz-focus); }
+.dz-as-aide { margin: 0; text-align: center; font-size: var(--dz-fs-12); color: var(--dz-texte-2); }
+.dz-as-compte { margin: 0 6px; text-align: right; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); color: var(--dz-texte-2); }
+.dz-as-compte.is-plein { color: var(--dz-erreur-texte); }
+.dz-as-langues { display: flex; align-items: center; gap: 6px; font: 800 var(--dz-fs-12)/1.2 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-as-langues button { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); cursor: pointer; }
+.dz-as-langues button[aria-pressed="true"] { background: var(--dz-encre); border-color: var(--dz-encre); color: var(--dz-creme); }
+.dz-as-langues button:disabled { background: var(--dz-inactif-fond); border-color: var(--dz-inactif-fond); color: var(--dz-inactif-texte); }
+.dz-as-puce { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; max-width: 100%; padding: 0 0 0 12px; border-radius: 999px; border: 1px solid var(--dz-trait-fort); background: var(--dz-carte); font: 700 var(--dz-fs-13)/1.2 var(--dz-font-ui); }
+.dz-as-puce span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.dz-as-puce button { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--dz-texte-2); display: grid; place-items: center; cursor: pointer; }
+.dz-as-ecoute { display: flex; align-items: center; gap: 7px; font: 800 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-erreur-texte); }
+.dz-as-ecoute i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dz-erreur); animation: dz-as-clignote 1s infinite; }
+.dz-as-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ── Messages d'état (AS3, AS6, AS9) et abandon d'une action ── */
+.dz-as-alerte { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 0; }
+.dz-as-msg { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: var(--dz-r-m); border: 1.5px solid var(--dz-encre); background: var(--dz-encre); color: var(--dz-creme); font-size: var(--dz-fs-13); line-height: 1.4; }
+.dz-as-msg b { font: 900 var(--dz-fs-15)/1.25 var(--dz-font-ui); }
+.dz-as-msg.is-erreur { background: var(--dz-erreur-fond); border-color: var(--dz-erreur); color: var(--dz-erreur-texte); }
+.dz-as-msg.is-attention { background: var(--dz-jaune-pale); border-color: var(--dz-jaune); color: var(--dz-jaune-texte); }
+.dz-as-msg .dz-as-btn { flex: none; align-self: flex-start; margin-top: 4px; padding: 0 18px; background: transparent; border-color: currentColor; color: inherit; }
+.dz-as-tout { flex: none; display: flex; flex-direction: column; gap: 8px; }
+
+/* ── Historique (AS4, AS5, AS6, AS9) ── */
+.dz-as-retour { flex: none; width: 100%; }
+.dz-as-squelette { flex: none; height: 60px; border-radius: 18px; background: linear-gradient(90deg, var(--dz-sable) 0, #F3ECE0 50%, var(--dz-sable) 100%); background-size: 800px 100%; animation: dz-as-vague 1.2s linear infinite; }
+.dz-as-vide { flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 34px 18px; border-radius: 18px; border: 1.5px dashed var(--dz-trait-fort); text-align: center; }
+.dz-as-vide b { font: 900 var(--dz-fs-19)/1.2 var(--dz-font-ui); }
+.dz-as-vide span { font-size: 13.5px; line-height: 1.4; color: var(--dz-texte-2); }
+.dz-as-vide .dz-as-btn { flex: none; min-height: 48px; padding: 0 20px; }
+.dz-as-hliste { flex: none; list-style: none; margin: 0; padding: 0; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: 18px; overflow: hidden; }
+.dz-as-hligne { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 8px 8px 8px 16px; border-top: 1px solid var(--dz-trait-doux); }
+.dz-as-hligne:first-child { border-top: 0; }
+.dz-as-hligne.is-confirmation { display: block; padding: 8px 12px 12px 16px; background: var(--dz-erreur-fond); }
+.dz-as-houvrir { flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; color: var(--dz-encre); text-align: left; display: flex; flex-direction: column; justify-content: center; gap: 2px; font-family: var(--dz-font-ui); cursor: pointer; }
+.dz-as-houvrir:disabled { color: var(--dz-texte-3); cursor: default; }
+.dz-as-hnom { font: 800 var(--dz-fs-15)/1.25 var(--dz-font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-as-hdate { font-size: var(--dz-fs-12); color: var(--dz-texte-2); }
+.dz-as-hsupprimer { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 12px; border: 1px solid var(--dz-trait); background: none; color: var(--dz-erreur-texte); font: 400 16px/1 var(--dz-font-ui); display: grid; place-items: center; cursor: pointer; }
+.dz-as-hsupprimer:disabled { color: var(--dz-inactif-texte); cursor: default; }
+.dz-as-hconf { display: flex; flex-direction: column; gap: 2px; }
+.dz-as-hquestion { margin: 8px 0 0; font: 700 var(--dz-fs-14)/1.3 var(--dz-font-ui); color: var(--dz-erreur-texte); }
+.dz-as-hnote { margin: 4px 0 0; font-size: var(--dz-fs-125); color: var(--dz-erreur-texte); }
+.dz-as-hconf .dz-as-choix { margin-top: 8px; }
+.dz-as-effacer { flex: none; width: 100%; }
+
+/* ── La pastille (AS7) : l'assistant réduit au-dessus d'un écran ouvert, sous la barre d'état ── */
+.dz-as-pastille { position: fixed; left: 14px; right: 14px; top: calc(env(safe-area-inset-top) + 8px); z-index: 71; max-width: 452px; margin: 0 auto; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 8px; border-radius: 999px; background: var(--dz-encre); color: var(--dz-creme); box-shadow: 0 14px 40px rgba(21, 18, 15, .45); pointer-events: auto; font-family: var(--dz-font-ui); }
+.dz-as-pastille__ico { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--dz-jaune); color: var(--dz-encre); display: grid; place-items: center; font: 900 15px/1 var(--dz-font-ui); }
+.dz-as-pastille__texte { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dz-as-pastille__kicker { font: 700 var(--dz-fs-12)/1.3 var(--dz-font-chiffres); color: var(--dz-jaune); }
+.dz-as-pastille__question { font: 700 var(--dz-fs-13)/1.3 var(--dz-font-ui); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dz-as-pastille__reprendre { flex: none; height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--dz-creme-30); background: none; color: var(--dz-creme); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); cursor: pointer; }
+.dz-as-pastille :focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme); }
+
+@keyframes dz-as-pouls { 0%, 100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, .45); } 50% { box-shadow: 0 0 0 7px rgba(198, 40, 40, 0); } }
+@keyframes dz-as-clignote { 50% { opacity: .25; } }
+@keyframes dz-as-vague { from { background-position: 0 0; } to { background-position: 800px 0; } }
+@media (prefers-reduced-motion: reduce) { .dz-as-micro.is-on, .dz-as-ecoute i, .dz-as-squelette { animation: none; } }

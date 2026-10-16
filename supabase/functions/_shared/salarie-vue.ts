@@ -197,3 +197,17 @@ export function friseAxe(segments: readonly SegmentFrise[], base: SegmentFrise =
   for (let t = debut; t <= fin; t += 60) ticks.push({ min: t, label: t % 1440 === 0 && t !== debut ? 'minuit' : hhmm(t).slice(0, 2) + ' h' });
   return { debut, fin, largeur: fin - debut, minuit: ticks.find((t) => t.min % 1440 === 0 && t.min > 0)?.min ?? null, ticks, segments: places };
 }
+
+/**
+ * Étape 8 (planche AS4) : la date d'une conversation de l'historique de l'assistant, « Aujourd’hui · 09:12 », « Hier · 18:40 », « 12 oct. · 07:55 ».
+ * Jours de CALENDRIER à l'heure du fuseau (un chat d'hier soir est « Hier » ce matin) ; une date illisible donne ''.
+ */
+export function dateConversation(iso: string, maintenant: Date = new Date(), fuseau = 'Europe/Paris'): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const jour = (x: Date) => x.toLocaleDateString('sv-SE', { timeZone: fuseau });
+  const ecart = Math.round((Date.parse(`${jour(maintenant)}T00:00:00Z`) - Date.parse(`${jour(d)}T00:00:00Z`)) / 86400000);
+  const heure = d.toLocaleTimeString('fr-FR', { timeZone: fuseau, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const quand = ecart <= 0 ? 'Aujourd’hui' : ecart === 1 ? 'Hier' : d.toLocaleDateString('fr-FR', { timeZone: fuseau, day: 'numeric', month: 'short' });
+  return `${quand} · ${heure}`;
+}

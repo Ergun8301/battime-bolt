@@ -6,6 +6,8 @@
 
 import { useMemo } from 'react';
 import { useAuth } from '@/components/auth-provider';
+import { useUi2 } from '@/components/design/salarie/shell-v2';
+import '@/components/design/salarie/assistant-v2.css';
 import AssistantPanel from '@/components/assistant-panel';
 import WorkerDraftCard from '@/components/worker-draft-card';
 import WorkerActionCard, { MealOffNote } from '@/components/worker-action-card';
@@ -43,6 +45,8 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
   open?: boolean; onOpenChange?: (open: boolean) => void;
 }) {
   const { user } = useAuth();
+  // Design salarié, étape 8 : `?ui=2` (aperçus seulement) = la variante v2 du panneau (planche AS1 à AS10). Sans lui, rien ne change.
+  const v2 = useUi2();
   const demo = useMemo(() => isWorkerAssistantDemo(), []);
   const ai = useAiEnabled(demo ? null : user?.company_id);
   // Lot 3 bis : panier repas non utilisé par l'entreprise → refus poli dans la bulle.
@@ -63,6 +67,8 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
       open={open}
       onOpenChange={onOpenChange}
       launcher={open === undefined}
+      v2={v2}
+      prenom={user?.first_name}
       onNavigate={onNavigate ?? (() => {})}
       suggestions={demo ? [DEMO_PHRASE_LONGUE, ...WORKER_ACTION_SUGGESTIONS] : WORKER_ACTION_SUGGESTIONS}
       maxChars={WORKER_TEXT_MAX}
@@ -71,8 +77,8 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
       restoreOnFailure
       isNewRequest={isNewWorkerRequest}
       showFromTop={isMultiExtra}
-      footNote="Gestes simples faits tout de suite · « Annuler » en un clic"
-      intro="Dites-moi vos heures, ce que vous voulez faire, ou comment faire"
+      footNote={v2 ? 'Rien ne part avant « Envoyer » · français ou turc' : 'Gestes simples faits tout de suite · « Annuler » en un clic'}
+      intro={v2 ? `${user?.first_name ? `Bonjour ${user.first_name}. ` : ''}Demandez-moi de noter vos heures, de poser un congé, ou comment faire quelque chose.` : 'Dites-moi vos heures, ce que vous voulez faire, ou comment faire'}
       renderExtra={(extra, ctl) => {
         // Une fiche à plusieurs actions : TOUJOURS testée en premier (elle n'a pas de `draft`), et jamais rendue par une carte qui s'exécute au montage.
         if (isMultiExtra(extra)) {

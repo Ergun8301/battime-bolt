@@ -137,3 +137,32 @@ Preuve de fidélité (planche | implémentation) : `node scripts/tests/fidelite-
 - **Kickers** : « AVANT L'ENVOI » sans compteur ni « PLAGE 1 SUR 2 » (le code ne connaît pas le nombre de plages au moment de la question).
 - **Retour passager** : Sonner reste en haut de l'écran (la place « au-dessus de la barre » de la planche relève de l'étape 6).
 - **E22 « Sur quel chantier ? »** n'est pas une feuille à part : le choix du chantier est la première section de la feuille de l'éditeur, comme dans le code ; pas de bouton « Continuer ».
+
+## Après l'étape 8 (l'assistant v2, planche AS1 à AS10 : `?ui=2` seulement)
+
+Variante v2 de `components/assistant-panel.tsx` (props `v2` et `prenom`, posées par `worker-assistant.tsx` seulement quand `useUi2()` est vrai : aperçu + `?ui=2`) et feuille `components/design/salarie/assistant-v2.css`. La logique IA, les fonctions Edge, l'ancien panneau (`.as-*`) et le bureau ne changent pas.
+
+| Preuve | Résultat |
+|---|---|
+| 31 scripts v1 rejoués sur le build (3 voies, `lane.sh`) | **3 567 ✅ / 1 ❌**, le même 1 ❌ (`documents-lot24` E1) ; `guides-lot7` 682 / 0 (son contrôle de géométrie instable est passé) |
+| `captures-reference-salarie` + `comparer-captures` | **12 / 12 identiques octet pour octet** |
+| `assistant-panneau` (bureau), `assistant-effacer` | 10 / 0, 19 / 0 |
+| `assistant-historique` et `assistant-multi` rejoués en `?ui=2` (copies `ui2-*.mjs`, ignorées par git : l'original, `/poseur` devenu `/poseur?ui=2`, et seulement les sélecteurs de classe doublés : `.as-bar textarea` → `.dz-as-barre textarea`, `.as-bot` → `.dz-as-groupe .dz-as-bot`, `.as-me`, `.as-typing` → `.dz-as-attente`, `.as-body` → `.dz-as-corps`, `.as-sugg button` → `.dz-as-suggestions button`, `.as-hname` / `.as-hdate`) | **185 / 0** et **120 / 0** : mêmes gestes, mêmes repères (`data-testid`, `aria-label`), aucune adaptation de comportement |
+| `node scripts/tests/fidelite-assistant.mjs out docs/design-brief/integration/captures-fidelite 4393` | **110 ✅ / 0 ❌** ; 15 images « planche \| implémentation » de moins de 145 ko (`AS1` à `AS10`, 390 × 844 et 360 × 640), cibles ≥ 44 px, texte ≥ 12 px, contrastes ≥ 4,5:1, aucun défilement horizontal, garde de 700 ms, retour au chat, pastille, ancien panneau sans `?ui=2` |
+| `test:salarie-vue` (16), `test:registre` (142), `test:ouvreurs` (4), `test:assistant-aide` (3), `test:guides` (11), `typecheck`, `build` | verts |
+| Poids | `/poseur` 276 → 278 kB (max 280), `/admin` 359 → 360 kB (max 363) ; CSS du premier chargement `/poseur` 30,4 kB gzip (inchangé : la feuille de l'assistant, ≈ 3,0 kB gzip, est chargée avec le chunk de l'assistant) |
+
+### Écarts à la planche, décidés et écrits
+- **En-tête** : marge haute = zone sûre du téléphone + 14 px (comme la coque v2) ; la planche dessine 42 px de barre d'état de téléphone, qui n'existent pas dans l'application.
+- **« N QUESTIONS RESTANTES »** : n'apparaît qu'après la première réponse (le serveur ne donne le compte qu'alors) ; avant : « ASSISTANT BEMEXO ».
+- **« Me guider pas à pas » sur l'accueil (AS1, S89)** : pas ajouté à l'accueil (il faudrait un appel au serveur pour savoir quelle fiche proposer) ; il reste le lien sous une réponse, dessiné en pastille de 44 px.
+- **Dictée** : la planche réunit la langue et le micro dans « FR·TR » ; le turc étant en production, la rangée « Dictée : Français / Türkçe » est gardée au-dessus de la saisie (pastilles de 44 px).
+- **« + Nouveau chat » et « Historique »** : en haut du corps pendant toute la conversation (la planche ne les montre que sur l'accueil, défilés ailleurs).
+- **Envoyer (↑)** : gris tant que le champ est vide (états inactifs en couleurs, README) ; la planche le montre jaune.
+- **Cartes** : les textes sont ceux du code (« Fait — 1 créneau noté (3 h 30). », chantier « Nom · Ville »), « Annuler / Modifier » dans la carte verte (la planche les met dessous) ; « Fiche à confirmer » reste la fiche du code (champs modifiables, « Tout confirmer » en jaune puis « Ignorer »), pas la carte sombre de la planche.
+- **AS7 / AS8** : la pastille « ASSISTANT · EN ATTENTE » + « Reprendre » existe (un écran ouvert depuis l'assistant sur téléphone ; elle se pose au-dessus des feuilles et de l'éditeur, comme la carte du guide), mais SANS formulaire pré-rempli : le préremplissage (champs jaunes, « Abandonner la modification ? », « Formulaire fermé, rien n'a été ajouté ») est la nouvelle fonction du plan (R9, étape 8 « API de préremplissage »), pas faite ici.
+- **Retour Android** : pas branché sur l'assistant (un `history.back()` asynchrone au moment d'ouvrir un écran fermerait la couche que `poseur-day.tsx` vient de poser, qui lit le même marqueur `btLayer`).
+- **Garde de 700 ms** : « Oui » de « Supprimer cette conversation ? », de « Tout effacer ? » et de « Abandonner cette action ? » ignore les touchers des 700 premières millisecondes (`aria-disabled`, couleurs d'inactif) ; ni la planche ni le code d'avant ne la dessinaient.
+- **Historique** : dates « Aujourd'hui · 09:12 », « Hier · 18:40 », « 12 oct. · 07:55 » (`dateConversation`, règle pure testée) à la place de « aujourd'hui », « hier », « il y a 3 jours » ; « Une action est en cours… » garde le texte actuel (plus long).
+- **Textes de l'accueil et de l'aide** : ceux de la planche (« Bonjour Sam. Demandez-moi de noter vos heures… », « Rien ne part avant « Envoyer » · français ou turc »), à la place de ceux du code d'avant, seulement en v2.
+- **Registre** : `clics.snapshot.json` (et son test) passent de 567 à 591 gestionnaires (`assistant-panel.tsx` 22 → 46 : mêmes gestes que l'ancien panneau, aucune écriture nouvelle, aucune capacité nouvelle).
