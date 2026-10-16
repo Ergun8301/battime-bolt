@@ -58,9 +58,6 @@
 .dz-portail.dz-feuille .dz-bouton[data-ton="principal"] { background: var(--dz-jaune); border: 0; box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
 .dz-portail.dz-feuille .dz-bouton[data-ton="destructif"] { background: var(--dz-erreur); color: var(--dz-blanc); border: 0; }
 .dz-portail.dz-feuille .dz-bouton:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); border: 0; box-shadow: none; cursor: default; opacity: 1; }
-.dz-portail :focus-visible { outline: 2px solid transparent; box-shadow: var(--dz-focus); }
-.dz-portail.dz-feuille .dz-bouton[data-ton="principal"]:focus-visible { box-shadow: var(--dz-focus-bouton); }
-.dz-portail.dz-feuille .dz-feuille__fermer:focus-visible { box-shadow: var(--dz-focus); }
 
 /* ── Calendrier de « Dupliquer cette journée » : 7 jours de 44 px dans la largeur de la feuille ── */
 .dz-portail.dz-feuille .dz-calendrier { overflow-x: auto; }
@@ -162,7 +159,6 @@
 /* OK (pied fixe) et « Valider les heures » */
 .bt-ui2 .bt-ed .bt-save { min-height: 52px; padding: 0 16px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font-size: 16px; font-weight: 800; box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
 .bt-ui2 .bt-ed .bt-save:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
-.bt-ui2 .bt-ed .bt-save:focus-visible { box-shadow: var(--dz-focus-bouton); }
 
 /* Réglage de l'heure (E40) : le tiroir reste sombre (la molette TimeCylinder est inchangée, ses chiffres sont clairs) */
 .bt-ui2 .bt-ed .bt-sheet { border-top: 4px solid var(--dz-jaune); border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0; padding: 4px 20px calc(env(safe-area-inset-bottom) + 20px); }
@@ -176,5 +172,12 @@
 .bt-ui2 .bt-ed .bt-sheet-dur .k { font-size: 12px; color: var(--dz-creme-75); }
 .bt-ui2 .bt-ed .bt-molette-exact { font-size: 12.5px; color: var(--dz-creme-75); }
 .bt-ui2 .bt-ed .bt-molette-exact b { color: var(--dz-jaune); }
+
+/* ── Focus au clavier : anneau double (clair ET sombre) sur tout ; anneau + relief sur les boutons jaunes. Placé en dernier, plus spécifique que les `box-shadow` des boutons ci-dessus. ── */
+.dz-portail.dz-feuille :focus-visible, .bt-ui2 .bt-ed :focus-visible { outline: 2px solid transparent; box-shadow: var(--dz-focus); }
+.dz-portail.dz-feuille .dz-bouton[data-ton="principal"]:focus-visible, .dz-portail.dz-feuille .bt-wr-go:focus-visible, .dz-portail.dz-feuille .bt-rlf-go:focus-visible,
+.bt-ui2 .bt-ed .bt-save:focus-visible, .bt-ui2 .bt-ed .bt-nommer-go:focus-visible { box-shadow: var(--dz-focus-bouton); }
+.bt-ui2 .bt-ed .bt-sheet :focus-visible { box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme); }
+.bt-ui2 .bt-ed .bt-sheet .bt-save:focus-visible { box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme), inset 0 -3px 0 var(--dz-jaune-ombre); }
 
 @media (prefers-reduced-motion: reduce) { .dz-portail.dz-feuille { animation: none; } }
