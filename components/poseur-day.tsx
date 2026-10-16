@@ -49,6 +49,8 @@ import TermineLe from '@/components/termine-le';
 import { choosableWorksites } from '@/supabase/functions/_shared/chantier-statut';
 // Design salarié, étape 4 : mini-frise de la journée (visible seulement avec ?ui=2).
 import { MiniFrise, type SegFrise } from '@/components/design/salarie/mini-frise';
+import { FeuilleCorps, FeuillePied, FeuilleTete, boutonFeuille, kickerJour, kickerLigne } from '@/components/design/salarie/feuille';
+import { useClavier } from '@/components/design/salarie/clavier';
 import { useUi2 } from '@/components/design/salarie/shell-v2';
 import { reperesCarte } from '@/components/design/salarie/carte-chantier';
 import { BarresSemaine, barresAvecTotal, minutesSemaine, type BarreJour } from '@/components/design/salarie/carte-total';
@@ -733,14 +735,17 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
   // ne consomme l'événement : le salarié se retrouve éjecté au lieu de refermer
   // son écran. On empile une entrée d'historique tant qu'une couche est ouverte
   // et on referme celle du dessus à chaque retour.
-  const anyLayerOpen = !!(openSlot || drawerField || docsWs || confirmDel || confirmOpen || confirmCorrectOpen || lateOpen || repeatOpen || liveAsk || sendAsk);
+  const anyLayerOpen = !!(openSlot || drawerField || docsWs || confirmDel || confirmOpen || confirmCorrectOpen || lateOpen || repeatOpen || liveAsk || sendAsk || (ui2 && (plannedAsk || !!pauseAsk)));
   const [histTick, setHistTick] = useState(0);
+  useClavier(ui2 && anyLayerOpen); // ?ui=2 : toutes les feuilles se lèvent au-dessus du clavier
   const closeTopLayer = useRef<() => void>(() => {});
   // Réassigné après chaque rendu, de la couche la plus haute à la plus basse.
   useEffect(() => {
     closeTopLayer.current = () => {
       if (sendAsk) { setSendAsk(false); return; }
       if (liveAsk) { if (!liveBusyRef.current) setLiveAsk(null); return; }
+      if (ui2 && pauseAsk) { setPauseAsk(null); return; } // ?ui=2 : le retour referme aussi les questions d'envoi (l'envoi est abandonné)
+      if (ui2 && plannedAsk) { setPlannedAsk(false); return; }
       if (drawerField) { setDrawerField(null); return; }
       if (confirmDel) { setConfirmDel(null); return; }
       if (confirmOpen) { setConfirmOpen(false); return; }
@@ -1742,7 +1747,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
   const choosable = choosableWorksites(sortedWorksites, [fWorksiteId], date);
   const cq = chantierQuery.trim().toLowerCase();
   const filteredWorksites = cq
-    ? choosable.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
+    ? choosable.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq) || (ui2 && w.client_name === OTHER_NAME)) // ?ui=2 : « Autre chantier » reste proposé même sans résultat (planche E22b)
     : choosable;
   const autreId = worksites.find((w) => w.client_name === OTHER_NAME)?.id || '';
 
@@ -1819,6 +1824,24 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
     : titleName ? `Chantier ${titleName}` : 'Chantier';
 
   const editorEntry = openSlot?.kind === 'entry' ? entries.find((x) => x.id === openSlot.entryId) : undefined;
+  // ?ui=2 : le petit mot de la feuille (NOUVELLE INTERVENTION, ou la ville et l'état de la ligne).
+  const kickerEditeur = !openSlot ? '' : openSlot.kind === 'new' ? 'NOUVELLE INTERVENTION'
+    : [titleCity, editorEntry ? LIBELLE_LIGNE[etatLigne(editorEntry)] : openSlot.kind === 'planned' ? 'Prévu' : ''].filter(Boolean).join(' · ').toUpperCase();
+  // « Documents » et « Retirer ce chantier » : dans le pied d'avant ; dans le corps de la feuille avec ?ui=2 (le pied ne garde que « OK »).
+  const ligneDocRetire = openSlot && (slotWorksiteId || (openSlot.kind === 'entry' && editorEntry)) ? (
+    <div className="bt-ed-dock-row">
+      {slotWorksiteId && (
+        <button type="button" className="bt-ed-doc" data-guide="editeur.documents" onClick={() => setDocsWs({ id: slotWorksiteId, name: slotWorksiteName, entryId: openSlot.kind === 'entry' ? openSlot.entryId : null })}>
+          <FolderOpen className="h-4 w-4" /> Documents
+        </button>
+      )}
+      {openSlot.kind === 'entry' && editorEntry && (
+        <button type="button" className="bt-ed-trash" data-guide="editeur.retirer" disabled={fSaving} onClick={() => setConfirmDel({ kind: 'entry', entry: editorEntry, sent: editorEntry.status === 'submitted' || !!editorEntry.submitted_at })} aria-label="Retirer ce chantier" title="Retirer ce chantier">
+          <Trash2 className="h-4 w-4" />{ui2 && <span className="dz-ed-retirer">Retirer ce chantier</span>}
+        </button>
+      )}
+    </div>
+  ) : null;
   // Lot 1 : la durée affichée déduit la pause de la ligne.
   const durMin = (fStart && fEnd) ? calculateTotalMinutes(fStart, fEnd, keptBreak({ start: fStart, end: fEnd }, fBreak)) : 0;
 
@@ -2372,13 +2395,23 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
 
       {/* ===== ÉDITEUR PLEIN ÉCRAN — Ajouter / modifier une intervention ===== */}
       {openSlot && (
-        <div className="bt-ed">
+        <div className="bt-ed" {...(ui2 ? { role: 'dialog', 'aria-label': slotTitle } : {})}>
           <div className="bt-ed-inner">
-            <div className="bt-ed-hdr">
-              <button type="button" className="bt-ed-cancel" onClick={cancelSlot}>Annuler</button>
-              <div className="bt-ed-title">{slotTitle}</div>
-              <span style={{ width: 54, flex: 'none' }} aria-hidden />
-            </div>
+            {ui2 ? (
+              <div className="bt-ed-hdr dz-feuille__tete">
+                <div className="dz-feuille__titres">
+                  <span className="dz-feuille__kicker">{kickerEditeur}</span>
+                  <div className="bt-ed-title dz-feuille__titre">{slotTitle}</div>
+                </div>
+                <button type="button" className="bt-ed-cancel dz-feuille__fermer" aria-label="Annuler" onClick={cancelSlot}><span aria-hidden>✕</span></button>
+              </div>
+            ) : (
+              <div className="bt-ed-hdr">
+                <button type="button" className="bt-ed-cancel" onClick={cancelSlot}>Annuler</button>
+                <div className="bt-ed-title">{slotTitle}</div>
+                <span style={{ width: 54, flex: 'none' }} aria-hidden />
+              </div>
+            )}
 
             <div className="bt-ed-scroll">
 
@@ -2387,7 +2420,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
               {openSlot.kind === 'new' ? (
                 <>
                 <input className="bt-site-search" placeholder="Rechercher un chantier…" value={chantierQuery} onChange={(e) => setChantierQuery(e.target.value)} />
-                {filteredWorksites.length === 0 && <div className="bt-site-empty">Aucun chantier trouvé</div>}
+                {(filteredWorksites.length === 0 || (ui2 && cq !== '' && filteredWorksites.every((w) => w.client_name === OTHER_NAME))) && <div className="bt-site-empty">Aucun chantier trouvé</div>}
                 {filteredWorksites.map((ws) => {
                   const isOther = ws.client_name === OTHER_NAME;
                   const on = fWorksiteId === ws.id;
@@ -2486,7 +2519,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
               />
 
               {/* 3 · Statut du chantier — en cours / sans / avec réserve (facultatif) */}
-              <div className="bt-sec">3 · Statut du chantier <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
+              <div className="bt-sec">3 · Statut du chantier <span className="dz-facultatif" style={ui2 ? undefined : { textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
               <div className="bt-recep">
                 <button type="button" className={`bt-recep-b encours${fReception === 'en_cours' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'en_cours' ? '' : 'en_cours')}>
                   <Hammer className="h-[18px] w-[18px]" /> En cours
@@ -2500,7 +2533,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
               </div>
 
               {/* 4 · Note (devient « Détail des réserves » si avec réserve) */}
-              <div className="bt-sec">4 · {fReception === 'avec' ? 'Détail des réserves' : 'Note'} <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
+              <div className="bt-sec">4 · {fReception === 'avec' ? 'Détail des réserves' : 'Note'} <span className="dz-facultatif" style={ui2 ? undefined : { textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
               <textarea
                 className="bt-note"
                 data-guide="editeur.note"
@@ -2509,24 +2542,12 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
                 value={fObs}
                 onChange={(e) => setFObs(e.target.value)}
               />
+              {ui2 && ligneDocRetire}
             </div>
 
             {/* Barre d'action dockée */}
             <div className="bt-ed-dock">
-              {(slotWorksiteId || (openSlot.kind === 'entry' && editorEntry)) && (
-                <div className="bt-ed-dock-row">
-                  {slotWorksiteId && (
-                    <button type="button" className="bt-ed-doc" data-guide="editeur.documents" onClick={() => setDocsWs({ id: slotWorksiteId, name: slotWorksiteName, entryId: openSlot.kind === 'entry' ? openSlot.entryId : null })}>
-                      <FolderOpen className="h-4 w-4" /> Documents
-                    </button>
-                  )}
-                  {openSlot.kind === 'entry' && editorEntry && (
-                    <button type="button" className="bt-ed-trash" data-guide="editeur.retirer" disabled={fSaving} onClick={() => setConfirmDel({ kind: 'entry', entry: editorEntry, sent: editorEntry.status === 'submitted' || !!editorEntry.submitted_at })} aria-label="Retirer ce chantier" title="Retirer ce chantier">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              )}
+              {!ui2 && ligneDocRetire}
               {/* Bloqué aussi pendant la création d'un chantier : sur une
                   connexion lente, le salarié pouvait taper « Ajouter ce
                   chantier » puis « OK » avant la réponse. fWorksiteId valait
@@ -2544,6 +2565,14 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
             <div className={`bt-overlay${drawerField ? ' open' : ''}`} onClick={() => setDrawerField(null)} />
             <div className={`bt-sheet${drawerField ? ' open' : ''}`}>
               <div className="bt-grip" />
+              {ui2 && (
+                <div className="dz-feuille__tete">
+                  <div className="dz-feuille__titres">
+                    <span className="dz-feuille__kicker">{`${drawerField === 'end' ? 'FIN' : 'DÉBUT'} · ${slotWorksiteName}`.toUpperCase()}</span>
+                    <div className="dz-feuille__titre">Réglage de l&apos;heure</div>
+                  </div>
+                </div>
+              )}
               <div className="bt-seg">
                 <button type="button" className={`bt-segb${drawerField !== 'end' ? ' on' : ''}`} onClick={() => setDrawerField('start')}>
                   <span className="lbl">Début</span>
@@ -2584,138 +2613,152 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
 
       {/* Repeat this day onto other days */}
       <Dialog open={repeatOpen} onOpenChange={setRepeatOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5" /> Dupliquer cette journée</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">Choisis les jours où copier cette journée (mêmes chantiers + heures).</p>
-          <div className={ui2 ? 'flex justify-center dz-calendrier' : 'flex justify-center'}>
-            <CalendarLazy mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
-          </div>
-          <Button className="w-full h-11" data-guide="copier.valider" disabled={copying || copyTargetStrs.length === 0} onClick={() => copyToDates(copyTargetStrs)}>
-            {copying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-            Copier{copyTargetStrs.length > 0 ? ` (${copyTargetStrs.length})` : ''}
-          </Button>
+        <DialogContent feuille={ui2} className={ui2 ? undefined : 'max-w-sm'}>
+          <FeuilleTete ui2={ui2} kicker={`DUPLIQUER · ${kickerJour(date)}`} titre={
+            <DialogTitle className={ui2 ? undefined : 'flex items-center gap-2'}>{!ui2 && <><Copy className="h-5 w-5" /> </>}Dupliquer cette journée</DialogTitle>
+          } />
+          <FeuilleCorps ui2={ui2}>
+            <p className="text-sm text-muted-foreground">Choisis les jours où copier cette journée (mêmes chantiers + heures).</p>
+            <div className={ui2 ? 'flex justify-center dz-calendrier' : 'flex justify-center'}>
+              <CalendarLazy mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
+            </div>
+          </FeuilleCorps>
+          <FeuillePied ui2={ui2} v1="">
+            <Button {...boutonFeuille(ui2, 'principal', 'w-full h-11')} data-guide="copier.valider" disabled={copying || copyTargetStrs.length === 0} onClick={() => copyToDates(copyTargetStrs)}>
+              {copying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+              Copier{copyTargetStrs.length > 0 ? ` (${copyTargetStrs.length})` : ''}
+            </Button>
+          </FeuillePied>
         </DialogContent>
       </Dialog>
 
       {/* Month closed — too late to edit */}
       <Dialog open={lateOpen} onOpenChange={setLateOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-orange-500" /> {userLocked && !closedMonths.has(date.slice(0, 7)) ? 'Heures clôturées' : 'Mois clôturé'}
+        <DialogContent feuille={ui2} className={ui2 ? undefined : 'max-w-sm'}>
+          <FeuilleTete ui2={ui2} kicker="CORRECTION IMPOSSIBLE" titre={
+            <DialogTitle className={ui2 ? undefined : 'flex items-center gap-2'}>
+              {!ui2 && <><AlertTriangle className="h-5 w-5 text-orange-500" /> </>}{userLocked && !closedMonths.has(date.slice(0, 7)) ? 'Heures clôturées' : 'Mois clôturé'}
             </DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {userLocked && !closedMonths.has(date.slice(0, 7))
-              ? `Le bureau a clôturé tes heures jusqu'au ${closedUntilLabel}. Pour toute correction, rapproche-toi de la secrétaire.`
-              : 'Le bureau a clôturé ce mois : la paie est partie. Pour toute correction, rapproche-toi de la secrétaire — elle peut rouvrir le mois.'}
-          </p>
-          <Button className="w-full mt-2" onClick={() => setLateOpen(false)}>Compris</Button>
+          } />
+          <FeuilleCorps ui2={ui2}>
+            <p className="text-sm text-muted-foreground">
+              {userLocked && !closedMonths.has(date.slice(0, 7))
+                ? `Le bureau a clôturé tes heures jusqu'au ${closedUntilLabel}. Pour toute correction, rapproche-toi de la secrétaire.`
+                : 'Le bureau a clôturé ce mois : la paie est partie. Pour toute correction, rapproche-toi de la secrétaire — elle peut rouvrir le mois.'}
+            </p>
+          </FeuilleCorps>
+          <FeuillePied ui2={ui2} v1="">
+            <Button {...boutonFeuille(ui2, 'principal', 'w-full mt-2')} onClick={() => setLateOpen(false)}>Compris</Button>
+          </FeuillePied>
         </DialogContent>
       </Dialog>
 
       {/* Confirm correcting an already-sent day */}
       <Dialog open={confirmCorrectOpen} onOpenChange={(o) => { setConfirmCorrectOpen(o); if (!o) setPendingAction(null); }}>
-        <DialogContent className="max-w-sm" data-guide-confirm>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Journée déjà envoyée</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">Cette journée a déjà été envoyée. Si tu y touches, la secrétaire en sera informée.</p>
-          <div className="flex gap-2 mt-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setConfirmCorrectOpen(false); setPendingAction(null); }}>Annuler</Button>
-            <Button className="flex-1" onClick={confirmCorrect}>Continuer</Button>
-          </div>
+        <DialogContent feuille={ui2} className={ui2 ? undefined : 'max-w-sm'} data-guide-confirm>
+          <FeuilleTete ui2={ui2} kicker="MODIFIER" titre={
+            <DialogTitle className={ui2 ? undefined : 'flex items-center gap-2'}>{!ui2 && <><AlertTriangle className="h-5 w-5 text-orange-500" /> </>}Journée déjà envoyée</DialogTitle>
+          } />
+          <FeuilleCorps ui2={ui2}>
+            <p className="text-sm text-muted-foreground">Cette journée a déjà été envoyée. Si tu y touches, la secrétaire en sera informée.</p>
+          </FeuilleCorps>
+          <FeuillePied ui2={ui2} v1="flex gap-2 mt-2">
+            <Button variant="outline" {...boutonFeuille(ui2, 'normal', 'flex-1')} onClick={() => { setConfirmCorrectOpen(false); setPendingAction(null); }}>Annuler</Button>
+            <Button {...boutonFeuille(ui2, 'principal', 'flex-1')} onClick={confirmCorrect}>Continuer</Button>
+          </FeuillePied>
         </DialogContent>
       </Dialog>
 
       {/* Lot 1 : le prévu du bureau ne part qu'après un « oui ». */}
       <Dialog open={plannedAsk} onOpenChange={(o) => { if (!o) setPlannedAsk(false); }}>
-        <DialogContent className="max-w-sm" data-testid="planned-confirm" data-guide-confirm>
-          <DialogHeader>
-            <DialogTitle>Horaires prévus par le bureau</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">Tu n&apos;as pas noté d&apos;heures pour :</p>
-          <ul className="space-y-1 text-sm font-semibold" data-testid="planned-confirm-list">
-            {plannedToSend.map((p) => (
-              <li key={p.planningId}>
-                {worksites.find((w) => w.id === p.worksiteId)?.client_name || 'Chantier'} · {p.start}–{p.end} ({formatMinutesToHours(calculateTotalMinutes(p.start, p.end, 0))})
-              </li>
-            ))}
-          </ul>
-          <p className="text-sm text-muted-foreground">Tu as travaillé exactement ces horaires&nbsp;?</p>
-          <div className="grid gap-2 pt-1">
-            <Button className="h-11 font-black" data-testid="planned-confirm-send" onClick={() => answerPlanned('send')}>Oui, envoyer ces horaires</Button>
-            <Button variant="outline" className="h-11" data-testid="planned-confirm-fix" onClick={() => answerPlanned('fix')}>Non, je corrige mes heures</Button>
+        <DialogContent feuille={ui2} className={ui2 ? undefined : 'max-w-sm'} data-testid="planned-confirm" data-guide-confirm>
+          <FeuilleTete ui2={ui2} kicker="AVANT L'ENVOI" titre={<DialogTitle>Horaires prévus par le bureau</DialogTitle>} />
+          <FeuilleCorps ui2={ui2}>
+            <p className="text-sm text-muted-foreground">Tu n&apos;as pas noté d&apos;heures pour :</p>
+            <ul className={ui2 ? 'dz-feuille__liste' : 'space-y-1 text-sm font-semibold'} data-testid="planned-confirm-list">
+              {plannedToSend.map((p) => (
+                <li key={p.planningId}>
+                  {worksites.find((w) => w.id === p.worksiteId)?.client_name || 'Chantier'} · {p.start}–{p.end} ({formatMinutesToHours(calculateTotalMinutes(p.start, p.end, 0))})
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-muted-foreground">Tu as travaillé exactement ces horaires&nbsp;?</p>
+          </FeuilleCorps>
+          <FeuillePied ui2={ui2} v1="grid gap-2 pt-1">
+            <Button {...boutonFeuille(ui2, 'principal', 'h-11 font-black')} data-testid="planned-confirm-send" onClick={() => answerPlanned('send')}>Oui, envoyer ces horaires</Button>
+            <Button variant="outline" {...boutonFeuille(ui2, 'normal', 'h-11')} data-testid="planned-confirm-fix" onClick={() => answerPlanned('fix')}>Non, je corrige mes heures</Button>
             {(hasRealDrafts || pendingEntries.length > 0) && (
-              <Button variant="ghost" className="h-10 text-sm" data-testid="planned-confirm-skip" onClick={() => answerPlanned('skip')}>Envoyer seulement mes heures notées</Button>
+              <Button variant="ghost" {...boutonFeuille(ui2, 'normal', 'h-10 text-sm')} data-testid="planned-confirm-skip" onClick={() => answerPlanned('skip')}>Envoyer seulement mes heures notées</Button>
             )}
-          </div>
+          </FeuillePied>
         </DialogContent>
       </Dialog>
 
       {/* Plus de 6 h d'affilée sans pause (borne OU saisie à la main) — un seul toucher
           sur une puce ; « Autre » (h:mm) part avec « OK ». Les lignes du QR passent ici. */}
       <Dialog open={!!pauseAsk} onOpenChange={(o) => { if (!o) setPauseAsk(null); }}>
-        <DialogContent className="max-w-sm" data-testid="pause-ask" data-guide-confirm>
-          <DialogHeader>
-            <DialogTitle>Tu as pris une pause&nbsp;?</DialogTitle>
-          </DialogHeader>
-          {pauseAsk && (
-            <p className="text-sm text-muted-foreground" data-testid="pause-ask-range">
-              {pauseAsk.start}–{pauseAsk.end} : {formatMinutesToHours(pauseAsk.minutes)} d&apos;affilée, sans pause notée.
-            </p>
-          )}
-          {pauseAsk && (
-            <PausePicker
-              key={pauseAsk.id}
-              testId="pause"
-              value={null}
-              zeroLabel="Non"
-              confirmLabel="OK"
-              hint="Pendant cette plage. Plusieurs pauses ? Additionne-les."
-              maxExclusive={pauseAsk.lineMinutes}
-              onChange={(m) => void answerPause(m)}
-            />
-          )}
+        <DialogContent feuille={ui2} className={ui2 ? undefined : 'max-w-sm'} data-testid="pause-ask" data-guide-confirm>
+          <FeuilleTete ui2={ui2} kicker="AVANT L'ENVOI" titre={<DialogTitle>Tu as pris une pause&nbsp;?</DialogTitle>} />
+          <FeuilleCorps ui2={ui2}>
+            {pauseAsk && (
+              <p className="text-sm text-muted-foreground" data-testid="pause-ask-range">
+                {pauseAsk.start}–{pauseAsk.end} : {formatMinutesToHours(pauseAsk.minutes)} d&apos;affilée, sans pause notée.
+              </p>
+            )}
+            {pauseAsk && (
+              <PausePicker
+                key={pauseAsk.id}
+                testId="pause"
+                value={null}
+                zeroLabel="Non"
+                confirmLabel="OK"
+                hint="Pendant cette plage. Plusieurs pauses ? Additionne-les."
+                maxExclusive={pauseAsk.lineMinutes}
+                onChange={(m) => void answerPause(m)}
+              />
+            )}
+          </FeuilleCorps>
         </DialogContent>
       </Dialog>
 
       {/* Coherence confirmation */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-sm" data-guide-confirm>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Vérification</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            {coherenceWarnings.map((w, i) => <p key={i} className="text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded p-2">{w}</p>)}
-            <p className="text-sm text-muted-foreground pt-1">Envoyer quand même ta journée ?</p>
-          </div>
-          <div className="flex gap-2 mt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setConfirmOpen(false)}>Corriger</Button>
-            <Button className="flex-1" onClick={() => { setConfirmOpen(false); doSubmit(); }}>Confirmer l&apos;envoi</Button>
-          </div>
+        <DialogContent feuille={ui2} className={ui2 ? undefined : 'max-w-sm'} data-guide-confirm>
+          <FeuilleTete ui2={ui2} kicker="AVANT L'ENVOI" titre={
+            <DialogTitle className={ui2 ? undefined : 'flex items-center gap-2'}>{!ui2 && <><AlertTriangle className="h-5 w-5 text-orange-500" /> </>}Vérification</DialogTitle>
+          } />
+          <FeuilleCorps ui2={ui2}>
+            <div className={ui2 ? 'dz-feuille__bloc' : 'space-y-2 py-2'}>
+              {coherenceWarnings.map((w, i) => <p key={i} className={ui2 ? 'dz-feuille__alerte' : 'text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded p-2'}>{w}</p>)}
+              <p className="text-sm text-muted-foreground pt-1">Envoyer quand même ta journée ?</p>
+            </div>
+          </FeuilleCorps>
+          <FeuillePied ui2={ui2} v1="flex gap-2 mt-2">
+            <Button variant="outline" {...boutonFeuille(ui2, 'normal', 'flex-1')} onClick={() => setConfirmOpen(false)}>Corriger</Button>
+            <Button {...boutonFeuille(ui2, 'principal', 'flex-1')} onClick={() => { setConfirmOpen(false); doSubmit(); }}>Confirmer l&apos;envoi</Button>
+          </FeuillePied>
         </DialogContent>
       </Dialog>
 
       {/* Confirmation avant de retirer une intervention */}
       <Dialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
-        <DialogContent className="max-w-sm" data-guide-confirm>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Retirer ce chantier ?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {confirmDel?.kind === 'entry' && confirmDel.sent
-              ? 'Il a déjà été envoyé : il restera visible comme « Retiré » et la secrétaire en sera informée.'
-              : confirmDel?.kind === 'entry' && isEmptyDraft(confirmDel.entry) && !confirmDel.entry.submitted_at
-                ? 'Brouillon vide : il sera supprimé.'
-                : 'Les heures seront perdues.'}
-          </p>
-          <div className="flex gap-2 mt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setConfirmDel(null)}>Non</Button>
+        <DialogContent feuille={ui2} alerte className={ui2 ? undefined : 'max-w-sm'} data-guide-confirm>
+          <FeuilleTete ui2={ui2} kicker={confirmDel?.kind === 'entry' ? kickerLigne(confirmDel.entry) : undefined} titre={
+            <DialogTitle className={ui2 ? undefined : 'flex items-center gap-2'}>{!ui2 && <><AlertTriangle className="h-5 w-5 text-orange-500" /> </>}Retirer ce chantier ?</DialogTitle>
+          } />
+          <FeuilleCorps ui2={ui2}>
+            <p className="text-sm text-muted-foreground">
+              {confirmDel?.kind === 'entry' && confirmDel.sent
+                ? 'Il a déjà été envoyé : il restera visible comme « Retiré » et la secrétaire en sera informée.'
+                : confirmDel?.kind === 'entry' && isEmptyDraft(confirmDel.entry) && !confirmDel.entry.submitted_at
+                  ? 'Brouillon vide : il sera supprimé.'
+                  : 'Les heures seront perdues.'}
+            </p>
+          </FeuilleCorps>
+          <FeuillePied ui2={ui2} v1="flex gap-2 mt-2">
+            <Button variant="outline" {...boutonFeuille(ui2, 'normal', 'flex-1')} onClick={() => setConfirmDel(null)}>Non</Button>
             <Button
-              className="flex-1"
+              {...boutonFeuille(ui2, 'destructif', 'flex-1')}
               data-guide="confirmer.retirer"
               onClick={() => {
                 const c = confirmDel;
@@ -2726,7 +2769,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
             >
               Oui, retirer
             </Button>
-          </div>
+          </FeuillePied>
         </DialogContent>
       </Dialog>
 
@@ -2734,12 +2777,13 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
           ici (heure, ce qui sera compté, consigne pour la borne) : le bouton
           « Terminer le pointage à … » vaut confirmation. Jamais de refus muet. */}
       <Dialog open={!!liveAsk} onOpenChange={(o) => { if (!o && !liveBusyRef.current) setLiveAsk(null); }}>
-        <DialogContent className="max-w-sm" data-testid="live-clash" data-guide-confirm onOpenAutoFocus={(e) => { e.preventDefault(); liveFixRef.current?.focus(); }}>
+        <DialogContent feuille={ui2} className={ui2 ? undefined : 'max-w-sm'} data-testid="live-clash" data-guide-confirm onOpenAutoFocus={(e) => { e.preventDefault(); liveFixRef.current?.focus(); }}>
           {liveAsk && (
             <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Votre pointage est encore en cours</DialogTitle>
-                {/* Le problème ET la proposition sont décrits : un lecteur d'écran lit les deux à l'ouverture. */}
+              <FeuilleTete ui2={ui2} kicker="VOTRE POINTAGE" titre={
+                <DialogTitle className={ui2 ? undefined : 'flex items-center gap-2'}>{!ui2 && <><AlertTriangle className="h-5 w-5 text-orange-500" /> </>}Votre pointage est encore en cours</DialogTitle>
+              } suite={
+                /* Le problème ET la proposition sont décrits : un lecteur d'écran lit les deux à l'ouverture. */
                 <DialogDescription asChild className="space-y-4 text-foreground">
                   <div>
                     <p data-testid="live-clash-text">
@@ -2772,19 +2816,19 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
                     </div>
                   </div>
                 </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-2 pt-1">
+              } />
+              <FeuillePied ui2={ui2} v1="grid gap-2 pt-1">
                 {liveAsk.result.can === 'finish' && (
-                  <Button className="min-h-11 h-auto py-2 whitespace-normal text-center font-black" data-testid="live-clash-finish" disabled={liveBusy} aria-busy={liveBusy} onClick={finishThenSave}>
+                  <Button {...boutonFeuille(ui2, 'principal', 'min-h-11 h-auto py-2 whitespace-normal text-center font-black')} data-testid="live-clash-finish" disabled={liveBusy} aria-busy={liveBusy} onClick={finishThenSave}>
                     {liveBusy
                       ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Un instant…</>
                       : `Terminer le pointage à ${liveAsk.result.at}, puis ${liveAsk.action === 'add' ? 'ajouter' : 'enregistrer'}`}
                   </Button>
                 )}
-                <Button ref={liveFixRef} variant={liveAsk.result.can === 'finish' ? 'outline' : 'default'} className="min-h-11 h-auto py-2 whitespace-normal text-center" data-testid="live-clash-fix" disabled={liveBusy} onClick={() => setLiveAsk(null)}>
+                <Button ref={liveFixRef} variant={liveAsk.result.can === 'finish' ? 'outline' : 'default'} {...boutonFeuille(ui2, liveAsk.result.can === 'finish' ? 'normal' : 'principal', 'min-h-11 h-auto py-2 whitespace-normal text-center')} data-testid="live-clash-fix" disabled={liveBusy} onClick={() => setLiveAsk(null)}>
                   Corriger les heures
                 </Button>
-              </div>
+              </FeuillePied>
             </>
           )}
         </DialogContent>
@@ -2793,18 +2837,16 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
       {/* Lot 10 : « Envoyer ma journée » venu du raccourci de /pointer. Rien ne part
           sans ce « oui » ; ensuite l'envoi garde toutes ses questions habituelles. */}
       <Dialog open={sendAsk} onOpenChange={(o) => { if (!o) setSendAsk(false); }}>
-        <DialogContent className="max-w-sm" data-testid="send-ask" data-guide-confirm onOpenAutoFocus={(e) => { e.preventDefault(); sendNoRef.current?.focus(); }}>
-          <DialogHeader>
-            <DialogTitle>Envoyer votre journée maintenant&nbsp;?</DialogTitle>
-            <DialogDescription>Votre journée compte {formatMinutesToHours(totalMinutes)}. Une fois envoyée, la modifier prévient la secrétaire.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-2 pt-1">
-            <Button className="min-h-11 h-auto py-2 whitespace-normal font-black" data-testid="send-ask-yes"
+        <DialogContent feuille={ui2} className={ui2 ? undefined : 'max-w-sm'} data-testid="send-ask" data-guide-confirm onOpenAutoFocus={(e) => { e.preventDefault(); sendNoRef.current?.focus(); }}>
+          <FeuilleTete ui2={ui2} kicker="APRÈS LE SCAN" titre={<DialogTitle>Envoyer votre journée maintenant&nbsp;?</DialogTitle>}
+            suite={<DialogDescription>Votre journée compte {formatMinutesToHours(totalMinutes)}. Une fois envoyée, la modifier prévient la secrétaire.</DialogDescription>} />
+          <FeuillePied ui2={ui2} v1="grid gap-2 pt-1">
+            <Button {...boutonFeuille(ui2, 'principal', 'min-h-11 h-auto py-2 whitespace-normal font-black')} data-testid="send-ask-yes"
               onClick={() => { setSendAsk(false); if (frozen) askCorrect(handleSubmitDay); else handleSubmitDay(); }}>
               Oui, envoyer ma journée
             </Button>
-            <Button ref={sendNoRef} variant="outline" className="min-h-11" data-testid="send-ask-no" onClick={() => setSendAsk(false)}>Pas maintenant</Button>
-          </div>
+            <Button ref={sendNoRef} variant="outline" {...boutonFeuille(ui2, 'normal', 'min-h-11')} data-testid="send-ask-no" onClick={() => setSendAsk(false)}>Pas maintenant</Button>
+          </FeuillePied>
         </DialogContent>
       </Dialog>
 
@@ -2816,6 +2858,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
         worksiteName={docsWs?.name}
         workDate={date}
         timeEntryId={docsWs?.entryId || null}
+        feuille={ui2}
         open={!!docsWs}
         onOpenChange={(o) => { if (!o) setDocsWs(null); }}
       />

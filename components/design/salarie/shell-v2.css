@@ -18,6 +18,7 @@
 /* Calendrier de « Dupliquer cette journée » (fenêtre Radix hors de l'écran) : jours de 44 px */
 .dz-calendrier th, .dz-calendrier td, .dz-calendrier td button { width: 44px; height: 44px; }
 .dz-calendrier th { height: auto; }
+.dz-calendrier button[name="previous-month"], .dz-calendrier button[name="next-month"] { width: 44px; height: 44px; }
 @media (prefers-reduced-motion: reduce) { .bt-ui2 * { transition: none !important; } }
 
 /* ── En-tête noir : petit mot, date, ✦ assistant, avatar ── */
@@ -67,6 +68,10 @@
 .bt-ui2 .bt-day-scroll { display: flex; flex-direction: column; gap: 10px; padding: calc(var(--phdr-h, 132px) + 12px) 14px 24px; }
 .bt-ui2 .bt-day-scroll > * { margin-top: 0; margin-bottom: 0; flex: none; }
 .bt-ui2 .bt-day:has(.bt-net) .bt-day-scroll { padding-top: 12px; }
+/* Bandeau réseau (E35 hors-ligne, E07 envoi de la file) : une note arrondie sous l'en-tête, comme la note d'en-tête de la planche (brun sur noir / noir et jaune), plus la bande orange pleine largeur */
+.bt-ui2 .bt-net { margin: calc(var(--phdr-h, 132px) + 8px) 14px 0; min-height: 44px; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.3; color: var(--dz-creme); }
+.bt-ui2 .bt-net-off { background: var(--dz-absence-sombre-a); }
+.bt-ui2 .bt-net-sync { background: var(--dz-encre); color: var(--dz-jaune); }
 .bt-ui2 .bt-sec { font: 400 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .16em; color: var(--dz-titre-section); margin: 6px 4px 0; }
 .bt-ui2 .bt-phscroll { padding: calc(var(--phdr-h, 132px) + 12px) 14px 16px; }
 
@@ -279,6 +284,8 @@
 .bt-ui2 .dz-qr { font: 900 var(--dz-fs-12)/1 var(--dz-font-chiffres); letter-spacing: .04em; }
 .bt-ui2 .bt-send { flex: 1; min-width: 0; min-height: 56px; border-radius: 16px; padding: 0 4px; gap: 4px; white-space: nowrap; background: var(--dz-jaune); color: var(--dz-encre); box-shadow: var(--dz-ombre-bouton); font: 900 var(--dz-fs-16)/1.1 var(--dz-font-ui); }
 .bt-ui2 .bt-send:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
+/* Envoi en cours (E33) : le bouton reste jaune pendant l'écriture (la planche : « Envoi… »), inactif ; le texte du code ne change pas */
+.bt-ui2 .bt-send:disabled:has(.animate-spin) { background: var(--dz-jaune); color: var(--dz-encre); box-shadow: var(--dz-ombre-bouton); }
 .bt-ui2 .bt-send.done { background: var(--dz-vert-plein); color: var(--dz-blanc); box-shadow: none; }
 .bt-ui2 .bt-send span { font-size: inherit; }
 .bt-ui2 .dz-aide { flex: 0 0 100%; margin: 0; text-align: center; font: 400 var(--dz-fs-12)/1.3 var(--dz-font-chiffres); letter-spacing: .08em; text-transform: uppercase; color: var(--dz-texte-3); }

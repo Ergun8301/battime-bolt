@@ -35,7 +35,8 @@ import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { DOC_CATEGORY_LABEL } from '@/supabase/functions/_shared/worker-assistant-core';
 import { DOC_MAX_BYTES, uploadWorksiteDocument } from '@/lib/chantier-docs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { FeuilleCorps, FeuilleTete } from '@/components/design/salarie/feuille';
 import { InfoTip } from '@/components/ui/info-tip';
 import { DocCategoryButton, DocumentCategorySheet, useDocCategoryReady } from '@/components/document-category';
 import { canEditCategory, categoryText } from '@/supabase/functions/_shared/doc-categories';
@@ -66,6 +67,8 @@ interface Props {
   workDate?: string | null;
   /** Intervention d'où le panneau a été ouvert. La base revérifie la cohérence. */
   timeEntryId?: string | null;
+  /** Design salarié (?ui=2) : feuille du bas. Jamais passée par le bureau. */
+  feuille?: boolean;
 }
 
 const uploaderName = (d: DocRow) => {
@@ -83,7 +86,7 @@ const dayTitle = (iso: string | null) =>
 type Tab = 'photos' | 'files';
 
 export default function ChantierDocuments({
-  worksiteId, worksiteName, open, onOpenChange, workDate = null, timeEntryId = null,
+  worksiteId, worksiteName, open, onOpenChange, workDate = null, timeEntryId = null, feuille = false,
 }: Props) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -96,6 +99,8 @@ export default function ChantierDocuments({
 
   // Lot 24 : changer la catégorie après coup. Rien ne s'affiche tant que la migration manque.
   const office = user?.role === 'admin';
+  // ?ui=2 : feuille du bas pour le salarié (le bureau garde sa fenêtre ; `feuille` n'est passée que par « Ma journée »).
+  const ui2 = !!feuille && !office;
   const { ready: catReady, settled: catSettled } = useDocCategoryReady(open);
   const [catDoc, setCatDoc] = useState<DocRow | null>(null);
   const canCat = (d: DocRow) => catReady && canEditCategory({ office, userId: user?.id, uploadedBy: d.uploaded_by, current: d.category });
@@ -269,12 +274,13 @@ export default function ChantierDocuments({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bt-skin max-w-lg max-h-[88vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5 shrink-0" /> <span className="min-w-0">Documents{worksiteName ? ` — ${worksiteName}` : ''}</span>
+      <DialogContent feuille={ui2} className={ui2 ? undefined : 'bt-skin max-w-lg max-h-[88vh] overflow-y-auto'}>
+        <FeuilleTete ui2={ui2} kicker="DOCUMENTS" titre={
+          <DialogTitle className={ui2 ? undefined : 'flex items-center gap-2'}>
+            {!ui2 && <><FolderOpen className="h-5 w-5 shrink-0" /> </>}<span className="min-w-0">Documents{worksiteName ? ` — ${worksiteName}` : ''}</span>
           </DialogTitle>
-        </DialogHeader>
+        } />
+        <FeuilleCorps ui2={ui2}>
 
         {/* Deux entrées distinctes : l'appareil photo d'un côté, le sélecteur de
             fichiers de l'autre. `capture` fait ouvrir directement la caméra sur
@@ -398,6 +404,7 @@ export default function ChantierDocuments({
         <DocumentCategorySheet doc={catDoc} office={office} onClose={() => setCatDoc(null)}
           onChanged={(id, cat) => setDocs((p) => p.map((x) => (x.id === id ? { ...x, category: cat } : x)))}
           onGone={() => { void fetchDocs(); }} />
+        </FeuilleCorps>
       </DialogContent>
     </Dialog>
   );
