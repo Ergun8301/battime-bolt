@@ -45,6 +45,9 @@ import { demanderPosition } from '@/lib/position';
 import { PasswordInput } from '@/components/password-input';
 import { afterScanHref, type AfterScan } from '@/supabase/functions/_shared/after-scan';
 import { fixedAlternative, fixedRefusalMessage, lowerFirst, FIXED_REFUSAL_MESSAGES } from '@/supabase/functions/_shared/fixed-qr';
+// Design salarié, étape 7 (?ui=2) : P01 à P04 de la planche. Mêmes phases, mêmes textes, mêmes boutons et repères ; seule la mise en forme change (pointer-v2.css).
+import { useUi2 } from '@/lib/use-ui2';
+import { setUi2Flag } from '@/lib/ui2-flag';
 
 type Phase =
   | { s: 'checking' }
@@ -102,7 +105,7 @@ const CSS = `
 @media (prefers-reduced-motion:reduce){.kx-spin{animation-duration:2.4s}}
 `;
 
-function Login({ t, onDone }: { t: TicketResp; onDone: () => void }) {
+function Login({ t, onDone, ui2 }: { t: TicketResp; onDone: () => void; ui2: boolean }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -124,7 +127,7 @@ function Login({ t, onDone }: { t: TicketResp; onDone: () => void }) {
 
   return (
     <div className="kx-wrap">
-      <div className="kx-logo"><img src="/bemexo-wordmark-light.svg" alt="BEMEXO" /></div>
+      {!ui2 && <div className="kx-logo"><img src="/bemexo-wordmark-light.svg" alt="BEMEXO" /></div>}
       <form className="kx-card" onSubmit={submit}>
         <h1 className="kx-h2">Connectez-vous pour pointer</h1>
         {t.company_name && <p className="kx-p" data-testid="pointer-company">{t.company_name}</p>}
@@ -132,10 +135,10 @@ function Login({ t, onDone }: { t: TicketResp; onDone: () => void }) {
         <label className="kx-l" htmlFor="kx-email">E-mail</label>
         <input id="kx-email" className="kx-i" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <label className="kx-l" htmlFor="kx-pass">Mot de passe</label>
-        <PasswordInput id="kx-pass" className="kx-i" autoComplete="current-password" required value={password} onChange={setPassword} wrapStyle={{ marginBottom: 14 }} />
-        <button className="kx-btn" style={{ marginTop: 4 }} type="submit" disabled={busy}>{busy ? 'Connexion…' : 'Se connecter et pointer'}</button>
-        <p style={{ textAlign: 'center', margin: '14px 0 0' }}>
-          <Link href="/mot-de-passe-oublie" style={{ color: '#6E6A63', fontWeight: 700, fontSize: 14 }}>Mot de passe oublié ?</Link>
+        <PasswordInput id="kx-pass" className="kx-i" autoComplete="current-password" required value={password} onChange={setPassword} wrapStyle={ui2 ? undefined : { marginBottom: 14 }} />
+        <button className="kx-btn" style={ui2 ? undefined : { marginTop: 4 }} type="submit" disabled={busy}>{busy ? 'Connexion…' : 'Se connecter et pointer'}</button>
+        <p className={ui2 ? 'dz-p-oubli' : undefined} style={ui2 ? undefined : { textAlign: 'center', margin: '14px 0 0' }}>
+          <Link href="/mot-de-passe-oublie" style={ui2 ? undefined : { color: '#6E6A63', fontWeight: 700, fontSize: 14 }}>Mot de passe oublié ?</Link>
         </p>
       </form>
     </div>
@@ -143,11 +146,11 @@ function Login({ t, onDone }: { t: TicketResp; onDone: () => void }) {
 }
 
 /** Lot 12 — avant le premier scan d'un QR fixe : pourquoi, une seule lecture, rien de gardé, droit de refuser. */
-function FixedInfo({ t, onAccept, onRefuse }: { t: TicketResp; onAccept: () => void; onRefuse: () => void }) {
+function FixedInfo({ t, onAccept, onRefuse, ui2 }: { t: TicketResp; onAccept: () => void; onRefuse: () => void; ui2: boolean }) {
   const radius = t.radius_m || 200;
   return (
     <div className="kx-wrap">
-      <div className="kx-logo"><img src="/bemexo-wordmark-light.svg" alt="BEMEXO" /></div>
+      {!ui2 && <div className="kx-logo"><img src="/bemexo-wordmark-light.svg" alt="BEMEXO" /></div>}
       <div className="kx-card" data-testid="fixed-info">
         <h1 className="kx-h2">Ce QR demande votre position</h1>
         {t.company_name && <p className="kx-p">{t.company_name}</p>}
@@ -165,6 +168,8 @@ function FixedInfo({ t, onAccept, onRefuse }: { t: TicketResp; onAccept: () => v
 }
 
 export default function PointerPage() {
+  const ui2 = useUi2();
+  useEffect(() => { setUi2Flag(ui2); return () => setUi2Flag(false); }, [ui2]); // le Toaster du site lit ce drapeau (aucun retour passager ici aujourd'hui)
   const [phase, setPhase] = useState<Phase>({ s: 'checking' });
   const started = useRef(false);
   const router = useRouter();
@@ -247,6 +252,8 @@ export default function PointerPage() {
 
   let body: React.ReactNode;
   let tone = '';
+  // ?ui=2 : trois ambiances (planche) : sombre (attente, connexion, QR fixe, arrivée, départ), rouge sombre (refus, erreur), crème (annulé, rien à enregistrer).
+  let ambiance = 'sombre';
   if (phase.s === 'checking' || phase.s === 'punching' || phase.s === 'locating') {
     body = (
       <div className="kx-wrap" data-testid={`pointer-${phase.s}`}>
@@ -257,32 +264,34 @@ export default function PointerPage() {
   } else if (phase.s === 'info') {
     const { t, uid } = phase;
     body = (
-      <FixedInfo t={t}
+      <FixedInfo t={t} ui2={ui2}
         onAccept={() => { markInfoSeen(uid); void punch(t, true); }}
         onRefuse={() => setPhase({ s: 'refused', msg: `Votre position ne sera pas lue. ${fixedAlternative(t.has_tablet)}` })} />
     );
   } else if (phase.s === 'refused') {
+    ambiance = 'alerte';
     // Lot 12 — pas une panne : le QR fixe n'a pas pu vérifier la zone. Deux
     // autres moyens, toujours proposés.
     const t = phase.t;
     body = (
       <div className="kx-wrap" data-testid="fixed-refused">
         <div className="kx-icon" aria-hidden="true">📍</div>
-        <h1 className="kx-title" style={{ fontSize: 'clamp(24px,7vw,32px)' }}>Pointage non enregistré</h1>
-        <p className="kx-sub" style={{ marginTop: 12 }}>{phase.msg}</p>
+        <h1 className="kx-title" style={ui2 ? undefined : { fontSize: 'clamp(24px,7vw,32px)' }}>Pointage non enregistré</h1>
+        <p className="kx-sub" style={ui2 ? undefined : { marginTop: 12 }}>{phase.msg}</p>
         <Link className="kx-btn" href="/poseur" data-testid="fixed-refused-manual">Ajouter mon intervention à la main</Link>
         {t && <button type="button" className="kx-link" data-testid="fixed-refused-retry" onClick={() => punch(t)}>Réessayer</button>}
       </div>
     );
   } else if (phase.s === 'login') {
-    body = <Login t={phase.t} onDone={() => punch(phase.t)} />;
+    body = <Login t={phase.t} ui2={ui2} onDone={() => punch(phase.t)} />;
   } else if (phase.s === 'done' && phase.r.cancelled) {
+    ambiance = 'neutre';
     // Neutre : même fond que l'accueil, aucun rouge, aucun pictogramme d'alerte.
     body = (
       <div className="kx-wrap" data-testid="punch-cancelled">
         <div className="kx-icon" aria-hidden="true">↩️</div>
         <h1 className="kx-title">Pointage annulé (moins d&apos;une minute)</h1>
-        <p className="kx-sub" style={{ marginTop: 12 }}>
+        <p className="kx-sub" style={ui2 ? undefined : { marginTop: 12 }}>
           Départ scanné juste après l&apos;arrivée : rien n&apos;est enregistré{phase.r.first_name ? `, ${phase.r.first_name}` : ''}.
         </p>
         <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link>
@@ -302,38 +311,42 @@ export default function PointerPage() {
         </p>
         {arrival && r.worksite_name && <div className="kx-chip">{r.worksite_name}</div>}
         {!arrival && r.range && <div className="kx-chip">Heures enregistrées : {r.range.start} → {r.range.end}</div>}
-        <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link>
+        {arrival || !ui2 ? <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link> : null}
         {arrival ? (
           <button type="button" className="kx-sec" data-testid="after-before" disabled={going} onClick={() => void shortcut('avant', r.time)}>
             Ajouter une intervention faite avant
           </button>
         ) : (
           <>
-            <button type="button" className="kx-sec" data-testid="after-send" disabled={going} onClick={() => void shortcut('envoyer')}>
+            <button type="button" className={ui2 ? 'kx-btn' : 'kx-sec'} data-testid="after-send" disabled={going} onClick={() => void shortcut('envoyer')}>
               Envoyer ma journée
             </button>
             <button type="button" className="kx-sec" data-testid="after-add" disabled={going} onClick={() => void shortcut('ajouter', r.range?.end ?? r.time)}>
               Ajouter une intervention
             </button>
+            {/* P02 : « Ouvrir mon espace » reste (la planche l'avait retiré : fonction perdue), en troisième ligne. */}
+            {ui2 && <Link className="kx-sec" href="/poseur">Ouvrir mon espace</Link>}
           </>
         )}
       </div>
     );
   } else if (phase.neutral) {
+    ambiance = 'neutre';
     body = (
       <div className="kx-wrap">
-        <h1 className="kx-title" style={{ fontSize: 'clamp(24px,7vw,32px)' }}>Rien à enregistrer</h1>
-        <p className="kx-sub" style={{ marginTop: 12 }}>{phase.msg}</p>
+        <h1 className="kx-title" style={ui2 ? undefined : { fontSize: 'clamp(24px,7vw,32px)' }}>Rien à enregistrer</h1>
+        <p className="kx-sub" style={ui2 ? undefined : { marginTop: 12 }}>{phase.msg}</p>
         <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link>
       </div>
     );
   } else {
     tone = 'bad';
+    ambiance = 'alerte';
     body = (
       <div className="kx-wrap">
         <div className="kx-icon" aria-hidden="true">⚠️</div>
-        <h1 className="kx-title" style={{ fontSize: 'clamp(24px,7vw,32px)' }}>Pointage non enregistré</h1>
-        <p className="kx-sub" style={{ marginTop: 12 }}>{phase.msg}</p>
+        <h1 className="kx-title" style={ui2 ? undefined : { fontSize: 'clamp(24px,7vw,32px)' }}>Pointage non enregistré</h1>
+        <p className="kx-sub" style={ui2 ? undefined : { marginTop: 12 }}>{phase.msg}</p>
         <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link>
       </div>
     );
@@ -342,7 +355,14 @@ export default function PointerPage() {
   return (
     <>
       <style dangerouslySetInnerHTML={CSS_HTML} />
-      <main className={`kx ${tone}`}>{body}</main>
+      <main className={ui2 ? `kx ${tone} dz-pointer` : `kx ${tone}`} data-ambiance={ui2 ? ambiance : undefined}>
+        {ui2 ? (
+          <div className="dz-p-cadre">
+            <img className="dz-p-logo" src={ambiance === 'neutre' ? '/bemexo-wordmark-dark.svg' : '/bemexo-wordmark-light.svg'} alt="BEMEXO" />
+            {body}
+          </div>
+        ) : body}
+      </main>
     </>
   );
 }

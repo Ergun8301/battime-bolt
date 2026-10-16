@@ -1,0 +1,46 @@
+/* Design salarié · étape 7 · /pointer (P00 à P04 de la planche) : fond sombre, logo en haut à gauche, texte à gauche, boutons en bas.
+   Tout est sous `.dz-pointer` (posée par app/pointer/page.tsx seulement avec ?ui=2) : sans ?ui=2 la page garde sa feuille intégrée (`.kx-*`) et ne change pas d'un octet.
+   Couleurs et tailles : jetons de dz-jetons.css. Trois ambiances : sombre (attente, connexion, QR fixe, arrivée, départ), rouge sombre (refus, erreur), crème (annulé, rien à enregistrer). */
+.kx.dz-pointer[data-ambiance] { padding: 0; align-items: center; justify-content: flex-start; text-align: left; background: var(--dz-encre); color: var(--dz-creme); font-family: var(--dz-font-ui); } /* [data-ambiance] : passe devant .kx.ok / .bye / .bad de la feuille intégrée */
+.kx.dz-pointer[data-ambiance="alerte"] { background: var(--dz-erreur-sombre); }
+.kx.dz-pointer[data-ambiance="neutre"] { background: var(--dz-creme); color: var(--dz-encre); }
+.dz-pointer .dz-p-cadre { width: 100%; max-width: 432px; min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; box-sizing: border-box; padding: 24px 24px calc(24px + env(safe-area-inset-bottom)); }
+.dz-pointer .dz-p-logo { display: block; flex: none; width: 112px; height: auto; }
+.dz-pointer .kx-wrap { flex: 1; display: flex; flex-direction: column; max-width: none; padding-top: clamp(40px, 22svh, 200px); text-align: left; }
+.dz-pointer .kx-icon { display: none; }
+
+/* Petit mot (kicker) : le titre du code, en capitales espacées ; le chiffre et la phrase suivent */
+.dz-pointer .kx-title { margin: 0 0 12px; font: 700 var(--dz-fs-12)/1.3 var(--dz-font-chiffres); letter-spacing: .16em; text-transform: uppercase; color: var(--dz-en-cours-vif); }
+.dz-pointer[data-ambiance="alerte"] .kx-title { color: var(--dz-erreur-vif); }
+.dz-pointer[data-ambiance="neutre"] .kx-title { color: var(--dz-texte-2); }
+.dz-pointer .kx-time { margin: 0 0 8px; font: 700 76px/1 var(--dz-font-chiffres); letter-spacing: -.04em; color: var(--dz-creme); }
+.dz-pointer .kx-sub { margin: 0; opacity: 1; font: 400 var(--dz-fs-16)/1.45 var(--dz-font-ui); color: var(--dz-creme-75); }
+.dz-pointer[data-ambiance="neutre"] .kx-sub { color: var(--dz-texte-note); }
+.dz-pointer .kx-time + .kx-sub, .dz-pointer .kx-spin + .kx-sub { font: 900 var(--dz-fs-26)/1.1 var(--dz-font-ui); letter-spacing: -.03em; color: var(--dz-creme); }
+.dz-pointer .kx-chip { align-self: flex-start; margin: 8px 0 0; padding: 0; border-radius: 0; background: none; font: 400 var(--dz-fs-15)/1.4 var(--dz-font-ui); color: var(--dz-creme-75); }
+.dz-pointer .kx-spin { width: 32px; height: 32px; margin: 0 0 16px; border-color: var(--dz-creme-30); border-top-color: var(--dz-jaune); }
+
+/* Boutons : plein jaune, contour ; le premier bouton après le texte se pose en bas */
+.dz-pointer .kx-btn, .dz-pointer .kx-sec, .dz-pointer .kx-link { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 56px; margin: 10px 0 0; padding: 8px 16px; box-sizing: border-box; border-radius: 999px; font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); text-align: center; text-decoration: none; text-underline-offset: 0; cursor: pointer; }
+.dz-pointer .kx-btn { border: 0; background: var(--dz-jaune); color: var(--dz-encre); box-shadow: none; }
+.dz-pointer .kx-sec, .dz-pointer .kx-link { border: 1.5px solid var(--dz-creme-30); background: none; color: var(--dz-creme); opacity: 1; }
+.dz-pointer[data-ambiance="neutre"] .kx-sec { border-color: var(--dz-trait-fort); color: var(--dz-encre); }
+.dz-pointer .kx-sec:disabled { background: none; border-color: var(--dz-creme-30); color: var(--dz-creme-75); }
+.dz-pointer .kx-wrap > :not(.kx-btn, .kx-sec, .kx-link) + :is(.kx-btn, .kx-sec, .kx-link), .dz-pointer .kx-card > :not(.kx-btn, .kx-sec, .kx-link, .dz-p-oubli) + :is(.kx-btn, .kx-sec, .kx-link) { margin-top: auto; }
+
+/* Connexion (P00b) et information du QR fixe (P04) : la carte devient la page */
+.dz-pointer .kx-card { flex: 1; display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; text-align: left; }
+.dz-pointer .kx-h2 { margin: 0 0 6px; text-align: left; font: 900 var(--dz-fs-26)/1.1 var(--dz-font-ui); letter-spacing: -.03em; color: var(--dz-creme); }
+.dz-pointer .kx-p { margin: 0 0 16px; text-align: left; font: 400 var(--dz-fs-15)/1.4 var(--dz-font-ui); color: var(--dz-creme-75); }
+.dz-pointer .kx-l { margin: 0 0 6px; font: 800 var(--dz-fs-14)/1.2 var(--dz-font-ui); letter-spacing: 0; text-transform: none; color: var(--dz-creme); }
+.dz-pointer .kx-i { min-height: 52px; margin-bottom: 14px; padding: 0 16px; border: 0; border-radius: 14px; background: var(--dz-carte); color: var(--dz-encre); font: 600 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
+.dz-pointer .kx-err { border: 0; border-radius: 12px; background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); font: 700 var(--dz-fs-14)/1.4 var(--dz-font-ui); }
+.dz-pointer .kx-info { margin: 0 0 14px; gap: 12px; font: 400 var(--dz-fs-15)/1.45 var(--dz-font-ui); color: var(--dz-creme-75); }
+.dz-pointer .kx-info b { color: var(--dz-creme); }
+.dz-pointer .dz-p-oubli { margin: 8px 0 0; text-align: center; }
+.dz-pointer .dz-p-oubli a { display: inline-flex; align-items: center; min-height: 44px; color: var(--dz-creme); font: 700 var(--dz-fs-14)/1.2 var(--dz-font-ui); }
+
+/* Focus : anneau double, visible sur sombre comme sur crème */
+.dz-pointer :focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme); }
+.dz-pointer[data-ambiance="neutre"] :focus-visible { box-shadow: var(--dz-focus); }
+@media (prefers-reduced-motion: reduce) { .dz-pointer .kx-spin { animation-duration: 2.4s; } }

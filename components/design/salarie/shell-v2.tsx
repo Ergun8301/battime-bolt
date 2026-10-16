@@ -4,25 +4,11 @@
 // Des composants de présentation : aucune lecture de base, aucune règle (les règles sont dans supabase/functions/_shared/salarie-vue.ts, testées).
 // VISIBLE SEULEMENT avec `?ui=2` sur un hôte d'aperçu (jamais sur bemexo.com) : `useUi2()`. Rien ne change pour les salariés tant que ce n'est pas décidé.
 // Le contenu (carte de pointage, chantiers, feuilles) reste celui d'aujourd'hui dans cette coque ; les étapes suivantes le remplaceront morceau par morceau.
-import { forwardRef, useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import { isPreviewHost } from '@/lib/hosting';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { kicker, type CaseBande, type EtatJour } from '@/supabase/functions/_shared/salarie-vue';
 
-const CLE = 'bt-ui2';
-/** `?ui=2` (mémorisé pour la session, `?ui=1` l'éteint) sur un hôte d'aperçu seulement. Lu après le montage : pas d'écart d'hydratation. */
-export function useUi2(): boolean {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    try {
-      if (!isPreviewHost()) return;
-      const q = new URLSearchParams(window.location.search).get('ui');
-      if (q === '2') sessionStorage.setItem(CLE, '1');
-      else if (q === '1') sessionStorage.removeItem(CLE);
-      setOn(sessionStorage.getItem(CLE) === '1');
-    } catch { /* stockage indisponible : ancienne interface */ }
-  }, []);
-  return on;
-}
+// useUi2 vit dans lib/use-ui2.ts (un petit module : /pointer le lit sans tirer toute la coque).
+export { useUi2 } from '@/lib/use-ui2';
 
 /** Le petit mot au-dessus de la date (AUJOURD'HUI, RENVOYÉE, jour de la semaine). */
 export function Kicker({ date, aujourdhui, etat }: { date: string; aujourdhui: boolean; etat: EtatJour }) {

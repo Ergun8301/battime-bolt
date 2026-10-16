@@ -17,6 +17,11 @@ import { Loader2, Plus, Trash2, CalendarRange } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+// Coque v2 (?ui=2) : « Mes congés » en feuille du bas (même fenêtre, mêmes gestes, mêmes libellés et repères).
+import { useUi2 } from '@/components/design/salarie/shell-v2';
+import { useRetourFerme } from '@/components/design/salarie/retour';
+import { useClavier } from '@/components/design/salarie/clavier';
+import { FeuilleCorps, FeuillePied, FeuilleTete, boutonFeuille } from '@/components/design/salarie/feuille';
 
 interface Props {
   open: boolean;
@@ -53,6 +58,9 @@ const LR_CSS = `
 `;
 
 export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props) {
+  const ui2 = useUi2();
+  useRetourFerme(ui2 && open, () => onOpenChange(false)); // le retour du téléphone referme la feuille
+  useClavier(ui2 && open); // la feuille se lève au-dessus du clavier (champ « Mot pour le bureau »)
   const [type, setType] = useState<LeaveType>('conge');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
@@ -109,6 +117,69 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
     const e = format(parseISO(r.end_date), 'd MMM yyyy', { locale: fr });
     return r.start_date === r.end_date ? format(parseISO(r.start_date), 'd MMM yyyy', { locale: fr }) : `${s} → ${e}`;
   };
+
+  if (ui2) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent feuille data-testid="conges-dialog">
+          <FeuilleTete ui2 kicker="CONGÉS ET ABSENCES" titre={<DialogTitle>Mes congés</DialogTitle>} />
+          <FeuilleCorps ui2>
+            {adding && (
+              <div className="dz-formulaire">
+                <span className="dz-champ-lib">Type</span>
+                <div className="dz-segments" data-guide="conges.type" role="group" aria-label="Type">
+                  {LEAVE_TYPES.map((t) => (
+                    <button key={t.key} type="button" className="dz-segment" aria-pressed={type === t.key} onClick={() => setType(t.key)}>{t.label}</button>
+                  ))}
+                </div>
+                <div className="dz-grille-2">
+                  <label><span className="dz-champ-lib">Du</span><input className="dz-champ" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></label>
+                  <label><span className="dz-champ-lib">Au</span><input className="dz-champ" type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></label>
+                </div>
+                <label><span className="dz-champ-lib">Mot pour le bureau (facultatif)</span><input className="dz-champ" value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex. mariage de ma sœur" /></label>
+              </div>
+            )}
+            <div>
+              <span className="dz-champ-lib">Mes demandes</span>
+              {rows.length === 0 ? (
+                <p className="dz-vide">Aucune demande pour le moment.</p>
+              ) : rows.map((r) => (
+                <div key={r.id} className="dz-ligne-liste dz-demande">
+                  <div className="dz-demande__texte">
+                    <div className="dz-demande__type">{TYPE_LABEL[r.type]}</div>
+                    <div className="dz-demande__periode">{period(r)}</div>
+                    {r.status === 'rejected' && r.decision_note && <div className="dz-demande__mot">« {r.decision_note} »</div>}
+                  </div>
+                  <span className="dz-etiq" data-etat={r.status}>
+                    {r.status === 'pending' ? 'En attente' : r.status === 'approved' ? 'Acceptée' : 'Refusée'}
+                  </span>
+                  {r.status === 'pending' && (
+                    <button type="button" className="dz-demande__annuler" data-guide="conges.annuler" onClick={() => cancelRequest(r.id)} title="Annuler ma demande" aria-label="Annuler ma demande">
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </FeuilleCorps>
+          <FeuillePied ui2 v1="">
+            {!adding ? (
+              <Button {...boutonFeuille(true, 'principal')} data-guide="conges.faire" onClick={() => setAdding(true)}>
+                <Plus className="h-4 w-4" aria-hidden /> Faire une demande
+              </Button>
+            ) : (
+              <>
+                <Button {...boutonFeuille(true, 'principal')} data-guide="conges.envoyer" onClick={submit} disabled={saving}>
+                  {saving && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />} Envoyer la demande
+                </Button>
+                <Button {...boutonFeuille(true, 'normal')} onClick={() => setAdding(false)} disabled={saving}>Annuler</Button>
+              </>
+            )}
+          </FeuillePied>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

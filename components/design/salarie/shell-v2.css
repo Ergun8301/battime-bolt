@@ -10,7 +10,8 @@
 .bt-ui2 .dz-bouton[data-ton="principal"]:focus-visible { box-shadow: var(--dz-focus), inset 0 -3px 0 var(--dz-jaune-ombre); }
 .bt-ui2 .bt-iv-go:focus-visible { box-shadow: var(--dz-focus), 0 3px 0 var(--dz-jaune-ombre); }
 /* Couches */
-.bt-ui2 .bt-day-dock, .bt-ui2 .dz-onglets { position: relative; z-index: var(--dz-z-barre); }
+.bt-ui2 .bt-day-dock { position: relative; z-index: var(--dz-z-barre); }
+.bt-ui2 .dz-onglets { position: relative; z-index: var(--dz-z-onglets); }
 .bt-ui2 .bt-phdr { z-index: var(--dz-z-entete); }
 .bt-ui2 .bt-phdr-back { position: relative; z-index: var(--dz-z-retour); }
 /* Cibles : toute alerte (« Relancer », « appuyer pour envoyer ») fait 44 px au moins */

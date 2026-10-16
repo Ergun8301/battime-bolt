@@ -85,7 +85,7 @@
       "max": 151
     },
     "/poseur": {
-      "mesure": 276.0,
+      "mesure": 278.0,
       "max": 280,
       "objectif": 300
     },
@@ -107,14 +107,14 @@
     }
   },
   "css": {
-    "_aide": "Budget du CSS du premier chargement (kB, gzip niveau 9 des feuilles /_next/static/css/ de la page exportée), lu par scripts/check-css-budget.mjs (npm run budget:css après npm run build). Le « First Load JS » ci-dessus ne voit pas le CSS : depuis que le CSS de l'écran salarié est en fichiers .css (plan d'intégration du design salarié, étape 1 : /poseur 12,1 → 22,0 kB gzip de CSS, pour ≈ 66 kB de JavaScript de moins au premier chargement), il est mesuré ici. max = mesure arrondie au kB supérieur + 5. /poseur 22,0 → 26,4 kB (coque v2 fidèle à la planche : jetons dz-jetons.css + shell-v2.css, ≈ 4,4 kB gzip, derrière ?ui=2 mais chargés pour tous ; la planche annonçait 8,2 kB pour ses deux fichiers) → 28,2 (étape 4 : cartes de chantier) → 30,4 (étape 5 : feuilles du bas, components/design/salarie/feuilles-v2.css ≈ 2,2 kB gzip : voile, feuille, boutons, éditeur, pause, réserves ; toujours derrière ?ui=2, chargé pour tous). Le plafond de 32 est gardé : il reste 1,6 kB pour les étapes 6 à 9 (Semaine, menu Plus, équipe, /pointer, assistant), qui devront réutiliser les classes des feuilles et des cartes plutôt qu'en ajouter.",
+    "_aide": "Budget du CSS du premier chargement (kB, gzip niveau 9 des feuilles /_next/static/css/ de la page exportée), lu par scripts/check-css-budget.mjs (npm run budget:css après npm run build). Le « First Load JS » ci-dessus ne voit pas le CSS : depuis que le CSS de l'écran salarié est en fichiers .css (plan d'intégration du design salarié, étape 1 : /poseur 12,1 → 22,0 kB gzip de CSS, pour ≈ 66 kB de JavaScript de moins au premier chargement), il est mesuré ici. max = mesure arrondie au kB supérieur + 5. /poseur 22,0 → 26,4 kB (coque v2 fidèle à la planche : jetons dz-jetons.css + shell-v2.css, ≈ 4,4 kB gzip, derrière ?ui=2 mais chargés pour tous ; la planche annonçait 8,2 kB pour ses deux fichiers) → 28,2 (étape 4 : cartes de chantier) → 30,4 (étape 5 : feuilles du bas, components/design/salarie/feuilles-v2.css ≈ 2,2 kB gzip : voile, feuille, boutons, éditeur, pause, réserves ; toujours derrière ?ui=2, chargé pour tous). Le plafond de 32 était gardé pour les étapes 6 à 9 (Semaine, menu Plus, équipe, /pointer, assistant), qui devaient réutiliser les classes des feuilles et des cartes. → 32,9 (étape 6, relevé de 32 à 35 AVEC justification : components/design/salarie/vues-v2.css ≈ 2,4 kB gzip pour sept écrans qui n'avaient AUCUN style v2 — page « Plus », Mois et Historique (qui réutilisent les cartes dz-sem-*), Formations et lecteur, « Mon équipe », feuille « Mes congés », « Informations », intérieur des Documents du chantier, retour passager — soit ≈ 0,35 kB par écran ; les cartes, pastilles et feuilles déjà chargées sont réutilisées, rien n'est dupliqué. Toujours derrière ?ui=2, chargé pour tous jusqu'à la bascule (étape 11), qui retire les anciennes feuilles de /poseur et ramène la mesure sous 32). /pointer 12,1 → 14,3 (étape 7 : components/design/salarie/pointer-v2.css + jetons, ≈ 2,2 kB ; max 18 inchangé).",
     "routes": {
       "/poseur": {
-        "mesure": 30.4,
-        "max": 32
+        "mesure": 32.9,
+        "max": 35
       },
       "/pointer": {
-        "mesure": 12.1,
+        "mesure": 14.3,
         "max": 18
       },
       "/admin": {

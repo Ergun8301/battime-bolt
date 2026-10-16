@@ -375,7 +375,8 @@ Deno.test('Dépôt réel : comptes comparés au §0.2 (écarts expliqués)', asy
   // 55 `open={…}` JSX (§0.2) = 33 « dialogue » + 22 d'un module fenêtre (étape 1 du plan d'intégration du design salarié : 32 depuis
   // le retrait de la fenêtre morte « Sur quel chantier ? » de poseur-day.tsx) ; le 56e est `<Dialog open …>` sans accolades
   // (components/kiosk-pair-confirm.tsx:239, toujours ouverte), un `open=` que le §0.2 ne compte pas. components/ui/info-tip.tsx est hors compte.
-  egal([parType.dialogue.occurrences, reel.dialoguesDeFenetre.length], [32, 23], 'dialogues : 32 gardés, 23 exclus (modules fenêtres)');
+  // Étape 6 (?ui=2) : « Mes congés » a sa feuille du bas dans le même fichier (un 2e `<Dialog open>` de leave-request-dialog.tsx, module fenêtre : +1 exclu, 23 → 24).
+  egal([parType.dialogue.occurrences, reel.dialoguesDeFenetre.length], [32, 24], 'dialogues : 32 gardés, 24 exclus (modules fenêtres)');
   egal(parType.dialogue.cles, 32, 'dialogues : 32 clés (§0.2 : ≈ 35 sur 55 ; −1 avec la fenêtre morte de poseur-day.tsx)');
   if (!reel.dialoguesDeFenetre.some((o) => o.fichier === 'components/kiosk-pair-confirm.tsx')) throw new Error('le `open` nu de kiosk-pair-confirm doit être vu');
 
@@ -394,7 +395,7 @@ Deno.test('Dépôt réel : comptes comparés au §0.2 (écarts expliqués)', asy
   // (menu.semaine, menu.historique) » : les 129 sont toutes littérales ; ces deux-là ne sont dans AUCUN data-guide littéral,
   // elles vivent dans la table MENU_GUIDE (app/poseur/page.tsx:65) lue par data-guide={MENU_GUIDE[t.value]} (page.tsx:599).
   // Les expressions sont 5 : celle-là + `data-guide={guide}` relayé par 4 composants (leurs valeurs sont les `guide="…"` littéraux).
-  egal([parType.ancre.cles, parType.ancre.occurrences], [129, 166], 'ancres littérales : 129 valeurs, 166 occurrences (+3 : ✦ de l’en-tête, QR de la barre du bas, ligne de la Semaine, coque v2 ?ui=2)');
+  egal([parType.ancre.cles, parType.ancre.occurrences], [129, 172], 'ancres littérales : 129 valeurs, 172 occurrences (+3 : ✦ de l’en-tête, QR de la barre du bas, ligne de la Semaine, coque v2 ?ui=2 ; +6 à l’étape 6 : « Mes congés » en feuille et l’avatar de « Plus » répètent des repères déjà là)');
   egal(Array.from(new Set(reel.occurrences.filter((o) => o.type === 'ancre-dynamique').map((o) => o.fichier))).sort(), [
     'app/poseur/page.tsx', 'components/admin-planning.tsx', 'components/company-settings.tsx', 'components/export-menu.tsx', 'components/leave-fund-setting.tsx',
   ], 'ancre-dynamique : 5 expressions');
@@ -413,7 +414,7 @@ Deno.test('Dépôt réel : les ancres du scanner sont exactement celles d\'ancho
   }
   const scanner = new Map<string, number>();
   for (const o of reel.occurrences) if (o.type === 'ancre') scanner.set(o.cle.slice('ancre:'.length), (scanner.get(o.cle.slice('ancre:'.length)) ?? 0) + 1);
-  egal([reference.size, Array.from(reference.values()).reduce((a, b) => a + b, 0)], [129, 166], 'anchors() : 129 valeurs, 166 occurrences');
+  egal([reference.size, Array.from(reference.values()).reduce((a, b) => a + b, 0)], [129, 172], 'anchors() : 129 valeurs, 172 occurrences (étape 6, ?ui=2 : +6 occurrences de repères DÉJÀ existants, aucune valeur nouvelle : « Mes congés » en feuille en répète quatre (conges.faire, .type, .envoyer, .annuler) et l’avatar de « Plus » le repère menu.compte ; une ligne de plus dans poseur-day pour la même raison)');
   egal(Array.from(scanner.entries()).sort(), Array.from(reference.entries()).sort(), 'mêmes valeurs, mêmes nombres d\'occurrences');
   // Ce que anchors() ne fait pas et le scanner fait : lire l\'attribut lui-même (une ancre sans point comme « data-guide="x" » passerait), et signaler les expressions.
 });
@@ -475,9 +476,9 @@ Deno.test('Dépôt réel : les deux .from(variable) de lib/erase.ts se déclaren
   }
 });
 
-Deno.test('Dépôt réel : T10 — 591 gestionnaires onClick / onSelect / onSubmit dans 74 fichiers, tous dans app/ ou components/', async () => {
+Deno.test('Dépôt réel : T10 — 604 gestionnaires onClick / onSelect / onSubmit dans 75 fichiers, tous dans app/ ou components/', async () => {
   const { reel } = await depot();
-  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [74, 591], 'clics.snapshot (étape 1 : −3 avec le code mort de poseur-day.tsx, la liste des formations a son fichier ; puis +1 fichier, +10 gestionnaires : coque v2 shell-v2.tsx, carte-total, mini-frise, Semaine v2 ; puis +2 : entrées « Réserves à lever » et « Formations à voir » du menu Plus, ?ui=2 ; puis +1 : le ✕ de la feuille de l’éditeur, ?ui=2 ; puis +24 : étape 8, la variante v2 du panneau de l’assistant, components/assistant-panel.tsx 22 → 46, mêmes gestes que l’ancien panneau, ?ui=2)');
+  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [75, 604], 'clics.snapshot (étape 1 : −3 avec le code mort de poseur-day.tsx, la liste des formations a son fichier ; puis +1 fichier, +10 gestionnaires : coque v2 shell-v2.tsx, carte-total, mini-frise, Semaine v2 ; puis +2 : entrées « Réserves à lever » et « Formations à voir » du menu Plus, ?ui=2 ; puis +1 : le ✕ de la feuille de l’éditeur, ?ui=2 ; puis +1 fichier, +13 gestionnaires (étape 6, ?ui=2) : page « Plus » page-plus.tsx (2), page.tsx (+1 : l’avatar), « Mes congés » en feuille (+5), Mois v2 (+3), Historique v2 (+2) ; puis +24 : étape 8, la variante v2 du panneau de l’assistant, components/assistant-panel.tsx 22 → 46, ?ui=2)');
   const dehors = Object.keys(reel.clics).filter((f) => !/^(app|components)\//.test(f));
   egal(dehors, [], 'aucun gestionnaire JSX hors app/ et components/');
 });
