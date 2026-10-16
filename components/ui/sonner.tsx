@@ -1,12 +1,23 @@
 'use client';
 
+import { useSyncExternalStore } from 'react';
 import { useTheme } from 'next-themes';
 import { Toaster as Sonner } from 'sonner';
+import { readUi2Flag, subscribeUi2Flag } from '@/lib/ui2-flag';
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme();
+  // Design salarié (?ui=2, /poseur et /pointer seulement) : le retour passager se pose juste au-dessus de la barre du bas (planche, « retour passager »).
+  // Sans drapeau : exactement les propriétés d'avant.
+  const ui2 = useSyncExternalStore(subscribeUi2Flag, readUi2Flag, () => false);
+
+  const v2: Partial<ToasterProps> = ui2 ? {
+    position: 'bottom-center',
+    offset: 'calc(var(--dz-barre-h, 0px) + 12px)',
+    toastOptions: { classNames: { toast: 'dz-retour', description: 'dz-retour__texte', actionButton: 'dz-retour__action', cancelButton: 'dz-retour__action' } },
+  } : {};
 
   return (
     <Sonner
@@ -24,6 +35,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         },
       }}
       {...props}
+      {...v2}
     />
   );
 };
