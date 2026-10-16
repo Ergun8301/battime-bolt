@@ -3,7 +3,7 @@
 // L'interrupteur UNIQUE est `GUIDES_UI2` (supabase/functions/_shared/guides-ui2.ts, ré-exporté ici). Il vaut `true` : les guides pas à pas ET les fiches d'aide de l'Assistant décrivent la v2
 // (voir ci-dessous). À `false`, ce fichier n'a AUCUN effet : worker-tours.ts sert ses fiches d'avant (même objets, mêmes octets) et
 // worker-assistant-core.ts sert WORKER_GUIDE tel qu'avant (même tableau). Description de la v2
-// (bouton « QR » en bas, ✦ jaune en haut, page « Plus », « Mon équipe » rangé dans « Plus », congés et informations en feuilles).
+// (barre du bas Journée · Semaine · Mois ; bouton « QR » en bas ; ✦ jaune en haut = l'Assistant ; l'avatar en haut à droite ouvre la page « Mon compte », où sont Historique, Réserves, Formations, « Mon équipe », congés, informations, photo et notifications).
 //
 // Chaque phrase existe en FRANÇAIS (`texte`, `etapes`) et en TURC (`texteTr`, `etapesTr`, `titreTr`).
 // Les mêmes règles que worker-tours.ts s'appliquent (140 caractères au plus, une phrase, « Touchez », vouvoiement,
@@ -20,8 +20,8 @@ export type Langue = 'fr' | 'tr';
 export interface TourStepV2 extends TourStep { texteTr: string }
 export interface WorkerTourV2 extends WorkerTour { etapes: TourStepV2[] }
 
-// Le nom, en haut à droite : en v2 il ouvre la page « Plus » (et non plus un menu déroulant).
-const MENU: TourStepV2 = { cible: 'menu.compte', texte: 'Touchez votre nom, en haut à droite : la page « Plus » apparaît.', texteTr: 'Sağ üstteki adınıza dokunun: « Plus » sayfası açılır.' };
+// Le nom, en haut à droite : en v2 il ouvre la page « Mon compte » (et non plus un menu déroulant) ; plus de « Plus » dans la barre du bas (octobre 2026).
+const MENU: TourStepV2 = { cible: 'menu.compte', texte: 'Touchez votre nom, en haut à droite : la page « Mon compte » apparaît.', texteTr: 'Sağ üstteki adınıza dokunun: « Mon compte » sayfası açılır.' };
 const CHANTIER: TourStepV2 = { ecran: 'journee', cible: 'journee.chantier', texte: 'Dans « Chantiers du jour », touchez le chantier concerné.', texteTr: '« Chantiers du jour » bölümünde ilgili şantiyeye dokunun.' };
 
 export const WORKER_TOURS_V2: WorkerTourV2[] = [
@@ -39,7 +39,7 @@ export const WORKER_TOURS_V2: WorkerTourV2[] = [
   ] },
   { id: 'conge', etapes: [
     MENU,
-    { ecran: 'menu', cible: 'menu.conges', texte: 'Dans « Plus », touchez « Mes congés ». Une feuille monte par le bas.', texteTr: '« Plus » sayfasında « Mes congés » satırına dokunun. Alttan bir sayfa açılır.' },
+    { ecran: 'menu', cible: 'menu.conges', texte: 'Dans « Mon compte », touchez « Mes congés ». Une feuille monte par le bas.', texteTr: '« Mon compte » sayfasında « Mes congés » satırına dokunun. Alttan bir sayfa açılır.' },
     { ecran: 'conges', cible: 'conges.faire', texte: 'Dans la feuille « Mes congés », touchez « Faire une demande ».', texteTr: '« Mes congés » sayfasında « Faire une demande » düğmesine dokunun.' },
     { cible: 'conges.type', texte: 'Dans la feuille, choisissez le type, puis les dates « Du » et « Au ».', texteTr: 'Sayfada türü seçin, sonra « Du » ve « Au » tarihlerini girin.' },
     { cible: 'conges.envoyer', texte: 'Touchez « Envoyer la demande ». Le bureau vous répond.', texteTr: '« Envoyer la demande » düğmesine dokunun. Büro size cevap verir.' },
@@ -61,13 +61,13 @@ export const WORKER_TOURS_V2: WorkerTourV2[] = [
     { cible: 'journee.envoyer', texte: 'Puis touchez « Envoyer ma journée » pour la donner au bureau.', texteTr: 'Sonra günü büroya vermek için « Envoyer ma journée » düğmesine dokunun.' },
   ] },
   { id: 'planning', etapes: [
-    MENU,
-    { ecran: 'menu', cible: 'menu.semaine', texte: 'Dans « Plus », touchez « Ma semaine » (ou « Mon mois »). Elles sont aussi dans la barre du bas.', texteTr: '« Plus » sayfasında « Ma semaine » (ya da « Mon mois ») satırına dokunun. Alt çubukta da var.' },
+    // Navigation repensée (octobre 2026) : Journée · Semaine · Mois sont dans la barre du bas ; plus de « Plus » ni de ligne de menu pour elles.
+    { ecran: 'journee', cible: 'barre.semaine', texte: 'Touchez « Semaine » (ou « Mois »), dans la barre du bas.', texteTr: 'Alt çubukta « Semaine » (ya da « Mois ») düğmesine dokunun.' },
     { ecran: 'semaine', cible: 'semaine.jour', texte: 'Touchez un jour pour voir son détail.', texteTr: 'Ayrıntısını görmek için bir güne dokunun.' },
   ] },
   { id: 'historique', etapes: [
     MENU,
-    { ecran: 'menu', cible: 'menu.historique', texte: 'Dans « Plus », touchez « Historique ».', texteTr: '« Plus » sayfasında « Historique » satırına dokunun.' },
+    { ecran: 'menu', cible: 'menu.historique', texte: 'Dans « Mon compte », touchez « Historique ».', texteTr: '« Mon compte » sayfasında « Historique » satırına dokunun.' },
     { ecran: 'historique', cible: 'historique.jour', texte: 'Vos anciennes heures, jour par jour. Faites défiler pour remonter dans le temps.', texteTr: 'Eski saatleriniz gün gün listelenir. Geçmişe gitmek için kaydırın.' },
   ] },
   { id: 'copier-journee', etapes: [
@@ -76,11 +76,11 @@ export const WORKER_TOURS_V2: WorkerTourV2[] = [
   ] },
   { id: 'notifications', etapes: [
     MENU,
-    { ecran: 'menu', cible: 'menu.notifications', texte: 'Dans « Plus », touchez « Activer les notifications », puis autorisez quand le téléphone le demande.', texteTr: '« Plus » sayfasında « Activer les notifications » satırına dokunun, telefon sorunca izin verin.' },
+    { ecran: 'menu', cible: 'menu.notifications', texte: 'Dans « Mon compte », touchez « Activer les notifications », puis autorisez quand le téléphone le demande.', texteTr: '« Mon compte » sayfasında « Activer les notifications » satırına dokunun, telefon sorunca izin verin.' },
   ] },
   { id: 'photo-profil', etapes: [
     MENU,
-    { ecran: 'menu', cible: 'menu.photo', texte: 'Dans « Plus », touchez « Changer ma photo », puis choisissez une photo.', texteTr: '« Plus » sayfasında « Changer ma photo » satırına dokunun, sonra bir fotoğraf seçin.' },
+    { ecran: 'menu', cible: 'menu.photo', texte: 'Dans « Mon compte », touchez « Changer ma photo », puis choisissez une photo.', texteTr: '« Mon compte » sayfasında « Changer ma photo » satırına dokunun, sonra bir fotoğraf seçin.' },
   ] },
   { id: 'panier', etapes: [
     { ecran: 'journee', cible: 'journee.panier', texte: 'Touchez la tuile « Panier » de la carte « Total aujourd’hui » : un appui pour « Pris », un autre pour « Non pris ».', texteTr: '« Total aujourd’hui » kartındaki « Panier » kutusuna dokunun: bir dokunuş « Pris » (yemek yendi), bir daha « Non pris » (yenmedi).' },
@@ -99,14 +99,14 @@ export const WORKER_TOURS_V2: WorkerTourV2[] = [
     { ecran: 'journee', cible: 'journee.trou', texte: 'Entre deux chantiers, l’appli demande « c’était quoi ? » : touchez « Route » ou « Pause ».', texteTr: 'İki şantiye arasında uygulama « c’était quoi ? » diye sorar: « Route » (yol) ya da « Pause » (mola) düğmesine dokunun.' },
   ] },
   { id: 'lever-reserve', etapes: [
-    // Bascule (étape 11) : la ligne « Réserves à lever » de « Plus » (ancre menu.reserves) remplace la pastille de « Ma journée », qui disparaît pendant un pointage.
-    { ecran: 'menu', cible: 'menu.reserves', texte: 'Touchez votre nom, en haut à droite, puis « Réserves à lever » dans « Plus ».', texteTr: 'Sağ üstteki adınıza dokunun, sonra « Plus » sayfasında « Réserves à lever » satırına dokunun.' },
+    // Bascule (étape 11) : la ligne « Réserves à lever » de « Mon compte » (ancre menu.reserves) remplace la pastille de « Ma journée », qui disparaît pendant un pointage.
+    { ecran: 'menu', cible: 'menu.reserves', texte: 'Touchez votre nom, en haut à droite, puis « Réserves à lever » dans « Mon compte ».', texteTr: 'Sağ üstteki adınıza dokunun, sonra « Mon compte » sayfasında « Réserves à lever » satırına dokunun.' },
     { cible: 'reserves.lever', texte: 'Sous le bon chantier, touchez « Lever la réserve ».', texteTr: 'Doğru şantiyenin altında « Lever la réserve » düğmesine dokunun.' },
     { cible: 'reserves.valider', texte: 'Écrivez un commentaire si vous voulez, puis touchez « Lever la réserve ».', texteTr: 'İsterseniz bir yorum yazın, sonra « Lever la réserve » düğmesine dokunun.' },
   ] },
   { id: 'annuler-conge', etapes: [
     MENU,
-    { ecran: 'menu', cible: 'menu.conges', texte: 'Dans « Plus », touchez « Mes congés ».', texteTr: '« Plus » sayfasında « Mes congés » satırına dokunun.' },
+    { ecran: 'menu', cible: 'menu.conges', texte: 'Dans « Mon compte », touchez « Mes congés ».', texteTr: '« Mon compte » sayfasında « Mes congés » satırına dokunun.' },
     { ecran: 'conges', cible: 'conges.annuler', texte: 'Sur une demande « En attente », touchez la petite corbeille à droite.', texteTr: '« En attente » durumundaki bir talepte sağdaki küçük çöp kutusuna dokunun.' },
   ] },
   { id: 'sortie-oubliee', etapes: [
@@ -131,9 +131,9 @@ export const WORKER_TOURS_V2: WorkerTourV2[] = [
     { ecran: 'journee', cible: 'entete.scanner', texte: 'Touchez le bouton « QR », en bas de l’écran, puis visez le QR code de la borne.', texteTr: 'Ekranın altındaki « QR » düğmesine dokunun, sonra istasyonun QR koduna doğrultun.' },
   ] },
   { id: 'equipe', etapes: [
-    // Bascule (étape 11) : la ligne « Mon équipe » de « Plus » (ancre menu.equipe) ouvre le guide ; les étapes suivantes ouvrent la page elles-mêmes (app/poseur/page.tsx, tourStep).
+    // Bascule (étape 11) : la ligne « Mon équipe » de « Mon compte » (ancre menu.equipe) ouvre le guide ; les étapes suivantes ouvrent la page elles-mêmes (app/poseur/page.tsx, tourStep).
     // Cinq étapes au plus : le choix du jour est dit avec celui du salarié (la liste est entourée, le jour est juste au-dessus).
-    { ecran: 'menu', cible: 'menu.equipe', texte: 'Chef d’équipe seulement. Touchez votre nom, en haut à droite, puis « Mon équipe » dans « Plus ».', texteTr: 'Yalnızca ekip şefi. Sağ üstteki adınıza dokunun, sonra « Plus » sayfasında « Mon équipe » satırına dokunun.' },
+    { ecran: 'menu', cible: 'menu.equipe', texte: 'Chef d’équipe seulement. Touchez votre nom, en haut à droite, puis « Mon équipe » dans « Mon compte ».', texteTr: 'Yalnızca ekip şefi. Sağ üstteki adınıza dokunun, sonra « Mon compte » sayfasında « Mon équipe » satırına dokunun.' },
     { cible: 'equipe.salarie', texte: 'Choisissez le jour (7 derniers jours), puis le salarié dans la liste.', texteTr: 'Günü seçin (son 7 gün), sonra listeden çalışanı seçin.' },
     { cible: 'equipe.corriger', texte: 'S’il a déjà une ligne, touchez « Corriger ».', texteTr: 'Zaten bir satırı varsa « Corriger » düğmesine dokunun.' },
     { cible: 'equipe.ajouter', texte: 'Sinon, touchez « Ajouter des heures » (chantier, début, fin).', texteTr: 'Yoksa « Ajouter des heures » düğmesine dokunun (şantiye, başlangıç, bitiş).' },
@@ -141,7 +141,7 @@ export const WORKER_TOURS_V2: WorkerTourV2[] = [
   ] },
   { id: 'infos', etapes: [
     MENU,
-    { ecran: 'menu', cible: 'menu.infos', texte: 'Dans « Plus », touchez « Informations ».', texteTr: '« Plus » sayfasında « Informations » satırına dokunun.' },
+    { ecran: 'menu', cible: 'menu.infos', texte: 'Dans « Mon compte », touchez « Informations ».', texteTr: '« Mon compte » sayfasında « Informations » satırına dokunun.' },
     { ecran: 'infos', cible: 'infos.fermer', texte: 'Une feuille apparaît : lisez le texte, puis touchez « Fermer ».', texteTr: 'Alttan bir sayfa açılır: metni okuyun, sonra « Fermer » düğmesine dokunun.' },
   ] },
 ];
@@ -158,8 +158,8 @@ export const WORKER_GUIDE_V2: FicheV2[] = [
     etapes: ['Ouvrez le chantier du jour.', 'Bouton « Documents ».', '« Photo » ou « Fichier ».'],
     etapesTr: ['Günün şantiyesini açın.', '« Documents » düğmesi.', '« Photo » ya da « Fichier ».'] },
   { id: 'conge', titreTr: 'İzin talep etmek',
-    etapes: ['« Plus » (votre nom, en haut à droite) → « Mes congés ».', 'Dans la feuille : « Faire une demande », type et dates.', '« Envoyer la demande » : le bureau répond.'],
-    etapesTr: ['« Plus » (sağ üstte adınız) → « Mes congés ».', 'Açılan sayfada: « Faire une demande », tür ve tarihler.', '« Envoyer la demande »: büro cevap verir.'] },
+    etapes: ['« Mon compte » (votre nom, en haut à droite) → « Mes congés ».', 'Dans la feuille : « Faire une demande », type et dates.', '« Envoyer la demande » : le bureau répond.'],
+    etapesTr: ['« Mon compte » (sağ üstte adınız) → « Mes congés ».', 'Açılan sayfada: « Faire une demande », tür ve tarihler.', '« Envoyer la demande »: büro cevap verir.'] },
   { id: 'pointer', titreTr: 'Giriş ve çıkışı işaretlemek',
     etapes: ['En arrivant : scannez le QR de la tablette (bouton « QR », en bas).', 'En partant : scannez à nouveau (ou « Terminer ma journée » sur la carte du pointage).', 'Pas de tablette : notez vos heures avec « + ».'],
     etapesTr: ['Gelince: tabletteki QR’ı tarayın (altta « QR » düğmesi).', 'Giderken: yeniden tarayın (ya da kayıt kartında « Terminer ma journée »).', 'Tablet yoksa: saatlerinizi « + » ile girin.'] },
@@ -173,17 +173,17 @@ export const WORKER_GUIDE_V2: FicheV2[] = [
     etapes: ['Barre du bas : « Semaine » ou « Mois ».', 'Touchez un jour pour le détail.'],
     etapesTr: ['Alt çubuk: « Semaine » ya da « Mois ».', 'Ayrıntı için bir güne dokunun.'] },
   { id: 'historique', titreTr: 'Eski saatlerinizi bulmak',
-    etapes: ['« Plus » → « Historique ».', 'Faites défiler : un bloc par jour. « PDF » enregistre vos heures envoyées.'],
-    etapesTr: ['« Plus » → « Historique ».', 'Kaydırın: her gün için bir blok. « PDF » gönderdiğiniz saatleri kaydeder.'] },
+    etapes: ['« Mon compte » → « Historique ».', 'Faites défiler : un bloc par jour. « PDF » enregistre vos heures envoyées.'],
+    etapesTr: ['« Mon compte » → « Historique ».', 'Kaydırın: her gün için bir blok. « PDF » gönderdiğiniz saatleri kaydeder.'] },
   { id: 'copier-journee', titreTr: 'Bir günü kopyalamak',
     etapes: ['Barre du bas : « Journée ».', '« Copier la journée d’hier » ou « Dupliquer cette journée ».'],
     etapesTr: ['Alt çubuk: « Journée ».', '« Copier la journée d’hier » ya da « Dupliquer cette journée ».'] },
   { id: 'notifications', titreTr: 'Bildirimleri açmak',
-    etapes: ['« Plus » (votre nom, en haut à droite).', '« Activer les notifications ».'],
-    etapesTr: ['« Plus » (sağ üstte adınız).', '« Activer les notifications ».'] },
+    etapes: ['« Mon compte » (votre nom, en haut à droite).', '« Activer les notifications ».'],
+    etapesTr: ['« Mon compte » (sağ üstte adınız).', '« Activer les notifications ».'] },
   { id: 'photo-profil', titreTr: 'Fotoğrafınızı değiştirmek',
-    etapes: ['« Plus » (votre nom, en haut à droite).', '« Changer ma photo ».'],
-    etapesTr: ['« Plus » (sağ üstte adınız).', '« Changer ma photo ».'] },
+    etapes: ['« Mon compte » (votre nom, en haut à droite).', '« Changer ma photo ».'],
+    etapesTr: ['« Mon compte » (sağ üstte adınız).', '« Changer ma photo ».'] },
   { id: 'panier', titreTr: 'Yemek sepetini (panier) işaretlemek',
     etapes: ['Barre du bas : « Journée ».', 'Touchez la tuile « Panier » de la carte « Total aujourd’hui » (pris / non pris).', 'Un seul panier par jour.'],
     etapesTr: ['Alt çubuk: « Journée ».', '« Total aujourd’hui » kartındaki « Panier » kutusuna dokunun (yendi / yenmedi).', 'Günde yalnızca bir panier.'] },
@@ -197,11 +197,11 @@ export const WORKER_GUIDE_V2: FicheV2[] = [
     etapes: ['« Journée » : la question apparaît entre deux chantiers.', '« Route » ou « Pause ».'],
     etapesTr: ['« Journée »: soru iki şantiye arasında görünür.', '« Route » ya da « Pause ».'] },
   { id: 'lever-reserve', titreTr: 'Bir réserve’i (çekince) kaldırmak',
-    etapes: ['« Journée » → le chantier avec la réserve (ou la pastille « Réserves à lever » sous la bande des jours ; pendant un pointage : « Plus » → « Réserves à lever »).', '« Lever la réserve » : commentaire et photo facultatifs.', 'Le bureau la voit dans « Levées ».'],
-    etapesTr: ['« Journée » → réserve’li şantiye (ya da günler şeridinin altındaki « Réserves à lever » kutusu; kayıt sürerken: « Plus » → « Réserves à lever »).', '« Lever la réserve »: yorum ve fotoğraf isteğe bağlı.', 'Büro bunu « Levées » içinde görür.'] },
+    etapes: ['« Journée » → le chantier avec la réserve (ou la pastille « Réserves à lever » sous la bande des jours ; pendant un pointage : « Mon compte » → « Réserves à lever »).', '« Lever la réserve » : commentaire et photo facultatifs.', 'Le bureau la voit dans « Levées ».'],
+    etapesTr: ['« Journée » → réserve’li şantiye (ya da günler şeridinin altındaki « Réserves à lever » kutusu; kayıt sürerken: « Mon compte » → « Réserves à lever »).', '« Lever la réserve »: yorum ve fotoğraf isteğe bağlı.', 'Büro bunu « Levées » içinde görür.'] },
   { id: 'annuler-conge', titreTr: 'Bir izin talebini iptal etmek',
-    etapes: ['« Plus » → « Mes congés ».', '« Annuler ma demande » : la petite corbeille, tant qu’elle attend.'],
-    etapesTr: ['« Plus » → « Mes congés ».', '« Annuler ma demande »: talep beklerken küçük çöp kutusu.'] },
+    etapes: ['« Mon compte » → « Mes congés ».', '« Annuler ma demande » : la petite corbeille, tant qu’elle attend.'],
+    etapesTr: ['« Mon compte » → « Mes congés ».', '« Annuler ma demande »: talep beklerken küçük çöp kutusu.'] },
   { id: 'sortie-oubliee', titreTr: 'Unutulan çıkış',
     etapes: ['« Journée » : « Terminer ma journée » sur la carte du pointage.', 'Le lendemain : la ligne « Sortie oubliée » attend votre heure de fin.', 'Touchez-la, mettez l’heure, puis « Envoyer ma journée ».'],
     etapesTr: ['« Journée »: kayıt kartında « Terminer ma journée ».', 'Ertesi gün: « Sortie oubliée » satırı bitiş saatinizi bekler.', 'Satıra dokunun, saati girin, sonra « Envoyer ma journée ».'] },
@@ -215,11 +215,11 @@ export const WORKER_GUIDE_V2: FicheV2[] = [
     etapes: ['Bouton « QR » en bas de l’écran.', 'Visez le QR code de la borne.', 'Le pointage démarre (ou s’arrête).'],
     etapesTr: ['Ekranın altındaki « QR » düğmesi.', 'İstasyonun QR koduna doğrultun.', 'Kayıt başlar (ya da durur).'] },
   { id: 'equipe', titreTr: 'Ekip şefi: ekibin saatlerini girmek',
-    etapes: ['« Plus » → « Mon équipe » (chef d’équipe seulement) : choisissez le jour (7 derniers jours) et le salarié.', '« Corriger » sa ligne, ou « Ajouter des heures » (chantier, début, fin).', '« OK — envoyer au bureau » : c’est envoyé, marqué « par le chef d’équipe ».'],
-    etapesTr: ['« Plus » → « Mon équipe » (yalnızca ekip şefi): günü (son 7 gün) ve çalışanı seçin.', 'Satırını « Corriger » ile düzeltin ya da « Ajouter des heures » (şantiye, başlangıç, bitiş).', '« OK — envoyer au bureau »: gönderilir, « par le chef d’équipe » olarak işaretlenir.'] },
+    etapes: ['« Mon compte » → « Mon équipe » (chef d’équipe seulement) : choisissez le jour (7 derniers jours) et le salarié.', '« Corriger » sa ligne, ou « Ajouter des heures » (chantier, début, fin).', '« OK — envoyer au bureau » : c’est envoyé, marqué « par le chef d’équipe ».'],
+    etapesTr: ['« Mon compte » → « Mon équipe » (yalnızca ekip şefi): günü (son 7 gün) ve çalışanı seçin.', 'Satırını « Corriger » ile düzeltin ya da « Ajouter des heures » (şantiye, başlangıç, bitiş).', '« OK — envoyer au bureau »: gönderilir, « par le chef d’équipe » olarak işaretlenir.'] },
   { id: 'infos', titreTr: 'Verileriniz hakkında bilgi',
-    etapes: ['« Plus » (votre nom, en haut à droite).', '« Informations ».'],
-    etapesTr: ['« Plus » (sağ üstte adınız).', '« Informations ».'] },
+    etapes: ['« Mon compte » (votre nom, en haut à droite).', '« Informations ».'],
+    etapesTr: ['« Mon compte » (sağ üstte adınız).', '« Informations ».'] },
   { id: 'collegues', titreTr: 'Meslektaşlarınızın nerede olduğunu öğrenmek',
     etapes: ['Bouton ✦ jaune, en haut à côté de votre nom.', 'Demandez « Où sont mes collègues ? » ou « Où est Paul demain ? ».', 'Prénom, chantier et horaires (si le bureau l’a autorisé).'],
     etapesTr: ['Adınızın yanındaki, üstteki sarı ✦ düğmesi.', '« Où sont mes collègues ? » ya da « Où est Paul demain ? » diye sorun.', 'Ad, şantiye ve saatler (büro izin verdiyse).'] },

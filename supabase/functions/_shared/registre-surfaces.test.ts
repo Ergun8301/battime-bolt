@@ -395,7 +395,7 @@ Deno.test('Dépôt réel : comptes comparés au §0.2 (écarts expliqués)', asy
   // (menu.semaine, menu.historique) » : les 129 sont toutes littérales ; ces deux-là ne sont dans AUCUN data-guide littéral,
   // elles vivent dans la table MENU_GUIDE (app/poseur/page.tsx:65) lue par data-guide={MENU_GUIDE[t.value]} (page.tsx:599).
   // Les expressions sont 5 : celle-là + `data-guide={guide}` relayé par 4 composants (leurs valeurs sont les `guide="…"` littéraux).
-  egal([parType.ancre.cles, parType.ancre.occurrences], [129, 172], 'ancres littérales : 129 valeurs, 172 occurrences (+3 : ✦ de l’en-tête, QR de la barre du bas, ligne de la Semaine, coque v2 ?ui=2 ; +6 à l’étape 6 : « Mes congés » en feuille et l’avatar de « Plus » répètent des repères déjà là)');
+  egal([parType.ancre.cles, parType.ancre.occurrences], [130, 173], 'ancres littérales : 130 valeurs, 173 occurrences (+1 : barre.semaine, l’onglet Semaine de la barre du bas, navigation repensée d’octobre 2026 ; +3 : ✦ de l’en-tête, QR de la barre du bas, ligne de la Semaine, coque v2 ?ui=2 ; +6 à l’étape 6 : « Mes congés » en feuille et l’avatar de « Plus » répètent des repères déjà là)');
   egal(Array.from(new Set(reel.occurrences.filter((o) => o.type === 'ancre-dynamique').map((o) => o.fichier))).sort(), [
     'app/poseur/page.tsx', 'components/admin-planning.tsx', 'components/company-settings.tsx', 'components/export-menu.tsx', 'components/leave-fund-setting.tsx',
   ], 'ancre-dynamique : 5 expressions');
@@ -414,7 +414,7 @@ Deno.test('Dépôt réel : les ancres du scanner sont exactement celles d\'ancho
   }
   const scanner = new Map<string, number>();
   for (const o of reel.occurrences) if (o.type === 'ancre') scanner.set(o.cle.slice('ancre:'.length), (scanner.get(o.cle.slice('ancre:'.length)) ?? 0) + 1);
-  egal([reference.size, Array.from(reference.values()).reduce((a, b) => a + b, 0)], [129, 172], 'anchors() : 129 valeurs, 172 occurrences (étape 6, ?ui=2 : +6 occurrences de repères DÉJÀ existants, aucune valeur nouvelle : « Mes congés » en feuille en répète quatre (conges.faire, .type, .envoyer, .annuler) et l’avatar de « Plus » le repère menu.compte ; une ligne de plus dans poseur-day pour la même raison)');
+  egal([reference.size, Array.from(reference.values()).reduce((a, b) => a + b, 0)], [130, 173], 'anchors() : 130 valeurs, 173 occurrences (+1 : barre.semaine, navigation d’octobre 2026 ; étape 6, ?ui=2 : +6 occurrences de repères DÉJÀ existants, aucune valeur nouvelle : « Mes congés » en feuille en répète quatre (conges.faire, .type, .envoyer, .annuler) et l’avatar de « Plus » le repère menu.compte ; une ligne de plus dans poseur-day pour la même raison)');
   egal(Array.from(scanner.entries()).sort(), Array.from(reference.entries()).sort(), 'mêmes valeurs, mêmes nombres d\'occurrences');
   // Ce que anchors() ne fait pas et le scanner fait : lire l\'attribut lui-même (une ancre sans point comme « data-guide="x" » passerait), et signaler les expressions.
 });
