@@ -1,4 +1,5 @@
 // Captures de RÉFÉRENCE de l'écran salarié (/poseur) : 12 états, rendu déterministe.
+// Depuis la bascule (étape 11) le nouveau design est le défaut : ces captures visent l'ANCIENNE interface avec `?ui=1` (référence v1, tant que le code v1 existe).
 //
 // Sert de preuve « rien n'a bougé à l'écran » pour les étapes d'intégration du nouveau
 // design qui ne doivent AUCUN changement visible (CSS déplacé, chargements différés,
@@ -94,7 +95,7 @@ const p = await ctx.newPage();
 const errors = [];
 p.on('pageerror', (e) => { errors.push(e.message); console.log('   [erreur page]', e.message); });
 let n = 0; const made = [];
-const open = async (waitFor = '.bt-total') => { await p.goto(`http://localhost:${PORT}/poseur`); await p.waitForSelector(waitFor, { timeout: 15000 }); await p.waitForTimeout(1200); };
+const open = async (waitFor = '.bt-total') => { await p.goto(`http://localhost:${PORT}/poseur?ui=1`); await p.waitForSelector(waitFor, { timeout: 15000 }); await p.waitForTimeout(1200); };
 const shot = async (name) => {
   // Le pointeur hors de l'écran utile : un élément qui apparaît sous un pointeur immobile (le calendrier de la fenêtre
   // « Copier cette journée ») prendrait son état « survolé » selon l'instant d'arrivée, ce qui n'est pas un rendu.
