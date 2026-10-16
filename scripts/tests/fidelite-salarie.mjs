@@ -249,7 +249,7 @@ const mesures = async (p) => p.evaluate(() => {
   const cibles = [...document.querySelectorAll('.bt-phdr button, .dz-onglet, .bt-day-dock button, .dz-rappels button, .dz-note, .dz-jour, .bt-lt-btn, button.bt-stat, .bt-alert, .bt-gap-b, .bt-iv-fixbtn, .bt-ghostbtn, .bt-dup, .dz-assistant')].filter(vis)
     .filter((e) => { const r = e.getBoundingClientRect(); return r.width < 43.5 || r.height < 43.5; }).map((e) => `${e.className} ${Math.round(e.getBoundingClientRect().width)}×${Math.round(e.getBoundingClientRect().height)}`);
   const petits = []; const w = document.createTreeWalker(document.querySelector('.bt-poseur'), NodeFilter.SHOW_TEXT);
-  for (let n = w.nextNode(); n; n = w.nextNode()) { if (!n.textContent.trim() || !n.parentElement || !vis(n.parentElement)) continue; const fs = parseFloat(getComputedStyle(n.parentElement).fontSize); if (fs < 11.99) petits.push(`${n.textContent.trim().slice(0, 24)} ${fs}px`); }
+  for (let n = w.nextNode(); n; n = w.nextNode()) { if (!n.textContent.trim() || !n.parentElement || !vis(n.parentElement)) continue; const fs = parseFloat(getComputedStyle(n.parentElement).fontSize); if (fs > 0 && fs < 11.99) petits.push(`${n.textContent.trim().slice(0, 24)} ${fs}px`); }
   const scroll = document.querySelector('.bt-day-scroll'); const dock = document.querySelector('.bt-day-dock, .dz-onglets');
   const premier = document.querySelector('[data-testid="card-entry"], [data-testid="card-planned"], [data-testid="card-live"]');
   const haut = dock ? dock.getBoundingClientRect().top : innerHeight;
@@ -334,7 +334,7 @@ await r.ctx.close();
 const pE03 = await photographierPlanche('E03', 390, 844);
 r = await photographierImplementation('E03', 390, 844, semaineE03);
 verifie((await r.p.locator('.bt-total').evaluate((e) => getComputedStyle(e).backgroundColor)) !== 'rgb(21, 18, 15)', 'E03 : journée vide, Total crème');
-verifie(((await r.p.locator('.bt-empty').textContent()) || '').includes('Aucun chantier aujourd’hui.') && ((await r.p.locator('.bt-empty').evaluate((e) => getComputedStyle(e).borderTopStyle)) === 'dashed'), 'E03 : « Aucun chantier aujourd’hui. » dans un cadre en pointillé');
+verifie(((await r.p.locator('.bt-empty').textContent()) || '').includes('Aucun chantier aujourd\'hui.') && ((await r.p.locator('.bt-empty').evaluate((e) => getComputedStyle(e).borderTopStyle)) === 'dashed'), 'E03 : « Aucun chantier aujourd’hui. » dans un cadre en pointillé');
 verifie((await r.p.locator('.bt-empty .bt-ghostbtn').boundingBox())?.height >= 43.5 && (await r.p.locator('.bt-sec').first().isHidden()), 'E03 : « Copier la journée d’hier » de 44 px, sans titre « Chantiers du jour »');
 m = await mesures(r.p);
 verifie(m.cibles.length === 0 && m.petits.length === 0 && m.faibles.length === 0, `E03 : cibles, texte, contrastes conformes (${m.cibles.concat(m.petits, m.faibles).join(' ; ') || 'ok'})`);

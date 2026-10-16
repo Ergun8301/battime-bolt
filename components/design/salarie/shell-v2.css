@@ -208,6 +208,11 @@
 .bt-ui2 .bt-iv-cancel .bt-cancel-time { color: var(--dz-texte-2); text-decoration: none; }
 .bt-ui2 .bt-iv.off { margin: 0; border: 1.5px dashed var(--dz-prevu-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); padding: 10px 14px 12px 18px; }
 .bt-ui2 .bt-iv.off .bt-badge-off { background: var(--dz-telephone-fond); border: 0; color: var(--dz-encre); }
+/* mention d'état de la carte : encre pour les heures du prévu, brun de titre pour « Mes heures › » (≥ 4,5:1 sur les trois créneaux) */
+.bt-ui2 .bt-plan-k { color: var(--dz-encre); }
+.bt-ui2 .bt-iv-cta { font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); color: var(--dz-titre-section); }
+.bt-ui2 .bt-iv-geo-v { font-size: var(--dz-fs-12); }
+.bt-ui2 .bt-sentnote { color: var(--dz-texte-2); }
 /* « Terminé le … » : un encadré sable (style en ligne du composant : seul !important le passe) */
 .bt-ui2 .bt-iv [data-testid="termine-le"], .bt-ui2 .bt-iv-plan [data-testid="termine-le"] { grid-column: 1 / -1; display: block; margin: 3px 0 0 !important; padding: 8px 10px; border-radius: 10px; background: var(--dz-sable); color: var(--dz-texte-note) !important; font: 400 var(--dz-fs-125)/1.35 var(--dz-font-ui) !important; }
 /* encadrés dans la carte : réserve, correction du bureau, endroit noté, observation, avertissement du prévu */
@@ -231,7 +236,8 @@
 .bt-ui2 .bt-gap-ask { color: var(--dz-a-envoyer-texte); }
 .bt-ui2 .bt-gap-b { min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); }
 .bt-ui2 .bt-gap-b.on { background: var(--dz-encre); color: var(--dz-jaune); border-color: var(--dz-encre); }
-.bt-ui2 .bt-dup { align-self: center; min-height: 44px; margin: 4px auto 0; border: 1px solid var(--dz-trait-fort); border-radius: 12px; background: transparent; color: var(--dz-texte-2); font: 700 14px/1 var(--dz-font-ui); }
+.bt-ui2 .bt-dup { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; margin: 0; border: 1px solid var(--dz-trait-fort); border-radius: 999px; background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); }
+.bt-ui2 .bt-dup svg { display: none; }
 .bt-ui2 .bt-retour { margin: 0; background: var(--dz-a-envoyer-fond); border: 2px solid var(--dz-a-envoyer-trait); border-radius: 14px; color: var(--dz-a-envoyer-texte-2); }
 .bt-ui2 .bt-empty { color: var(--dz-texte-2); }
 
