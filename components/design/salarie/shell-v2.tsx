@@ -44,16 +44,19 @@ export function BandeJours({ jours, onSelect }: { jours: CaseBande[]; onSelect: 
   );
 }
 
-export type OngletBas = 'day' | 'week' | 'month' | 'plus';
-/** La barre du bas : Journée · Semaine · Mois · Plus (le menu du compte). Cibles de 44 px au moins. */
-export function OngletsBas({ actif, onGo, badgePlus }: { actif: OngletBas | null; onGo: (o: OngletBas) => void; badgePlus?: number }) {
-  const items: { id: OngletBas; label: string }[] = [{ id: 'day', label: 'Journée' }, { id: 'week', label: 'Semaine' }, { id: 'month', label: 'Mois' }, { id: 'plus', label: 'Plus' }];
+export type OngletBas = 'day' | 'week' | 'month';
+/**
+ * La barre du bas : Journée · Semaine · Mois. Cibles de 44 px au moins.
+ * Le menu du compte n'y est plus (il double l'avatar, en haut à droite) : Historique, Réserves, Formations, Équipe, Congés, Informations, Notifications y sont rangés.
+ */
+export function OngletsBas({ actif, onGo }: { actif: OngletBas | null; onGo: (o: OngletBas) => void }) {
+  const items: { id: OngletBas; label: string }[] = [{ id: 'day', label: 'Journée' }, { id: 'week', label: 'Semaine' }, { id: 'month', label: 'Mois' }];
   return (
     <nav className="dz-onglets" aria-label="Navigation" data-testid="dz-onglets">
       {items.map((o) => (
-        <button key={o.id} type="button" className={`dz-onglet${actif === o.id ? ' is-on' : ''}`} aria-current={actif === o.id ? 'page' : undefined} onClick={() => onGo(o.id)} data-testid={`dz-onglet-${o.id}`}>
+        <button key={o.id} type="button" className={`dz-onglet${actif === o.id ? ' is-on' : ''}`} aria-current={actif === o.id ? 'page' : undefined} onClick={() => onGo(o.id)} data-testid={`dz-onglet-${o.id}`}
+          data-guide={o.id === 'week' ? 'barre.semaine' : undefined}>
           {o.label}
-          {o.id === 'plus' && !!badgePlus && badgePlus > 0 && <span className="dz-onglet-badge" aria-label={`${badgePlus} à voir`}>{badgePlus}</span>}
         </button>
       ))}
     </nav>

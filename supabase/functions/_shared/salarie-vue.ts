@@ -211,3 +211,40 @@ export function dateConversation(iso: string, maintenant: Date = new Date(), fus
   const quand = ecart <= 0 ? 'Aujourd’hui' : ecart === 1 ? 'Hier' : d.toLocaleDateString('fr-FR', { timeZone: fuseau, day: 'numeric', month: 'short' });
   return `${quand} · ${heure}`;
 }
+
+// ── 9. Le résumé d'un mois (page « Mon mois ») ──────────────────────────────
+// Calculé sur les lignes et les affectations DÉJÀ lues par la page (aucune requête de plus).
+export interface LigneMois { work_date: string; status?: string | null; total_minutes?: number | null; meal_allowance?: boolean | null }
+export interface AffectationMois { work_date: string; absence_type?: string | null }
+export interface ResumeMois {
+  /** Heures ENVOYÉES (envoyée ou validée) : la même règle que le total d'avant (`isCounted`). */
+  minutes: number;
+  /** Jours qui portent au moins une ligne envoyée. */
+  joursTravailles: number;
+  /** Jours envoyés avec panier repas. */
+  paniers: number;
+  /** Jours de congé. */
+  conges: number;
+  /** Jours de maladie ou d'intempérie (le repos n'est pas une absence). */
+  absences: number;
+  /** Heures notées pas encore envoyées (brouillons) et les jours concernés. */
+  aEnvoyerMinutes: number;
+  aEnvoyerJours: number;
+}
+/** Une ligne retirée (`cancelled`) ne compte nulle part ; un jour d'absence ne compte qu'une fois même si deux affectations le disent. */
+export function resumeMois(lignes: readonly LigneMois[], affectations: readonly AffectationMois[] = []): ResumeMois {
+  const envoyes = new Set<string>(), paniers = new Set<string>(), brouillons = new Set<string>(), conges = new Set<string>(), absences = new Set<string>();
+  let minutes = 0, aEnvoyerMinutes = 0;
+  for (const l of lignes) {
+    const m = Number(l.total_minutes) || 0;
+    if (l.status === 'submitted' || l.status === 'validated') {
+      minutes += m; envoyes.add(l.work_date);
+      if (l.meal_allowance) paniers.add(l.work_date);
+    } else if (l.status === 'draft') { aEnvoyerMinutes += m; brouillons.add(l.work_date); }
+  }
+  for (const a of affectations) {
+    if (a.absence_type === 'conge') conges.add(a.work_date);
+    else if (a.absence_type === 'maladie' || a.absence_type === 'intemperie') absences.add(a.work_date);
+  }
+  return { minutes, joursTravailles: envoyes.size, paniers: paniers.size, conges: conges.size, absences: absences.size, aEnvoyerMinutes, aEnvoyerJours: brouillons.size };
+}

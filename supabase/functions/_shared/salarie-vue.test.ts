@@ -1,7 +1,7 @@
 // Design salarié · étape 2 : les règles pures de l'écran du salarié (salarie-vue.ts).
 //   npm run test:salarie-vue   (npx -y deno@2.9.6 test supabase/functions/_shared/salarie-vue.test.ts)
 import {
-  aideEnvoi, bandeJours, dateConversation, etatJour, etatLigne, friseAxe, hm, kicker, lettreAbsence, lundiDe, raisonEchec, semaineIso, titreSemaine, type JourBrut,
+  aideEnvoi, bandeJours, dateConversation, etatJour, etatLigne, friseAxe, hm, kicker, lettreAbsence, lundiDe, raisonEchec, resumeMois, semaineIso, titreSemaine, type JourBrut,
 } from './salarie-vue.ts';
 
 const egal = (a: unknown, b: unknown, msg: string) => { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) throw new Error(`${msg}\n  obtenu  : ${x}\n  attendu : ${y}`); };
@@ -139,4 +139,22 @@ Deno.test('dateConversation : minuit à Paris — 23:30 la veille est « Hier »
   egal(dateConversation('2026-10-14T21:30:00Z', new Date('2026-10-14T22:10:00Z')), 'Hier · 23:30', '00:10 à Paris : la veille est « Hier »');
   egal(dateConversation('2026-10-25T10:00:00Z', new Date('2026-10-26T10:00:00Z')), 'Hier · 11:00', 'le 25 octobre a 25 h : toujours « Hier »');
   egal(dateConversation('pas une date'), '', 'illisible');
+});
+
+// ── Le résumé du mois (page « Mon mois ») ──
+Deno.test('resumeMois : heures envoyées, jours, paniers, congés, absences, brouillons — retirées ignorées, un jour compté une fois', () => {
+  const r = resumeMois([
+    { work_date: '2026-10-01', status: 'submitted', total_minutes: 240, meal_allowance: true },
+    { work_date: '2026-10-01', status: 'submitted', total_minutes: 180, meal_allowance: true },   // même jour : un seul jour, un seul panier
+    { work_date: '2026-10-02', status: 'validated', total_minutes: 480, meal_allowance: false },
+    { work_date: '2026-10-05', status: 'draft', total_minutes: 120, meal_allowance: true },         // brouillon : ni envoyé ni panier
+    { work_date: '2026-10-06', status: 'cancelled', total_minutes: 600, meal_allowance: true },     // retirée : nulle part
+    { work_date: '2026-10-07', status: 'submitted', total_minutes: null },                           // minutes illisibles : 0, le jour compte
+  ], [
+    { work_date: '2026-10-03', absence_type: 'conge' }, { work_date: '2026-10-03', absence_type: 'conge' }, { work_date: '2026-10-04', absence_type: 'conge' },
+    { work_date: '2026-10-08', absence_type: 'maladie' }, { work_date: '2026-10-09', absence_type: 'intemperie' }, { work_date: '2026-10-10', absence_type: 'repos' },
+    { work_date: '2026-10-11', absence_type: null },
+  ]);
+  egal(r, { minutes: 900, joursTravailles: 3, paniers: 1, conges: 2, absences: 2, aEnvoyerMinutes: 120, aEnvoyerJours: 1 }, 'résumé');
+  egal(resumeMois([]), { minutes: 0, joursTravailles: 0, paniers: 0, conges: 0, absences: 0, aEnvoyerMinutes: 0, aEnvoyerJours: 0 }, 'mois vide');
 });

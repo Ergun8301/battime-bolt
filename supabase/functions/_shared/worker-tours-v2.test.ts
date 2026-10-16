@@ -50,11 +50,11 @@ function ancres(src: Record<string, string>): Set<string> {
  * (le marqueur ouvre la branche v2 du fichier). Une cible absente de cette table fait échouer le test : on l'audite à la main.
  */
 const PREUVES: Record<string, [string, string?]> = {
-  'menu.compte': ['app/poseur/page.tsx', 'aria-haspopup="menu"'],         // l'avatar v2 : ouvre la page « Plus »
-  'menu.conges': ['app/poseur/page.tsx', "id: 'conges'"],                  // ligne de la page « Plus »
-  'menu.reserves': ['app/poseur/page.tsx', "id: 'reserves'"],              // ligne de la page « Plus » (ancre ajoutée à la bascule)
-  'menu.equipe': ['app/poseur/page.tsx', "id: 'equipe'"],                  // ligne de la page « Plus », chef d'équipe seulement (ancre ajoutée à la bascule)
-  'menu.semaine': ['app/poseur/page.tsx'],             // MENU_GUIDE (vérifié plus bas : la page « Plus » l'utilise)
+  'menu.compte': ['app/poseur/page.tsx', 'aria-haspopup="menu"'],         // l'avatar v2 : ouvre la page « Mon compte »
+  'menu.conges': ['app/poseur/page.tsx', "id: 'conges'"],                  // ligne de la page « Mon compte »
+  'menu.reserves': ['app/poseur/page.tsx', "id: 'reserves'"],              // ligne de la page « Mon compte » (ancre ajoutée à la bascule)
+  'menu.equipe': ['app/poseur/page.tsx', "id: 'equipe'"],                  // ligne de la page « Mon compte », chef d'équipe seulement (ancre ajoutée à la bascule)
+  'barre.semaine': ['components/design/salarie/shell-v2.tsx', 'data-guide'], // l'onglet « Semaine » de la barre du bas (la page « Plus » a disparu : Journée · Semaine · Mois n'y sont plus)
   'menu.historique': ['app/poseur/page.tsx'],
   'menu.photo': ['app/poseur/page.tsx', "id: 'photo'"],
   'menu.infos': ['app/poseur/page.tsx', "id: 'infos'"],

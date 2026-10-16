@@ -110,7 +110,7 @@ Deno.test('Guides : une ancre n’a qu’un seul élément, sauf celles prévues
   if (doubles.length) throw new Error(`Ancres en double (un seul élément par écran, ou à ajouter à REPETEES avec la raison) : ${doubles.join(', ')}`);
   // …et une ancre inutilisée par un guide est un reste à retirer.
   const used = new Set(WORKER_TOURS.flatMap((t) => t.etapes.map((e) => e.cible)));
-  const orphans = Array.from(found.keys()).filter((k) => !used.has(k) && k !== 'journee.assistant' && !k.startsWith('menu.')).sort();
+  const orphans = Array.from(found.keys()).filter((k) => !used.has(k) && k !== 'journee.assistant' && !k.startsWith('menu.') && !k.startsWith('barre.')).sort();
   if (orphans.length) throw new Error(`Ancres posées mais jamais visées : ${orphans.join(', ')}`);
 });
 

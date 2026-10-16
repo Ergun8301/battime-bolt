@@ -138,9 +138,10 @@ export const SURFACES_SALARIE: Record<string, string[]> = {
     'ecriture:lib/push#enablePush', 'ecriture:lib/push#disablePush',
   ],
   S75: ['ancre:menu.infos', 'ancre:infos.fermer'],
-  // Les entrées du menu (journée, semaine, mois, historique) portent un `data-guide` calculé (MENU_GUIDE[t.value]) : le scanner n'en voit
+  // Navigation (octobre 2026) : Journée · Semaine · Mois sont dans la barre du bas (l'onglet Semaine porte l'ancre barre.semaine) ; le menu « Mon compte » ne répète plus ces trois-là.
+  // L'entrée « Historique » du menu porte un `data-guide` calculé (MENU_GUIDE[t.value]) : le scanner n'en voit
   // qu'une expression, clé `ancre-dynamique:<fichier>:<ligne>` (la ligne bougera si le fichier est remanié au-dessus : T2 le signalera).
-  S77: ['ancre-dynamique:app/poseur/page.tsx:669', 'route:/poseur'],
+  S77: ['ancre-dynamique:app/poseur/page.tsx:685', 'ancre:barre.semaine', 'route:/poseur'],
 
   // ── O12 · Sans réseau ─────────────────────────────────────────────────────
   // Le transfert des saisies gardées sur le téléphone, automatique au retour du réseau : insère les lignes, puis les bascule (S105 : le bouton).
