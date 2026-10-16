@@ -542,10 +542,10 @@ export default function PoseurPage() {
   const nomComplet = `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim();
   const entreesHeures: EntreePlus[] = ui2 ? [
     ...TABS.map((t): EntreePlus => ({ id: t.value, label: t.label, guide: MENU_GUIDE[t.value], onSelect: () => { setMenuOpen(false); goTo(t.value); } })),
-    { id: 'reserves', label: 'Réserves à lever', testid: 'menu-reserves', inactif: reserves.length === 0, compteur: reserves.length, compteurTestid: 'menu-reserves-compteur', onSelect: () => { setMenuOpen(false); if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); } },
+    { id: 'reserves', label: 'Réserves à lever', guide: 'menu.reserves', testid: 'menu-reserves', inactif: reserves.length === 0, compteur: reserves.length, compteurTestid: 'menu-reserves-compteur', onSelect: () => { setMenuOpen(false); if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); } },
     ...(trainingsMenu ? [{ id: 'formations', label: 'Formations à voir', testid: 'menu-formations', compteur: trainings.unseen, compteurTestid: 'menu-formations-badge', onSelect: () => { setMenuOpen(false); goTo('formations'); } }] : []),
     { id: 'conges', label: 'Mes congés', guide: 'menu.conges', onSelect: () => { setMenuOpen(false); setLeaveOpen(true); } },
-    ...(user?.role === 'lead' ? [{ id: 'equipe', label: 'Mon équipe', etiquette: 'chef', testid: 'menu-equipe', onSelect: () => { setMenuOpen(false); goTo('team'); } }] : []),
+    ...(user?.role === 'lead' ? [{ id: 'equipe', label: 'Mon équipe', guide: 'menu.equipe', etiquette: 'chef', testid: 'menu-equipe', onSelect: () => { setMenuOpen(false); goTo('team'); } }] : []),
   ] : [];
   const entreesCompte: EntreePlus[] = ui2 ? [
     { id: 'photo', label: 'Changer ma photo', guide: 'menu.photo', surPlace: true, occupe: uploadingPhoto, onSelect: () => photoInputRef.current?.click() },

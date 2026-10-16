@@ -2,7 +2,7 @@
 
 // Design salarié · ÉTAPE 3 — la COQUE de la nouvelle interface (planche du designer) : en-tête avec le petit mot du jour, bande des 7 jours et barre du bas.
 // Des composants de présentation : aucune lecture de base, aucune règle (les règles sont dans supabase/functions/_shared/salarie-vue.ts, testées).
-// VISIBLE SEULEMENT avec `?ui=2` sur un hôte d'aperçu (jamais sur bemexo.com) : `useUi2()`. Rien ne change pour les salariés tant que ce n'est pas décidé.
+// DÉFAUT DE TOUS LES SALARIÉS depuis la bascule (étape 11) : `useUi2()` (lib/use-ui2.ts) ; `?ui=1` force l'ancienne interface, `UI2_PAR_DEFAUT = false` la rend à tout le monde.
 // Le contenu (carte de pointage, chantiers, feuilles) reste celui d'aujourd'hui dans cette coque ; les étapes suivantes le remplaceront morceau par morceau.
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { kicker, type CaseBande, type EtatJour } from '@/supabase/functions/_shared/salarie-vue';

@@ -1,5 +1,5 @@
-// Design salarié (?ui=2) : le drapeau que lit le Toaster (components/ui/sonner.tsx), monté une seule fois dans app/layout.tsx.
-// La page /poseur (ou /pointer) le pose sur <html> tant que `?ui=2` est actif et le retire en partant : le Toaster change de place PAR ROUTE,
+// Design salarié (v2, défaut depuis la bascule ; `?ui=1` l'éteint) : le drapeau que lit le Toaster (components/ui/sonner.tsx), monté une seule fois dans app/layout.tsx.
+// La page /poseur (ou /pointer) le pose sur <html> tant que la v2 est active et le retire en partant : le Toaster change de place PAR ROUTE,
 // sans que le reste de l'appli (bureau, connexion…) ne voie rien. Sans drapeau : Toaster d'avant, octet pour octet.
 const ATTR = 'data-bt-ui2';
 const EVT = 'bt-ui2-change';

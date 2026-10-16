@@ -8,6 +8,7 @@ import {
   type WorkerFullReply, type WorkerLive, type WorkerSnapshot,
 } from './worker-assistant-core.ts';
 import { findWorkerTour, hasWorkerTour, TOUR_LABEL, tourAction, tourIdOf, WORKER_TOURS, type TourScreen } from './worker-tours.ts';
+import { GUIDES_UI2 } from './guides-ui2.ts';
 
 const ROOTS = ['app', 'components'];
 async function sources(): Promise<Record<string, string>> {
@@ -197,11 +198,20 @@ Deno.test('Guides : voie modèle (faux appel « repondre ») — le guide de la 
   if (none.links.length) throw new Error('aucun lien attendu');
 });
 
-Deno.test('Guides : le helper et les actions (aller-retour, libellé)', () => {
+Deno.test('Guides : le helper et les actions (aller-retour, libellé)', async () => {
   if (TOUR_LABEL !== 'Me guider pas à pas') throw new Error(TOUR_LABEL);
+  // BASCULE (GUIDES_UI2 = true) : `findWorkerTour` sert les guides de la v2 (chargés en différé par un import()), plus l'objet de WORKER_TOURS (la v1).
+  // L'aller-retour de l'action ne change pas (même id) ; ce qui est SERVI est vérifié contre la v2 (worker-tours-v2.test.ts le prouve aussi, cible par cible).
+  // Interrupteur à false : l'état d'avant, le MÊME objet que WORKER_TOURS.
+  const v2 = GUIDES_UI2 ? (await import('./worker-tours-v2.ts')).WORKER_TOURS_V2 : null;
+  if (v2) for (let i = 0; i < 100 && findWorkerTour(v2[0].id) !== v2[0]; i++) await new Promise((r) => setTimeout(r, 10)); // le chargement différé de worker-tours.ts
   for (const t of WORKER_TOURS) {
     if (tourIdOf(tourAction(t.id)) !== t.id) throw new Error(t.id);
-    if (findWorkerTour(t.id) !== t) throw new Error(t.id);
+    if (!v2 && findWorkerTour(t.id) !== t) throw new Error(t.id);
+  }
+  if (v2) for (const t of v2) {
+    if (tourIdOf(tourAction(t.id)) !== t.id) throw new Error(t.id);
+    if (findWorkerTour(t.id) !== t) throw new Error(`le guide servi « ${t.id} » n’est pas celui de la v2`);
   }
   if (tourIdOf('journee') !== null || tourIdOf('ask:guide:x') !== null) throw new Error('seules les actions « guide:… » sont des guides');
   const e = WORKER_GUIDE.find((g) => g.id === 'conge')!;

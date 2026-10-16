@@ -1,9 +1,8 @@
-// Guides pas à pas du SALARIÉ pour le NOUVEAU design (?ui=2) — PRÊTS, MAIS ÉTEINTS.
+// Guides pas à pas du SALARIÉ pour le NOUVEAU design (v2) — SERVIS depuis la bascule (étape 11).
 //
-// L'interrupteur UNIQUE est `GUIDES_UI2` (supabase/functions/_shared/guides-ui2.ts, ré-exporté ici). Tant qu'il vaut `false` (état d'aujourd'hui, v1 en production),
-// ce fichier n'a AUCUN effet : worker-tours.ts sert ses fiches d'avant (même objets, mêmes octets) et
-// worker-assistant-core.ts sert WORKER_GUIDE tel qu'avant (même tableau, même empreinte). À la bascule (étape 11),
-// on passe `GUIDES_UI2` à `true` : les guides pas à pas ET les fiches d'aide de l'Assistant décrivent alors la v2
+// L'interrupteur UNIQUE est `GUIDES_UI2` (supabase/functions/_shared/guides-ui2.ts, ré-exporté ici). Il vaut `true` : les guides pas à pas ET les fiches d'aide de l'Assistant décrivent la v2
+// (voir ci-dessous). À `false`, ce fichier n'a AUCUN effet : worker-tours.ts sert ses fiches d'avant (même objets, mêmes octets) et
+// worker-assistant-core.ts sert WORKER_GUIDE tel qu'avant (même tableau). Description de la v2
 // (bouton « QR » en bas, ✦ jaune en haut, page « Plus », « Mon équipe » rangé dans « Plus », congés et informations en feuilles).
 //
 // Chaque phrase existe en FRANÇAIS (`texte`, `etapes`) et en TURC (`texteTr`, `etapesTr`, `titreTr`).
@@ -14,7 +13,7 @@
 import type { TourStep, WorkerTour } from './worker-tours.ts';
 
 import { GUIDES_UI2 } from './guides-ui2.ts';
-/** Interrupteur UNIQUE de la bascule : il vit dans guides-ui2.ts. `false` = les textes d'avant (v1). Ne le passer à `true` qu'à l'étape 11 (v2 pour tous). */
+/** Interrupteur UNIQUE de la bascule : il vit dans guides-ui2.ts. `true` = les textes de la v2 (bascule faite) ; `false` = les textes d'avant (v1). */
 export { GUIDES_UI2 };
 
 export type Langue = 'fr' | 'tr';
@@ -100,7 +99,8 @@ export const WORKER_TOURS_V2: WorkerTourV2[] = [
     { ecran: 'journee', cible: 'journee.trou', texte: 'Entre deux chantiers, l’appli demande « c’était quoi ? » : touchez « Route » ou « Pause ».', texteTr: 'İki şantiye arasında uygulama « c’était quoi ? » diye sorar: « Route » (yol) ya da « Pause » (mola) düğmesine dokunun.' },
   ] },
   { id: 'lever-reserve', etapes: [
-    { ecran: 'journee', cible: 'reserves.bandeau', texte: 'Touchez la pastille « Réserves à lever », sous la bande des jours (absente pendant un pointage).', texteTr: '« Réserves à lever » kutusuna dokunun; günler şeridinin hemen altındadır (kayıt sürerken görünmez).' },
+    // Bascule (étape 11) : la ligne « Réserves à lever » de « Plus » (ancre menu.reserves) remplace la pastille de « Ma journée », qui disparaît pendant un pointage.
+    { ecran: 'menu', cible: 'menu.reserves', texte: 'Touchez votre nom, en haut à droite, puis « Réserves à lever » dans « Plus ».', texteTr: 'Sağ üstteki adınıza dokunun, sonra « Plus » sayfasında « Réserves à lever » satırına dokunun.' },
     { cible: 'reserves.lever', texte: 'Sous le bon chantier, touchez « Lever la réserve ».', texteTr: 'Doğru şantiyenin altında « Lever la réserve » düğmesine dokunun.' },
     { cible: 'reserves.valider', texte: 'Écrivez un commentaire si vous voulez, puis touchez « Lever la réserve ».', texteTr: 'İsterseniz bir yorum yazın, sonra « Lever la réserve » düğmesine dokunun.' },
   ] },
@@ -131,9 +131,10 @@ export const WORKER_TOURS_V2: WorkerTourV2[] = [
     { ecran: 'journee', cible: 'entete.scanner', texte: 'Touchez le bouton « QR », en bas de l’écran, puis visez le QR code de la borne.', texteTr: 'Ekranın altındaki « QR » düğmesine dokunun, sonra istasyonun QR koduna doğrultun.' },
   ] },
   { id: 'equipe', etapes: [
-    // En v2 le guide ouvre lui-même la page (app/poseur/page.tsx, tourStep) : pas d'étape « Plus » (la ligne « Mon équipe » n'a pas d'ancre).
-    { ecran: 'journee', cible: 'equipe.jour', texte: 'Chef d’équipe seulement. Page « Mon équipe » (dans « Plus ») : choisissez le jour (7 derniers jours).', texteTr: 'Yalnızca ekip şefi. « Plus » içindeki « Mon équipe » sayfasında günü seçin (son 7 gün).' },
-    { cible: 'equipe.salarie', texte: 'Choisissez le salarié dans la liste.', texteTr: 'Listeden çalışanı seçin.' },
+    // Bascule (étape 11) : la ligne « Mon équipe » de « Plus » (ancre menu.equipe) ouvre le guide ; les étapes suivantes ouvrent la page elles-mêmes (app/poseur/page.tsx, tourStep).
+    // Cinq étapes au plus : le choix du jour est dit avec celui du salarié (la liste est entourée, le jour est juste au-dessus).
+    { ecran: 'menu', cible: 'menu.equipe', texte: 'Chef d’équipe seulement. Touchez votre nom, en haut à droite, puis « Mon équipe » dans « Plus ».', texteTr: 'Yalnızca ekip şefi. Sağ üstteki adınıza dokunun, sonra « Plus » sayfasında « Mon équipe » satırına dokunun.' },
+    { cible: 'equipe.salarie', texte: 'Choisissez le jour (7 derniers jours), puis le salarié dans la liste.', texteTr: 'Günü seçin (son 7 gün), sonra listeden çalışanı seçin.' },
     { cible: 'equipe.corriger', texte: 'S’il a déjà une ligne, touchez « Corriger ».', texteTr: 'Zaten bir satırı varsa « Corriger » düğmesine dokunun.' },
     { cible: 'equipe.ajouter', texte: 'Sinon, touchez « Ajouter des heures » (chantier, début, fin).', texteTr: 'Yoksa « Ajouter des heures » düğmesine dokunun (şantiye, başlangıç, bitiş).' },
     { cible: 'equipe.ok', texte: 'Touchez « OK — envoyer au bureau ». C’est marqué « par le chef d’équipe ».', texteTr: '« OK — envoyer au bureau » düğmesine dokunun. « par le chef d’équipe » olarak işaretlenir.' },
