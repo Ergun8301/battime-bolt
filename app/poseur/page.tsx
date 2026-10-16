@@ -61,7 +61,7 @@ const PoseurMonth = lazyWindow<DayPickProps>(() => import('@/components/poseur-m
 const PoseurTrainings = lazyWindow(() => import('@/components/poseur-trainings-list'), { isOpen: () => true, priority: 6, errorFallback: NON_CHARGE,
   loadingFallback: <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div> });
 // ?ui=2 : « Mon équipe » (le chef) devient une page, rangée dans « Plus » ; le code ne se charge que si le chef l'ouvre.
-const PageEquipe = lazyWindow<{ me: User; onChanged: () => void }>(() => import('@/components/design/salarie/page-equipe'), { isOpen: () => true, priority: 7, errorFallback: NON_CHARGE,
+const PageEquipe = lazyWindow<{ me: User; onChanged: () => void }>(() => import('@/components/design/salarie/page-equipe'), { isOpen: () => true, priority: 7, warm: 'never', errorFallback: NON_CHARGE, /* ?ui=2 seulement : jamais préchauffé, pour que l'ancienne interface ne télécharge rien de plus */
   loadingFallback: <div className="space-y-4"><Skeleton className="h-12 w-full" />{[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div> });
 const LeaveRequestDialog = lazyWindow(() => import('@/components/leave-request-dialog'), { isOpen: (p) => p.open, priority: 4 });
 // Assistant : monté dès que son code est là, même fermé (il garde la mémoire de la conversation).
