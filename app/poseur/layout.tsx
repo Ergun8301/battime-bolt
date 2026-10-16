@@ -29,6 +29,8 @@ import '@/components/geo-info-dialog.css';
 // Coque v2 (étape 3) : toutes les règles sont sous `.bt-ui2`, inactives sans `?ui=2`.
 import '@/components/design/salarie/dz-jetons.css';
 import '@/components/design/salarie/shell-v2.css';
+// Étape 5 : feuilles du bas (fenêtres Radix en `.dz-portail.dz-feuille`, éditeur sous `.bt-ui2`), inactives sans ?ui=2.
+import '@/components/design/salarie/feuilles-v2.css';
 
 export default function PoseurLayout({
   children,
