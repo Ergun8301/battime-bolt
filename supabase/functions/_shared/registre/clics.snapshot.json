@@ -12,7 +12,7 @@
   "components/admin-mobile-menu.tsx": 17,
   "components/admin-planning.tsx": 116,
   "components/assistant-action-card.tsx": 2,
-  "components/assistant-panel.tsx": 22,
+  "components/assistant-panel.tsx": 46,
   "components/chantier-documents.tsx": 10,
   "components/chantier-termine-bar.tsx": 3,
   "components/chantier-termine.tsx": 4,

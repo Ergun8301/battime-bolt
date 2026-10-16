@@ -33,6 +33,8 @@ import { ASSISTANT_SUGGESTIONS, type AssistantLink, type AssistantSource } from 
 import { historyOf, jourRelatif, type ChatMessage, type ChatStore, type ChatSummary } from '@/lib/assistant-chats';
 import { isNewRequest as isNewRequestFr } from '@/supabase/functions/_shared/fr-langue';
 import { isNarrow, messageOuverture, openLink } from '@/lib/openers';
+import { useClavier } from '@/components/design/salarie/clavier';
+import { dateConversation } from '@/supabase/functions/_shared/salarie-vue';
 
 export interface ExtraControl {
   /** Change le texte de la bulle (null = l'efface), la question en attente reste ouverte. */
@@ -243,15 +245,36 @@ interface Props {
   showFromTop?: (extra: unknown) => boolean;
   /** Étape 2 : l'historique des conversations (privé, 30 jours). Sans lui, pas de bouton « Historique » et rien n'est enregistré ; « Nouveau chat » existe toujours. */
   chats?: ChatStore;
+  /**
+   * Design salarié, étape 8 (planche AS1 à AS10) : la variante v2 du panneau, derrière `?ui=2` (le salarié seulement ; jamais par défaut). Mêmes réglages, mêmes
+   * gestes, mêmes repères (`data-testid`, `aria-label`) : seuls le balisage visuel (classes `dz-as-*`, components/design/salarie/assistant-v2.css) et les garde-fous
+   * d'une suppression (700 ms) changent. Le bureau ne la passe jamais : rien ne change pour lui.
+   */
+  v2?: boolean;
+  /** v2 : le prénom du salarié, pour le titre « Bonjour Sam ». */
+  prenom?: string;
 }
 
 const SLOW_MS = 4000;
 const fmtNum = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 const LANG_KEY = (memoryKey: string) => `bemexo:dictee-langue:${memoryKey}`;
+/** v2 : une confirmation de suppression ignore les touchers des 700 premières millisecondes (le bouton « Oui » se retrouve sous le doigt qui vient d'ouvrir la question). */
+export const GARDE_MS = 700;
+/** Vrai une fois `GARDE_MS` écoulées depuis que `cle` a changé (null = pas de question : faux). Sans `actif` (ancienne interface), toujours vrai : rien ne change. */
+function useGarde(actif: boolean, cle: unknown): boolean {
+  const [pret, setPret] = useState(false);
+  useEffect(() => {
+    setPret(false);
+    if (!actif || cle == null) return;
+    const t = setTimeout(() => setPret(true), GARDE_MS);
+    return () => clearTimeout(t);
+  }, [actif, cle]);
+  return !actif || pret;
+}
 
 export default function AssistantPanel({
   source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Actions simples faites tout de suite · « Annuler » en un clic', attachments = false, open: openProp, onOpenChange,
-  launcher = true, memoryKey = 'assistant', maxChars = 500, dictationLangs, slowHint, restoreOnFailure = false, isNewRequest = isNewRequestFr, showFromTop, chats,
+  launcher = true, memoryKey = 'assistant', maxChars = 500, dictationLangs, slowHint, restoreOnFailure = false, isNewRequest = isNewRequestFr, showFromTop, chats, v2 = false, prenom,
 }: Props) {
   const convo = convoOf(memoryKey);
   const [, redraw] = useReducer((x: number) => x + 1, 0);
@@ -270,6 +293,19 @@ export default function AssistantPanel({
   const remaining = convo.remaining;
   const setRemaining = (v: number) => { convo.remaining = v; changed(convo); };
   const [text, setText] = useState('');
+  // v2 (AS7) : sur téléphone, un écran ouvert depuis l'assistant ne ferme pas la conversation : elle se réduit en pastille au-dessus de lui (« Reprendre » la rouvre au même endroit).
+  const [reduit, setReduit] = useState(false);
+  useEffect(() => { if (!open) setReduit(false); }, [open]);
+  const pastilleRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // Comme la carte du guide (guide-tour.tsx) : la pastille est HORS des fenêtres de l'app (Radix) ; un toucher ou un focus sur elle ne les ferme pas.
+    const el = pastilleRef.current;
+    if (!el) return;
+    const stop = (e: Event) => e.stopPropagation();
+    el.addEventListener('pointerdown', stop); el.addEventListener('focusin', stop);
+    return () => { el.removeEventListener('pointerdown', stop); el.removeEventListener('focusin', stop); };
+  }, [reduit, open]);
+  useClavier(v2 && open && !reduit); // v2 : le panneau plein écran reste au-dessus du clavier du téléphone (`--dz-kb-h`)
   // Étape 2 : le corps du panneau est le chat, ou la liste des conversations (« Historique »). Panneau refermé : retour au chat.
   const [view, setView] = useState<'chat' | 'history'>('chat');
   useEffect(() => { if (!open) setView('chat'); }, [open]);
@@ -311,7 +347,7 @@ export default function AssistantPanel({
     const dernier = msgs[msgs.length - 1];
     const nouveau = msgs.length !== nbMsgs.current;
     nbMsgs.current = msgs.length;
-    const bulles = body.querySelectorAll<HTMLElement>('.as-bot');
+    const bulles = body.querySelectorAll<HTMLElement>('.as-bot, .dz-as-bot');
     const haut = nouveau && !busy && dernier?.who === 'bot' && dernier.extra != null && showFromTop?.(dernier.extra) ? bulles[bulles.length - 1] : null;
     if (haut) body.scrollTo({ top: body.scrollTop + haut.getBoundingClientRect().top - body.getBoundingClientRect().top - 8, behavior: 'smooth' });
     else body.scrollTo({ top: body.scrollHeight, behavior: jump.current ? 'auto' : 'smooth' });
@@ -322,7 +358,7 @@ export default function AssistantPanel({
   const ouvrirLien = (action: string) => {
     const msg = messageOuverture(openLink(action));
     if (msg) setMsgs((m) => [...m, { who: 'bot', text: msg, notice: true }]);
-    else if (isNarrow()) setOpen(false);
+    else if (isNarrow()) { if (v2) setReduit(true); else setOpen(false); }
   };
   // Ouverture SANS toucher : un écran de niveau 3 est refusé par openLink ; si une fenêtre à saisie est ouverte, on le dit ; le reste (écran inconnu, fonction non activée) se tait,
   // le bouton de la réponse est là.
@@ -387,6 +423,7 @@ export default function AssistantPanel({
   const attente = convo.waiting.size > 0;
   const occupe = occupee(convo);
   const demanderAbandon = abandon && view === 'chat' && attente && !occupe;
+  const gardeAbandon = useGarde(v2, demanderAbandon ? 1 : null);
   useEffect(() => { setAbandon(false); }, [view, open]);
   useEffect(() => { if (demanderAbandon) keepRef.current?.focus(); }, [demanderAbandon]);
   const vider = () => {
@@ -468,6 +505,145 @@ export default function AssistantPanel({
     onNavigate(action);
     if (window.matchMedia('(max-width: 640px)').matches) setOpen(false);
   };
+
+  if (v2) {
+    const kicker = view === 'history' ? 'PRIVÉ · GARDÉ 30 JOURS'
+      : remaining != null ? `ASSISTANT BEMEXO · ${remaining} QUESTION${remaining > 1 ? 'S' : ''} RESTANTE${remaining > 1 ? 'S' : ''}` : 'ASSISTANT BEMEXO';
+    const titre = view === 'history' ? 'Historique' : prenom ? `Bonjour ${prenom}` : 'Assistant BEMEXO';
+    const derniereQuestion = [...msgs].reverse().find((m) => m.who === 'me')?.text ?? '';
+    return (
+      <>
+        {!open && launcher && (
+          <button type="button" className="as-fab" onClick={() => setOpen(true)} data-testid="assistant-open">
+            <Sparkles className="h-4 w-4" /> Assistant BEMEXO
+          </button>
+        )}
+        {open && reduit && (
+          <div className="dz-portail dz-as-pastille" ref={pastilleRef} role="group" aria-label="Assistant BEMEXO, en attente" data-testid="assistant-pastille">
+            <span className="dz-as-pastille__ico" aria-hidden="true">✦</span>
+            <div className="dz-as-pastille__texte"><span className="dz-as-pastille__kicker">ASSISTANT · EN ATTENTE</span><span className="dz-as-pastille__question">{derniereQuestion ? `« ${derniereQuestion} »` : 'Conversation en cours'}</span></div>
+            <button type="button" className="dz-as-pastille__reprendre" onClick={() => setReduit(false)} data-testid="assistant-reprendre">Reprendre</button>
+          </div>
+        )}
+        {open && !reduit && (
+          <aside className="dz-portail dz-as" aria-label="Assistant BEMEXO" data-testid="assistant-panel">
+            <header className="dz-as-tete">
+              <div className="dz-as-titres"><span className="dz-as-kicker">{kicker}</span><h2 className="dz-as-titre">{titre}</h2></div>
+              <button type="button" className="dz-as-x" onClick={() => { dictRef.current?.abort(); setOpen(false); }} aria-label="Fermer"><span aria-hidden="true">✕</span></button>
+            </header>
+            {demanderAbandon && (
+              <div className="dz-as-alerte" role="group" aria-label="Abandonner l’action en attente" data-testid="assistant-abandon"
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); keepAction(); } }}>
+                <div className="dz-as-msg is-sombre"><b>Abandonner cette action ?</b><span>Elle n’a pas été confirmée : rien n’a été fait.</span></div>
+                <div className="dz-as-choix">
+                  <button type="button" className="dz-as-btn" ref={keepRef} onClick={keepAction} data-testid="assistant-abandon-no">Non</button>
+                  <button type="button" className="dz-as-btn is-rose" aria-disabled={!gardeAbandon} onClick={() => { if (gardeAbandon) vider(); }} data-testid="assistant-abandon-yes">Oui</button>
+                </div>
+              </div>
+            )}
+            {view === 'history' && chats ? (
+              <HistoryView v2 chats={chats} busy={busy} verrou={convo.working.size > 0} attente={attente} courant={convo.chatId} onBack={backToChat} onOpen={reopen} onRemoved={removed} onNew={newChat} />
+            ) : (<>
+              <div className="dz-as-corps" ref={bodyRef}>
+                <div className="dz-as-outils">
+                  <button type="button" className="dz-as-btn" ref={newChatRef} onClick={newChat} disabled={occupe} data-testid="assistant-newchat" aria-label="Nouveau chat"
+                    title={busy ? 'Une réponse est en cours' : occupe ? 'Une action est en cours' : undefined}>+ Nouveau chat</button>
+                  {chats && (
+                    <button type="button" className="dz-as-btn" ref={histBtnRef} aria-pressed={view === 'history'} aria-label="Historique des conversations" data-testid="assistant-history"
+                      onClick={() => { if (view === 'history') { setView('chat'); return; } dictRef.current?.abort(); setView('history'); }}>Historique</button>
+                  )}
+                </div>
+                {msgs.length === 0 && (
+                  <>
+                    <p className="dz-as-bot">{intro ?? 'Demandez-moi de faire quelque chose, comment faire, ou un chiffre sur vos équipes'}</p>
+                    <p className="dz-as-etiquette">SUGGESTIONS</p>
+                    <div className="dz-as-suggestions">
+                      {suggestions.map((s) => (
+                        <button type="button" key={s} onClick={() => ask(s)}><span>{s}</span><span className="dz-as-chevron" aria-hidden="true">›</span></button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {msgs.map((m, i) => (m.who === 'me'
+                  ? <div key={i} className="dz-as-me">{m.file && <span className="dz-as-fichier"><FileText className="h-3.5 w-3.5" aria-hidden="true" /> {m.file}</span>}{m.text}</div>
+                  : m.note ? <p key={i} className="dz-as-note" role="status" data-testid="assistant-note">{m.text}</p>
+                  : (
+                    <div key={i} className="dz-as-groupe">
+                      {(m.text || (m.links && m.links.length > 0)) && (
+                        <div className={`dz-as-bot${m.notice ? ' is-avis' : ''}`}>
+                          {m.text}
+                          {m.links && m.links.length > 0 && (
+                            <div className="dz-as-liens">
+                              {m.links.map((l) => <button type="button" key={l.action} onClick={() => go(l.action)}>{l.label}</button>)}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {m.extra != null && renderExtra ? <div className="dz-as-extra">{renderExtra(m.extra, {
+                        text: (t) => setMsgs((all) => all.map((x, j) => (j === i ? { ...x, text: t ?? '' } : x))),
+                        settle: (t) => {
+                          pendingRef.current = null;
+                          if (t !== undefined) setMsgs((all) => all.map((x, j) => (j === i ? { ...x, text: t ?? '' } : x)));
+                        },
+                        working: (on) => marquer(convo, 'working', m.extra, on),
+                        waiting: (on) => marquer(convo, 'waiting', m.extra, on),
+                      })}</div> : null}
+                    </div>
+                  )))}
+                {busy && <div className="dz-as-attente" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {hint ?? 'Je regarde…'}</div>}
+              </div>
+              <div className="dz-as-pied">
+                {file && (
+                  <div className="dz-as-puce" data-testid="assistant-file">
+                    <FileText className="h-3.5 w-3.5" aria-hidden="true" /> <span>{file.name}</span>
+                    <button type="button" onClick={() => setFile(null)} aria-label="Retirer le fichier"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
+                  </div>
+                )}
+                {listening && (
+                  <div className="dz-as-ecoute" role="status" data-testid="assistant-listening"><i /> J’écoute… appuyez sur ■ pour arrêter, ou Envoyer</div>
+                )}
+                {langs && canSpeak && (
+                  <div className="dz-as-langues" role="group" aria-label="Langue de la dictée" data-testid="assistant-langs">
+                    <span aria-hidden="true">Dictée :</span>
+                    {langs.map((l) => (
+                      <button type="button" key={l.code} aria-pressed={lang === l.code} aria-label={l.aria} disabled={listening} data-testid={`assistant-lang-${l.code}`}
+                        onClick={() => pickLang(l.code)}><span lang={l.code.slice(0, 2)}>{l.label}</span></button>
+                    ))}
+                  </div>
+                )}
+                {maxChars > 500 && text.length >= maxChars * 0.8 && (
+                  <p className={`dz-as-compte${text.length >= maxChars ? ' is-plein' : ''}`} data-testid="assistant-count" aria-hidden="true">{fmtNum(text.length)} / {fmtNum(maxChars)}</p>
+                )}
+                {maxChars > 500 && (
+                  <div className="dz-as-sr" role="status">{text.length >= maxChars ? `Limite de ${fmtNum(maxChars)} caractères atteinte.` : text.length >= maxChars * 0.8 ? `${fmtNum(Math.round(maxChars * 0.8))} caractères sur ${fmtNum(maxChars)}.` : ''}</div>
+                )}
+                <form className="dz-as-barre" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
+                  {attachments && (<>
+                    <input ref={fileRef} type="file" accept={ATTACH_ACCEPT} hidden onChange={(e) => pickFile(e.target.files?.[0])} data-testid="assistant-file-input" />
+                    <button type="button" className="dz-as-rond" onClick={() => fileRef.current?.click()} aria-label="Joindre une photo ou un PDF" data-testid="assistant-attach"><span aria-hidden="true">⧉</span></button>
+                  </>)}
+                  <textarea
+                    ref={inputRef} className="dz-as-champ" lang={langs ? lang.slice(0, 2) : undefined}
+                    rows={listening || text.length > 60 ? (maxChars > 500 && text.length > 300 ? 6 : 3) : 1} value={text} placeholder={listening ? 'Parlez, le texte s’écrit ici…' : 'Votre question…'} maxLength={maxChars}
+                    onChange={(e) => { setText(e.target.value); dictRef.current?.edit(e.target.value); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(text); } }}
+                    aria-label="Votre question"
+                  />
+                  {canSpeak && (
+                    <button type="button" className={`dz-as-rond dz-as-micro${listening ? ' is-on' : ''}`} onClick={toggleMic} aria-label={listening ? 'Arrêter la dictée' : 'Dicter'} aria-pressed={listening} data-testid="assistant-mic">
+                      {listening ? <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" /> : langs ? <span aria-hidden="true">FR·TR</span> : <Mic className="h-4 w-4" aria-hidden="true" />}
+                    </button>
+                  )}
+                  <button type="submit" className="dz-as-rond dz-as-envoyer" disabled={(!text.trim() && !file) || busy} aria-label="Envoyer"><span aria-hidden="true">↑</span></button>
+                </form>
+                <p className="dz-as-aide">{footNote}</p>
+              </div>
+            </>)}
+          </aside>
+        )}
+      </>
+    );
+  }
 
   return (
     <>
@@ -608,7 +784,7 @@ export default function AssistantPanel({
  * donne le focus au champ de saisie (c'est le panneau qui s'en charge).
  */
 type Demande = { kind: 'un'; id: string } | { kind: 'tout' } | { kind: 'ouvrir'; id: string };
-function HistoryView({ chats, busy, verrou, attente, courant, onBack, onOpen, onRemoved }: {
+function HistoryView({ chats, busy, verrou, attente, courant, onBack, onOpen, onRemoved, onNew, v2 = false }: {
   chats: ChatStore;
   /** Une réponse est en route. */
   busy: boolean;
@@ -621,6 +797,10 @@ function HistoryView({ chats, busy, verrou, attente, courant, onBack, onOpen, on
   onBack: () => void;
   onOpen: (id: string, rows: ChatMessage[], abandonOk?: boolean) => 'ok' | 'occupe' | 'confirmer';
   onRemoved: (id: string | null) => void;
+  /** v2 (AS5) : le bouton « + Nouveau chat » de l'historique vide. */
+  onNew?: () => void;
+  /** v2 : la planche AS4 à AS9 (même logique, même repères, autre balisage) ; une suppression ignore les touchers des 700 premières millisecondes. */
+  v2?: boolean;
 }) {
   const [list, setList] = useState<ChatSummary[] | 'chargement' | 'erreur'>('chargement');
   const [demande, setDemande] = useState<Demande | null>(null);
@@ -714,6 +894,88 @@ function HistoryView({ chats, busy, verrou, attente, courant, onBack, onOpen, on
   };
   // Le chat de l'écran ne se supprime pas pendant qu'une carte y écrit ; « Tout effacer » non plus tant qu'il en fait partie.
   const verrouille = (id: string) => verrou && id === courant;
+  const garde = useGarde(v2, demande);
+
+  if (v2) {
+    // Planche AS4 (liste, suppression en place Non / Oui), AS5 (vide), AS6 (Tout effacer ?), AS9 (chargement, indisponible, action en cours).
+    const oui = (f: () => void) => () => { if (garde) f(); };
+    const attenteTexte = busy
+      ? 'Une réponse est en cours : attendez-la pour ouvrir une autre conversation.'
+      : verrou ? 'Une action est en cours : attendez qu’elle soit finie pour ouvrir une autre conversation ou supprimer celle de l’écran.' : null;
+    return (
+      <div className="dz-as-corps" data-testid="assistant-history-view">
+        <button type="button" className="dz-as-btn dz-as-retour" ref={backRef} onClick={onBack} aria-label="Retour au chat" data-testid="assistant-history-back">‹ Retour à la conversation</button>
+        <p className="dz-as-sr" role="status" data-testid="assistant-history-status">{statut}</p>
+        {list === 'chargement' && <div className="dz-as-squelette" role="status" data-testid="assistant-history-loading"><span className="dz-as-sr">Chargement…</span></div>}
+        {list === 'erreur' && (
+          <div className="dz-as-msg is-erreur" role="alert" data-testid="assistant-history-error">
+            <b>Historique indisponible</b>
+            <span>L’assistant reste utilisable : revenez au chat.</span>
+            <button type="button" className="dz-as-btn" onClick={charge} data-testid="assistant-history-retry">Réessayer</button>
+          </div>
+        )}
+        {Array.isArray(list) && items.length === 0 && (
+          <div className="dz-as-vide" data-testid="assistant-history-empty">
+            <b>Aucune conversation</b>
+            <span>Vos conversations sont gardées 30 jours, visibles par vous seul.</span>
+            {onNew && <button type="button" className="dz-as-btn" onClick={onNew}>+ Nouveau chat</button>}
+          </div>
+        )}
+        {items.length > 0 && (
+          <ul className="dz-as-hliste" aria-label="Conversations enregistrées">
+            {items.map((c) => {
+              const enConfirmation = !!demande && demande.kind !== 'tout' && demande.id === c.id;
+              return (
+                <li key={c.id} className={`dz-as-hligne${enConfirmation ? ' is-confirmation' : ''}`} data-testid="assistant-history-item">
+                  {enConfirmation && demande ? (
+                    <div className="dz-as-hconf" role="group" aria-label={demande.kind === 'un' ? 'Confirmer la suppression' : 'Confirmer l’abandon de l’action en attente'}
+                      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); annuler(); } }}>
+                      <span className="dz-as-hnom">{c.title}</span>
+                      <span className="dz-as-hdate">{dateConversation(c.updatedAt, now)}</span>
+                      <p className="dz-as-hquestion">{demande.kind === 'un' ? 'Supprimer cette conversation ?' : 'Abandonner l’action en attente ?'}</p>
+                      {demande.kind === 'un' && attente && c.id === courant && <p className="dz-as-hnote">L’action en attente à l’écran sera abandonnée.</p>}
+                      <div className="dz-as-choix">
+                        <button type="button" className="dz-as-btn" ref={nonRef} onClick={annuler} data-testid="assistant-history-confirm-no">Non</button>
+                        <button type="button" className="dz-as-btn is-danger" aria-disabled={!garde} data-testid="assistant-history-confirm-yes"
+                          onClick={oui(demande.kind === 'un' ? confirmer : () => { setDemande(null); rouvrir(c.id, true); })}>Oui</button>
+                      </div>
+                    </div>
+                  ) : (<>
+                    <button type="button" className="dz-as-houvrir" onClick={() => rouvrir(c.id)} disabled={busy || verrou || acting}
+                      ref={(el) => { if (el) openRefs.current.set(c.id, el); else openRefs.current.delete(c.id); }}>
+                      <span className="dz-as-hnom">{c.title}</span>
+                      <span className="dz-as-hdate">{dateConversation(c.updatedAt, now)}</span>
+                    </button>
+                    <button type="button" className="dz-as-hsupprimer" onClick={() => { setNote(null); setDemande({ kind: 'un', id: c.id }); }} disabled={acting || verrouille(c.id)}
+                      ref={(el) => { if (el) trashRefs.current.set(c.id, el); else trashRefs.current.delete(c.id); }}
+                      aria-label={`Supprimer la conversation « ${c.title} »`} data-testid="assistant-history-delete"><span aria-hidden="true">✕</span></button>
+                  </>)}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {attenteTexte && items.length > 0 && <div className="dz-as-msg is-attention" data-testid={busy ? undefined : 'assistant-history-verrou'}><b>{attenteTexte}</b></div>}
+        {note && <div className="dz-as-msg is-erreur" role="alert" data-testid="assistant-history-note"><b>{note}</b></div>}
+        {items.length > 0 && (demande?.kind === 'tout' ? (
+          <div className="dz-as-tout" role="group" aria-label="Confirmer l’effacement de tout l’historique"
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); annuler(); } }}>
+            <div className="dz-as-msg is-erreur">
+              <b>Tout effacer ?</b>
+              <span>{items.length > 1 ? `Les ${items.length} conversations seront supprimées.` : 'La conversation sera supprimée.'}</span>
+              {attente && courant !== null && <span>L’action en attente à l’écran sera abandonnée.</span>}
+            </div>
+            <div className="dz-as-choix">
+              <button type="button" className="dz-as-btn" ref={nonRef} onClick={annuler} data-testid="assistant-history-confirm-no">Non</button>
+              <button type="button" className="dz-as-btn is-danger" aria-disabled={!garde} onClick={oui(confirmer)} data-testid="assistant-history-confirm-yes">Oui</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="dz-as-btn is-rose dz-as-effacer" ref={clearRef} onClick={() => { setNote(null); setDemande({ kind: 'tout' }); }} disabled={acting || (verrou && courant !== null)} data-testid="assistant-history-clear">Tout effacer</button>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="as-body" data-testid="assistant-history-view">
