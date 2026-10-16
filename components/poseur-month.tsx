@@ -11,6 +11,8 @@ import { ChevronLeft, ChevronRight, MapPin, Clock, Send } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { termineLe } from '@/supabase/functions/_shared/chantier-statut'; // lot 23 : « Terminé le … »
+import { useUi2 } from '@/components/design/salarie/shell-v2'; // coque v2 (?ui=2) : le Mois en cartes, comme la Semaine (E25)
+import { hm } from '@/supabase/functions/_shared/salarie-vue';
 
 interface EntryW extends TimeEntry { worksite: Worksite | null }
 interface PlanW extends Planning { worksite: Worksite | null }
@@ -22,6 +24,7 @@ const ABS: Record<string, string> = { conge: 'Congé', maladie: 'Maladie', intem
 // days that have planning/entries — tap a day to declare/edit it.
 export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: string) => void } = {}) {
   const { user } = useAuth();
+  const ui2 = useUi2();
   const [monthStart, setMonthStart] = useState(startOfMonth(new Date()));
   const [planning, setPlanning] = useState<PlanW[]>([]);
   const [entries, setEntries] = useState<EntryW[]>([]);
@@ -55,6 +58,59 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
 
   if (loading) {
     return <div className="space-y-4"><Skeleton className="h-10 w-full" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+  }
+
+  if (ui2) {
+    const envoyes = new Set(entries.filter((e) => isCounted(e.status)).map((e) => e.work_date)).size;
+    return (
+      <div className="dz-semaine dz-mois" data-testid="dz-mois">
+        <div className="dz-sem-nav">
+          <button type="button" onClick={() => setMonthStart(subMonths(monthStart, 1))} aria-label="Mois précédent"><ChevronLeft className="h-5 w-5" /></button>
+          <div className="dz-sem-nav-t capitalize">{format(monthStart, 'MMMM yyyy', { locale: fr })}</div>
+          <button type="button" onClick={() => setMonthStart(addMonths(monthStart, 1))} aria-label="Mois suivant"><ChevronRight className="h-5 w-5" /></button>
+        </div>
+        <div className="bt-total dz-total dz-sem-carte" data-testid="dz-mois-total">
+          <div className="dz-total-gauche">
+            <div className="bt-total-k">Mois · heures</div>
+            <div className="dz-total-valeur"><span className="bt-total-big">{hm(totalSent)}</span><span className="dz-total-unite">h</span></div>
+            <div className="dz-total-detail">{totalSent > 0 ? `${fmt(totalSent)} envoyées · ` : ''}{envoyes} jour{envoyes > 1 ? 's' : ''} envoyé{envoyes > 1 ? 's' : ''}</div>
+          </div>
+        </div>
+        {dayKeys.length === 0 ? (
+          <p className="dz-vide">Aucune affectation ce mois-ci.</p>
+        ) : dayKeys.map((d) => {
+          const dPlan = planning.filter((p) => p.work_date === d);
+          const dEnt = entries.filter((e) => e.work_date === d);
+          const dayTotal = dEnt.filter((e) => isCounted(e.status)).reduce((s, e) => s + e.total_minutes, 0);
+          const declared = dEnt.some((e) => isCounted(e.status));
+          const hasDraft = dEnt.some((e) => e.status === 'draft');
+          const isToday = d === todayStr;
+          const pastille = dayTotal > 0
+            ? { t: `${fmt(dayTotal)}${declared ? ' ✓' : ''}${hasDraft ? ' · À envoyer' : ''}`, e: hasDraft ? 'a-envoyer' : 'envoye' }
+            : { t: hasDraft ? 'À envoyer' : 'À déclarer', e: hasDraft ? 'a-envoyer' : 'prevu' };
+          return (
+            <button key={d} type="button" onClick={() => onSelectDay?.(d)} className={`dz-sem-jour${isToday ? ' is-today' : ''}`}>
+              <span className="dz-sem-ligne">
+                <span className="dz-sem-centre">
+                  <span className="dz-sem-nom capitalize">{format(parseISO(d), 'EEEE d MMMM', { locale: fr })}</span>
+                </span>
+                <span className="dz-sem-pastille" data-etat={pastille.e}>{pastille.t}</span>
+              </span>
+              <span className="dz-mois-lignes">
+                {dPlan.map((p) => (
+                  <span key={p.id} className="dz-sem-sous">
+                    {p.absence_type ? (ABS[p.absence_type] || p.absence_type) : <>{p.worksite?.client_name || 'Chantier'}{termineLe(p.worksite, true) ? ` · ${termineLe(p.worksite, true)}` : ''}</>}
+                  </span>
+                ))}
+                {dEnt.map((e) => (
+                  <span key={e.id} className={`dz-sem-sous${e.status === 'cancelled' ? ' dz-barre-texte' : ''}`}>{e.worksite?.client_name || 'Chantier'}{termineLe(e.worksite, true) ? ` · ${termineLe(e.worksite, true)}` : ''} · {e.start_time?.substring(0, 5)}–{e.end_time?.substring(0, 5)}{e.status === 'cancelled' ? ' · retirée' : e.status === 'draft' ? ' · brouillon' : ''}</span>
+                ))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
   }
 
   return (

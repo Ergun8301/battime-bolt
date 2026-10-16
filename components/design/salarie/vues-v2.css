@@ -1,0 +1,174 @@
+/* Design salarié · étape 6 · Mois, Historique, page « Plus », Formations, « Mon équipe », Mes congés, Informations, Documents du chantier, retour passager.
+   Même règle que le reste : tout est sous `.bt-ui2` (l'écran avec ?ui=2), `.dz-portail` (fenêtres Radix en feuille) ou `.dz-retour` (Sonner, posé par components/ui/sonner.tsx seulement avec ?ui=2).
+   Sans ?ui=2 aucune de ces classes n'existe : l'ancienne interface ne change pas d'un octet. Couleurs et tailles : jetons de dz-jetons.css, jamais de valeur en dur.
+   Les cartes, lignes et pastilles de la Semaine (dz-sem-*, shell-v2.css) sont réutilisées par le Mois et l'Historique plutôt que redessinées. */
+
+/* ── Vues en pages : pas de cadre blanc, du crème (le tableau d'avant restait sur du blanc) ── */
+.bt-ui2 .dz-vide { margin: 0; padding: 22px 18px; border: 1.5px dashed var(--dz-trait-fort); border-radius: var(--dz-r-l); text-align: center; font: 600 var(--dz-fs-14)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-portail .dz-vide { margin: 0; padding: 16px 8px; text-align: center; font: 600 var(--dz-fs-14)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .dz-sem-pastille[data-etat="a-envoyer"] { white-space: normal; text-align: right; }
+.bt-ui2 .dz-mois-lignes { display: flex; flex-direction: column; gap: 2px; }
+.bt-ui2 .dz-barre-texte { text-decoration: line-through; }
+.bt-ui2 button.dz-sem-jour { width: 100%; font-family: var(--dz-font-ui); color: var(--dz-encre); }
+
+/* ── Historique : un jour = une carte ; chaque ligne = chantier, ville, horaire, étiquettes, durée ── */
+.bt-ui2 .dz-histo { display: flex; flex-direction: column; gap: 10px; }
+.bt-ui2 .dz-histo-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bt-ui2 .dz-histo-titre { margin: 0; font: 900 var(--dz-fs-22)/1.1 var(--dz-font-ui); letter-spacing: var(--dz-tracking-titre); color: var(--dz-encre); }
+.bt-ui2 .dz-bouton-ligne, .bt-ui2 .dz-lien-ligne { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); cursor: pointer; }
+.bt-ui2 .dz-bouton-ligne:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); border-color: var(--dz-inactif-fond); }
+.bt-ui2 .dz-lien-ligne { justify-content: space-between; width: 100%; border-radius: var(--dz-r-m); border-color: var(--dz-trait); }
+.bt-ui2 .dz-histo-jour { cursor: default; gap: 0; }
+.bt-ui2 .dz-histo-jour > .dz-sem-ligne { padding-bottom: 6px; }
+.bt-ui2 .dz-histo-jour p { margin: 0; }
+.bt-ui2 .dz-histo-jour .dz-sem-nom { text-transform: capitalize; flex: 1; min-width: 0; }
+.bt-ui2 .dz-histo-total { flex: none; display: flex; flex-direction: column; align-items: flex-end; font: 400 var(--dz-fs-12)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .dz-histo-total b { font: 900 var(--dz-fs-16)/1.2 var(--dz-font-chiffres); color: var(--dz-encre); }
+.bt-ui2 .dz-histo-ligne { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--dz-trait-doux); }
+.bt-ui2 .dz-histo-ligne--retiree .dz-sem-nom, .bt-ui2 .dz-histo-ligne--retiree .dz-histo-duree { text-decoration: line-through; color: var(--dz-texte-2); }
+.bt-ui2 .dz-histo-nom { flex: 1; min-width: 0; }
+.bt-ui2 .dz-histo-heures { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.bt-ui2 .dz-histo-horaire { font: 700 var(--dz-fs-125)/1.2 var(--dz-font-chiffres); color: var(--dz-encre); }
+.bt-ui2 .dz-histo-etiquettes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.bt-ui2 .dz-histo-duree { flex: none; min-width: 52px; text-align: right; font: 900 var(--dz-fs-16)/1.2 var(--dz-font-chiffres); color: var(--dz-encre); }
+.bt-ui2 .dz-etiq, .dz-portail .dz-etiq { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: var(--dz-r-xs); background: var(--dz-sable); color: var(--dz-encre); font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.bt-ui2 .dz-etiq--envoye { background: var(--dz-vert-plein); color: var(--dz-blanc); }
+.bt-ui2 .dz-etiq--brouillon { background: var(--dz-a-envoyer-fond); color: var(--dz-a-envoyer-texte-2); }
+
+/* ── Page « Plus » (E26) : le menu du compte en page ── */
+.bt-ui2 .dz-plus { display: flex; flex-direction: column; gap: 10px; }
+.bt-ui2 .dz-plus__titre { margin: 8px 2px 0; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .14em; color: var(--dz-titre-section); }
+.bt-ui2 .dz-plus__titre:first-child { margin-top: 0; }
+.bt-ui2 .dz-plus__carte { border-radius: 18px; border: 1px solid var(--dz-trait); background: var(--dz-carte); overflow: hidden; }
+.bt-ui2 .dz-ligne-menu { width: 100%; min-height: 56px; display: flex; align-items: center; gap: 10px; padding: 8px 16px; border: 0; border-top: 1px solid var(--dz-trait-doux); background: none; color: var(--dz-encre); text-align: left; font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); cursor: pointer; }
+.bt-ui2 .dz-ligne-menu:first-child { border-top: 0; }
+.bt-ui2 .dz-ligne-menu[aria-disabled="true"] { color: var(--dz-inactif-texte); cursor: default; }
+.bt-ui2 .dz-ligne-menu__texte { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.bt-ui2 .dz-ligne-menu__compteur { min-width: 22px; height: 22px; padding: 0 7px; box-sizing: border-box; border-radius: 11px; background: var(--dz-erreur); color: var(--dz-blanc); font: 900 var(--dz-fs-12)/22px var(--dz-font-ui); text-align: center; }
+.bt-ui2 .dz-ligne-menu__etiquette { padding: 4px 10px; border-radius: 999px; background: var(--dz-sable); color: var(--dz-encre); font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); }
+.bt-ui2 .dz-ligne-menu__chevron { color: var(--dz-texte-3); font: 400 20px/1 var(--dz-font-ui); }
+.bt-ui2 .dz-plus__sortie { min-height: 52px; margin-top: 4px; border-radius: 999px; border: 1px solid var(--dz-erreur-bord-doux); background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); font: 900 var(--dz-fs-16)/1 var(--dz-font-ui); cursor: pointer; }
+.bt-ui2 .dz-plus button:disabled { cursor: default; }
+
+/* ── Formations : liste (E26 → Formations) et lecteur ── */
+.bt-ui2 .bt-tr-list { gap: 10px; }
+.bt-ui2 .bt-tr-row { gap: 12px; padding: 12px 14px; border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); }
+.bt-ui2 .bt-tr-row.seen { background: var(--dz-verrou-fond); }
+.bt-ui2 .bt-tr-row.seen .bt-tr-t { color: var(--dz-texte-2); }
+.bt-ui2 .bt-tr-ic { width: 36px; height: 36px; border-radius: 10px; background: var(--dz-sable); color: var(--dz-encre); }
+.bt-ui2 .bt-tr-t { font: 900 var(--dz-fs-16)/1.25 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .bt-tr-s { font: 400 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .bt-tr-acts { gap: 8px; margin-top: 10px; }
+.bt-ui2 .bt-tr-open, .bt-ui2 button.bt-tr-open, .bt-ui2 .bt-tr-seen { min-height: 44px; height: auto; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); }
+.bt-ui2 button.bt-tr-open[aria-expanded="true"] { background: var(--dz-jaune-pale); border-color: var(--dz-encre); }
+.bt-ui2 .bt-tr-seen[aria-pressed="true"] { background: var(--dz-encre); border-color: var(--dz-encre); color: var(--dz-jaune); }
+.bt-ui2 .bt-tr-seen:disabled { opacity: 1; background: var(--dz-verrou-fond); border-color: var(--dz-trait); color: var(--dz-verrou-texte); }
+.bt-ui2 .bt-tr-seen[aria-pressed="true"]:disabled { background: var(--dz-encre); border-color: var(--dz-encre); color: var(--dz-jaune); }
+.bt-ui2 .bt-tr-na, .bt-ui2 .bt-vp-msg { font: 600 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .bt-vp-err { font: 700 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-erreur-texte); }
+.bt-ui2 .bt-vp video { border-radius: 12px; background: var(--dz-encre); }
+.bt-ui2 .bt-tr-empty { font: 600 var(--dz-fs-14)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+
+/* ── « Mon équipe » (E27) : la feuille d'heures du chef ── */
+.bt-ui2 .dz-equipe .bt-td { margin: 0; padding: 0; border: 0; background: none; display: flex; flex-direction: column; gap: 10px; }
+.bt-ui2 .dz-equipe .bt-td-h { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* le titre est déjà dans l'en-tête */
+.bt-ui2 .dz-equipe .bt-td-sub { margin: 0; font: 400 var(--dz-fs-13)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .dz-equipe .bt-td-days { margin: 0; padding: 0; gap: 8px; }
+.bt-ui2 .dz-equipe .bt-td-day { min-height: 48px; padding: 0 16px; border: 1.5px solid var(--dz-trait-fort); border-radius: 999px; background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.1 var(--dz-font-ui); }
+.bt-ui2 .dz-equipe .bt-td-day small { display: inline; margin-left: 6px; font: 400 var(--dz-fs-12)/1 var(--dz-font-chiffres); color: var(--dz-texte-2); }
+.bt-ui2 .dz-equipe .bt-td-day[aria-pressed="true"] { background: var(--dz-jaune); border: 2px solid var(--dz-encre); }
+.bt-ui2 .dz-equipe .bt-td-day[aria-pressed="true"] small { color: var(--dz-encre); }
+.bt-ui2 .dz-equipe .bt-td-pick { margin: 0; }
+.bt-ui2 .dz-equipe .bt-td-lab { margin-bottom: 4px; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .1em; color: var(--dz-texte-2); }
+.bt-ui2 .dz-equipe .bt-td-sel { height: 52px; border: 1.5px solid var(--dz-trait-fort); border-radius: 14px; background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
+.bt-ui2 .dz-equipe .bt-td-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; padding: 12px 14px; border: 1.5px solid var(--dz-encre); border-radius: var(--dz-r-m); background: var(--dz-carte); }
+.bt-ui2 .dz-equipe .bt-td-row:last-child { border-bottom: 1.5px solid var(--dz-encre); }
+.bt-ui2 .dz-equipe .bt-td-name { grid-column: 1; grid-row: 2; font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); white-space: normal; overflow-wrap: anywhere; }
+.bt-ui2 .dz-equipe .bt-td-h2 { grid-column: 2; grid-row: 1; justify-self: end; font: 700 var(--dz-fs-125)/1.3 var(--dz-font-chiffres); color: var(--dz-encre); }
+.bt-ui2 .dz-equipe .bt-td-tag { grid-column: 1; grid-row: 1; justify-self: start; padding: 4px 8px; border-radius: var(--dz-r-xs); font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); }
+.bt-ui2 .dz-equipe .bt-td-tag.envoye { background: var(--dz-vert-plein); color: var(--dz-blanc); }
+.bt-ui2 .dz-equipe .bt-td-tag.aenvoyer { background: var(--dz-a-envoyer-fond); color: var(--dz-a-envoyer-texte-2); }
+.bt-ui2 .dz-equipe .bt-td-tag.verrou { background: var(--dz-encre); color: var(--dz-jaune); }
+.bt-ui2 .dz-equipe .bt-td-edit { grid-column: 1 / -1; min-height: 48px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); }
+.bt-ui2 .dz-equipe .bt-td-edit.send { background: var(--dz-jaune); border-color: var(--dz-jaune); box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.bt-ui2 .dz-equipe .bt-td-edit:disabled { opacity: 1; background: var(--dz-inactif-fond); border-color: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
+.bt-ui2 .dz-equipe .bt-td-add { min-height: 52px; margin: 0; border: 0; border-radius: 999px; background: var(--dz-encre); color: var(--dz-jaune); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
+.bt-ui2 .dz-equipe .bt-td-empty { margin: 0; padding: 18px; border: 1.5px dashed var(--dz-trait-fort); border-radius: var(--dz-r-m); text-align: center; font: 600 var(--dz-fs-14)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+.bt-ui2 .dz-equipe .bt-td-form { margin: 0; padding: 14px; border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); }
+.bt-ui2 .dz-equipe .bt-td-formh { font: 900 var(--dz-fs-16)/1.25 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .dz-equipe .bt-td-close { width: 44px; height: 44px; display: grid; place-items: center; color: var(--dz-encre); }
+.bt-ui2 .dz-equipe .bt-td-save { min-height: 52px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.bt-ui2 .dz-equipe .bt-td-save:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
+.bt-ui2 .dz-equipe .bt-td-note { font: 400 var(--dz-fs-125)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+
+/* ── Mes congés : feuille du bas ── */
+.dz-portail .dz-champ-lib { display: block; margin: 0 0 4px; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .1em; text-transform: uppercase; color: var(--dz-texte-2); }
+.dz-portail .dz-formulaire { display: grid; gap: 12px; }
+.dz-portail .dz-segments { display: flex; flex-wrap: wrap; gap: 6px; }
+.dz-portail .dz-segment { flex: 1 1 0; min-width: 0; min-height: 48px; padding: 0 10px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-blanc); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1.1 var(--dz-font-ui); cursor: pointer; }
+.dz-portail .dz-segment[aria-pressed="true"] { background: var(--dz-jaune); border-color: var(--dz-encre); }
+.dz-portail .dz-grille-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dz-portail .dz-champ { width: 100%; min-width: 0; min-height: 50px; box-sizing: border-box; padding: 0 14px; border: 1px solid var(--dz-trait-fort); border-radius: 12px; background: var(--dz-blanc); color: var(--dz-encre); font: 600 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
+.dz-portail .dz-champ::placeholder { color: var(--dz-texte-2); font-weight: 500; }
+.dz-portail .dz-ligne-liste { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--dz-trait); background: var(--dz-blanc); }
+.dz-portail .dz-demande__texte { flex: 1; min-width: 0; }
+.dz-portail .dz-demande__type { font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); color: var(--dz-encre); }
+.dz-portail .dz-demande__periode { font: 400 var(--dz-fs-125)/1.3 var(--dz-font-chiffres); color: var(--dz-texte-2); }
+.dz-portail .dz-demande__mot { margin-top: 2px; font: 400 var(--dz-fs-125)/1.3 var(--dz-font-ui); color: var(--dz-texte-note); overflow-wrap: anywhere; }
+.dz-portail .dz-etiq[data-etat="pending"] { background: var(--dz-a-envoyer-fond); color: var(--dz-a-envoyer-texte-2); }
+.dz-portail .dz-etiq[data-etat="approved"] { background: var(--dz-vert-plein); color: var(--dz-blanc); }
+.dz-portail .dz-etiq[data-etat="rejected"] { background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); }
+.dz-portail .dz-demande__annuler { flex: none; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--dz-erreur-texte); cursor: pointer; }
+
+/* ── Informations : feuille du bas (fenêtre maison, rôle « dialog ») ── */
+.bt-ui2 .bt-info-bg { background: var(--dz-voile); padding: 0; }
+.bt-ui2 .bt-info { max-width: 480px; margin: 0; padding: 10px 20px calc(20px + env(safe-area-inset-bottom)); background: var(--dz-carte); color: var(--dz-encre); border-top: 4px solid var(--dz-jaune); border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0; font-family: var(--dz-font-ui); max-height: calc(100dvh - 24px); overflow: auto; }
+.bt-ui2 .bt-info::before { content: ""; display: block; width: 44px; height: 5px; border-radius: 3px; background: var(--dz-trait-fort); margin: 0 auto 8px; }
+.bt-ui2 .bt-info h2 { margin: 0 0 8px; font: 900 var(--dz-fs-24)/1.05 var(--dz-font-ui); letter-spacing: -.03em; }
+.bt-ui2 .bt-info h2 svg { display: none; }
+.bt-ui2 .bt-info h3 { margin: 0 0 4px; font: 900 var(--dz-fs-16)/1.25 var(--dz-font-ui); }
+.bt-ui2 .bt-info p { margin: 0 0 8px; font: 400 var(--dz-fs-15)/1.45 var(--dz-font-ui); color: var(--dz-texte-note); }
+.bt-ui2 .bt-info a { display: inline-flex; align-items: center; min-height: 44px; font: 800 var(--dz-fs-14)/1.2 var(--dz-font-ui); color: var(--dz-encre); }
+.bt-ui2 .bt-info button { min-height: 52px; margin-top: 8px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+
+/* ── Documents du chantier : l'intérieur de la feuille ── */
+.dz-portail .bt-doc-addrow { gap: 8px; margin: 0; }
+.dz-portail .bt-doc-addbtn { min-height: 52px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.dz-portail .bt-doc-addbtn.ghost { background: var(--dz-carte); border: 1.5px solid var(--dz-trait-fort); box-shadow: none; }
+.dz-portail .bt-doc-addbtn:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
+.dz-portail .bt-doc-hint { margin: 0; font: 400 var(--dz-fs-125)/1.35 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-portail .bt-doc-hint b { color: var(--dz-encre); }
+.dz-portail .bt-doc-tabs { margin: 0; gap: 8px; }
+.dz-portail .bt-doc-tab { border: 1.5px solid var(--dz-trait-fort); border-radius: 999px; background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); }
+.dz-portail .bt-doc-tab.on { background: var(--dz-encre); border-color: var(--dz-encre); color: var(--dz-jaune); }
+.dz-portail .bt-doc-tabn, .dz-portail .bt-doc-tab.on .bt-doc-tabn { font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); background: var(--dz-sable); color: var(--dz-encre); }
+.dz-portail .bt-doc-tab.on .bt-doc-tabn { background: var(--dz-jaune); }
+.dz-portail .bt-doc-day { margin: 10px 0 4px; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .12em; color: var(--dz-titre-section); }
+.dz-portail .bt-doc-day::after { background: var(--dz-trait); }
+.dz-portail .bt-doc-empty { font: 600 var(--dz-fs-14)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-portail .bt-doc-row { padding: 8px 10px; border: 1px solid var(--dz-trait); border-radius: 14px; background: var(--dz-blanc); }
+.dz-portail .bt-doc-row.here { border: 2px solid var(--dz-jaune); background: var(--dz-jaune-pale); }
+.dz-portail .bt-doc-thumb { border-radius: 10px; background: var(--dz-sable); border-color: var(--dz-trait); color: var(--dz-encre); }
+.dz-portail .bt-doc-name { font: 800 var(--dz-fs-14)/1.25 var(--dz-font-ui); color: var(--dz-encre); }
+.dz-portail .bt-doc-sub { font: 400 var(--dz-fs-12)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-portail .bt-doc-here { color: var(--dz-jaune-texte); }
+.dz-portail .bt-doc-act { color: var(--dz-encre); }
+.dz-portail .bt-doc-act.danger { color: var(--dz-erreur-texte); }
+.dz-portail .bt-doc-send { margin: 0; border: 1px solid var(--dz-trait); border-radius: 16px; background: var(--dz-carte); }
+.dz-portail .bt-doc-send-h { font: 900 var(--dz-fs-16)/1.2 var(--dz-font-ui); color: var(--dz-encre); }
+.dz-portail .bt-doc-send-to { font: 700 var(--dz-fs-14)/1.2 var(--dz-font-ui); color: var(--dz-encre); }
+.dz-portail .bt-doc-send-edit { min-height: 44px; padding: 0 8px; color: var(--dz-encre); font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); }
+.dz-portail .bt-doc-send-input { min-height: 50px; padding: 0 14px; border: 1px solid var(--dz-trait-fort); border-radius: 12px; background: var(--dz-blanc); color: var(--dz-encre); font: 600 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
+.dz-portail .bt-doc-send-save { min-height: 50px; min-width: 64px; border-radius: 999px; background: var(--dz-encre); color: var(--dz-jaune); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); }
+.dz-portail .bt-doc-send-btn { min-height: 52px; border-radius: 999px; border: 1.5px solid var(--dz-encre); background: var(--dz-encre); color: var(--dz-jaune); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); }
+.dz-portail .bt-doc-send-btn.ghost { background: var(--dz-carte); color: var(--dz-encre); border-color: var(--dz-trait-fort); }
+.dz-portail .bt-doc-send-btn:disabled { opacity: 1; background: var(--dz-inactif-fond); border-color: var(--dz-inactif-fond); color: var(--dz-inactif-texte); }
+.dz-portail .bt-doc-send-note { font: 400 var(--dz-fs-125)/1.35 var(--dz-font-ui); color: var(--dz-texte-2); }
+
+/* ── Retour passager (Sonner) : juste au-dessus de la barre du bas, 44 px pour « Annuler » ── */
+.dz-retour { box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; max-width: 456px; min-height: 52px; margin-inline: auto; padding: 6px 6px 6px 16px; border: 0; border-radius: 16px; background: var(--dz-encre); color: var(--dz-creme); font: 600 var(--dz-fs-14)/1.3 var(--dz-font-ui); box-shadow: var(--dz-ombre-flottant); }
+.dz-retour [data-title] { font: 700 var(--dz-fs-14)/1.3 var(--dz-font-ui); color: var(--dz-creme); overflow-wrap: anywhere; }
+.dz-retour__texte { color: var(--dz-creme-75); }
+.dz-retour__action { flex: none; height: 44px; min-width: 44px; margin-left: auto; padding: 0 14px; border: 0; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); cursor: pointer; }
+.dz-retour :focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme); }
+html[data-bt-ui2] [data-sonner-toaster] { --width: 456px; }

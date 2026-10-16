@@ -26,6 +26,7 @@ import WorkerReserves, { type WorkerReserve } from '@/components/worker-reserves
 import GuideTour, { type GuideStep } from '@/components/guide-tour';
 import { findWorkerTour, tourIdOf, type WorkerTour } from '@/supabase/functions/_shared/worker-tours';
 import { COUNTED_STATUSES } from '@/lib/status';
+import type { User } from '@/lib/types';
 import { keep } from '@/lib/same';
 import { lazyWindow, warmAll } from '@/lib/lazy-window';
 import { isPreviewHost } from '@/lib/hosting';
@@ -35,6 +36,9 @@ import { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
 import { AlertTriangle, GraduationCap } from 'lucide-react';
 // Design salarié, étape 3 : la coque v2 (visible seulement avec ?ui=2 sur un aperçu, voir components/design/salarie/shell-v2.tsx).
 import { BandeJours, BoutonAssistant, Kicker, NoteEntete, OngletsBas, useUi2, type OngletBas } from '@/components/design/salarie/shell-v2';
+// Étape 6 : la page « Plus » (E26), « Mon équipe » (E27) et le retour passager au-dessus de la barre ; tout derrière ?ui=2.
+import { PagePlus, type EntreePlus } from '@/components/design/salarie/page-plus';
+import { useRetourPassager } from '@/components/design/salarie/retour-passager';
 import type { BarreJour } from '@/components/design/salarie/carte-total';
 import { bandeJours, etatJour, minutesDe, type JourBrut } from '@/supabase/functions/_shared/salarie-vue';
 
@@ -54,6 +58,9 @@ const PoseurMonth = lazyWindow<DayPickProps>(() => import('@/components/poseur-m
 // Formations : la liste (components/poseur-trainings-list.tsx) se charge à l'ouverture de l'onglet ; le hook et le bandeau restent dans la page.
 const PoseurTrainings = lazyWindow(() => import('@/components/poseur-trainings-list'), { isOpen: () => true, priority: 6, errorFallback: NON_CHARGE,
   loadingFallback: <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div> });
+// ?ui=2 : « Mon équipe » (le chef) devient une page, rangée dans « Plus » ; le code ne se charge que si le chef l'ouvre.
+const PageEquipe = lazyWindow<{ me: User; onChanged: () => void }>(() => import('@/components/design/salarie/page-equipe'), { isOpen: () => true, priority: 7, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-12 w-full" />{[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div> });
 const LeaveRequestDialog = lazyWindow(() => import('@/components/leave-request-dialog'), { isOpen: (p) => p.open, priority: 4 });
 // Assistant : monté dès que son code est là, même fermé (il garde la mémoire de la conversation).
 const WorkerAssistant = lazyWindow(() => import('@/components/worker-assistant'), { isOpen: (p) => !!p.open, priority: 5, warm: 'mounted', mount: 'warm' });
@@ -89,6 +96,7 @@ export default function PoseurPage() {
   const ui2 = useUi2();
   const ui2Ref = useRef(false);
   ui2Ref.current = ui2;
+  useRetourPassager(ui2); // Sonner juste au-dessus de la barre du bas (jamais sans ?ui=2)
   const [joursBrut, setJoursBrut] = useState<Record<string, Omit<JourBrut, 'date'>>>({});
   const [prevuMin, setPrevuMin] = useState<Record<string, number>>({});
   // Jours qui portent des heures jamais parties. Le travail est fait, il manque
@@ -130,7 +138,9 @@ export default function PoseurPage() {
   // Fonction absente (migration du lot 12 pas encore passée) ou lecture en
   // échec : comportement d'avant, l'interrupteur de l'entreprise seul.
   // Lot 29 : l'interrupteur vient de la lecture commune des réglages (lib/company-settings).
-  const kioskEnabled = useCompanySettings(user?.company_id)?.kioskEnabled;
+  // Lot 29 : la lecture commune des réglages (aucune requête de plus). Son `name` (kicker de « Plus », ?ui=2) n'y est que pour un compte qui lit déjà toute la ligne (bureau, support) ; le salarié ne lit que 5 colonnes.
+  const reglages = useCompanySettings(user?.company_id);
+  const kioskEnabled = reglages?.kioskEnabled;
   useEffect(() => {
     if (!kioskEnabled) { setKioskOn(false); return; }
     let stale = false;
@@ -365,9 +375,11 @@ export default function PoseurPage() {
   here.current = { view, selectedDate };
   const tourStep = (s: GuideStep) => {
     warmAll(); // le guide ne cherche sa cible que 1,5 s : les écrans différés doivent déjà être là
-    setMenuOpen(s.ecran === 'menu');
     setHdrHidden(false); // l'en-tête peut porter la cible (votre nom, le scanner)
     const on = (v: string) => here.current.view === v && !here.current.selectedDate;
+    // ?ui=2 : le menu est la page « Plus » et « Mon équipe » une page à part (mêmes repères, mêmes phrases de guide).
+    if (ui2Ref.current && (s.ecran === 'menu' || s.cible.startsWith('equipe.'))) { setMenuOpen(false); const v = s.ecran === 'menu' ? 'plus' : 'team'; if (!on(v)) goTo(v); return; }
+    setMenuOpen(s.ecran === 'menu');
     if (s.ecran === 'journee') { if (!on('day')) goHome(); }
     else if (s.ecran === 'semaine') { if (!on('week')) goTo('week'); }
     else if (s.ecran === 'mois') { if (!on('month')) goTo('month'); }
@@ -383,10 +395,10 @@ export default function PoseurPage() {
   const isToday = view === 'day' && !selectedDate;
   // « Ma journée » garde le format téléphone ; les écrans hérités (semaine/mois/
   // historique) restent larges sur ordinateur — on ne les bride pas à 480 px.
-  const wide = !selectedDate && view !== 'day' && view !== 'formations';
+  const wide = !selectedDate && view !== 'day' && view !== 'formations' && view !== 'plus' && view !== 'team';
   const headerTitle = selectedDate
     ? format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })
-    : (ALL_TABS.find((t) => t.value === view)?.label || 'Ma journée');
+    : view === 'team' ? 'Mon équipe' : (ALL_TABS.find((t) => t.value === view)?.label || 'Ma journée');
 
   /**
    * UN SEUL BANDEAU : « à envoyer ».
@@ -502,13 +514,32 @@ export default function PoseurPage() {
   const bande = ui2 ? bandeJours(selectedDate || todayIso, todayIso, new Map(Object.entries(joursBrut))) : [];
   const jourAffiche = selectedDate || todayIso;
   const etatAffiche = ui2 ? etatJour({ date: jourAffiche, ...(joursBrut[jourAffiche] ?? { lignes: [] }) }) : 'vide';
+  const plusOuvert = ui2 && !selectedDate && view === 'plus'; // la page « Plus » (E26) remplace le menu déroulant
   const ongletActif: OngletBas | null = selectedDate || view === 'day' ? 'day' : view === 'week' ? 'week' : view === 'month' ? 'month' : 'plus';
   // Les 7 barres de la carte Total : les minutes notées de chaque jour de la semaine affichée (les mêmes lectures que la bande).
   const barres: BarreJour[] | undefined = ui2 ? bande.map((c) => ({
     date: c.date, jour: c.jour, etat: c.etat, aujourdhui: c.aujourdhui, affiche: c.affiche, prevu: prevuMin[c.date],
     minutes: (joursBrut[c.date]?.lignes ?? []).reduce((t, l) => t + (Number((l as { total_minutes?: number | null }).total_minutes) || 0), 0),
   })) : undefined;
-  const allerOnglet = (o: OngletBas) => { if (o === 'day') goHome(); else if (o === 'plus') setMenuOpen(true); else goTo(o); };
+  const avant = useRef('day'); // l'écran d'où l'on est venu ouvrir « Plus » : l'avatar y revient (il ouvrait puis refermait le menu)
+  const allerOnglet = (o: OngletBas) => { if (o === 'day') goHome(); else if (o === 'plus') { if (view !== 'plus' || selectedDate) avant.current = selectedDate ? 'day' : view; goTo('plus'); } else goTo(o); };
+  const avatar = () => { if (plusOuvert) goTo(avant.current === 'plus' ? 'day' : avant.current); else allerOnglet('plus'); };
+  const roleKicker = user?.role === 'lead' ? 'Chef d’équipe' : 'Poseur';
+  const kickerPlus = [reglages?.name, roleKicker].filter(Boolean).join(' · ').toUpperCase();
+  const nomComplet = `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim();
+  const entreesHeures: EntreePlus[] = ui2 ? [
+    ...TABS.map((t): EntreePlus => ({ id: t.value, label: t.label, guide: MENU_GUIDE[t.value], onSelect: () => goTo(t.value) })),
+    { id: 'reserves', label: 'Réserves à lever', testid: 'menu-reserves', inactif: reserves.length === 0, compteur: reserves.length, compteurTestid: 'menu-reserves-compteur', onSelect: () => { if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); } },
+    ...(trainingsMenu ? [{ id: 'formations', label: 'Formations à voir', testid: 'menu-formations', compteur: trainings.unseen, compteurTestid: 'menu-formations-badge', onSelect: () => goTo('formations') }] : []),
+    { id: 'conges', label: 'Mes congés', guide: 'menu.conges', onSelect: () => setLeaveOpen(true) },
+    ...(user?.role === 'lead' ? [{ id: 'equipe', label: 'Mon équipe', etiquette: 'chef', testid: 'menu-equipe', onSelect: () => goTo('team') }] : []),
+  ] : [];
+  const entreesCompte: EntreePlus[] = ui2 ? [
+    { id: 'photo', label: 'Changer ma photo', guide: 'menu.photo', surPlace: true, occupe: uploadingPhoto, onSelect: () => photoInputRef.current?.click() },
+    ...(aiOn ? [{ id: 'assistant', label: 'Assistant BEMEXO', onSelect: () => setAssistantOpen(true) }] : []),
+    { id: 'infos', label: 'Informations', guide: 'menu.infos', onSelect: () => setInfoOpen(true) },
+    ...(pushState !== 'unsupported' ? [{ id: 'notifications', label: pushState === 'on' ? 'Couper les notifications' : pushState === 'denied' ? 'Notifications bloquées' : 'Activer les notifications', guide: 'menu.notifications', surPlace: true, occupe: pushBusy, onSelect: () => { if (!pushBusy) togglePush(); } }] : []),
+  ] : [];
 
   return (
     <div className={`bt-poseur${ui2 ? ' bt-ui2' : ''}`}>
@@ -523,6 +554,11 @@ export default function PoseurPage() {
                 <div>
                   {ui2 && <Kicker date={todayIso} aujourdhui etat={etatAffiche} />}
                   <div className="bt-phdr-date">{todayLabel}</div>
+                </div>
+              ) : plusOuvert ? (
+                <div>
+                  <div className="dz-kicker" data-testid="dz-kicker-plus">{kickerPlus}</div>
+                  <div className="bt-phdr-date">{nomComplet}</div>
                 </div>
               ) : (
                 <button onClick={goHome} className="bt-phdr-back" aria-label="Retour à ma journée">
@@ -541,6 +577,14 @@ export default function PoseurPage() {
             {ui2 && (aiOn || demoSalarie) && <BoutonAssistant onClick={() => setAssistantOpen(true)} />}
             {/* Identité du salarié = déclencheur du menu (nom + rond photo/initiales). */}
             <input type="file" accept="image/*" hidden ref={photoInputRef} onChange={(e) => onPickPhoto(e.target.files?.[0])} />
+            {ui2 ? (
+              <button className="bt-phdr-id" aria-label="Mon compte et menu" aria-haspopup="menu" aria-expanded={plusOuvert} data-guide="menu.compte" onClick={avatar}>
+                <span className="bt-phdr-id-name">{user?.first_name}<span className="bt-phdr-id-last">{user?.last_name ? ` ${user.last_name}` : ''}</span></span>
+                <span className="bt-phdr-id-av">
+                  {photoUrl ? <img src={photoUrl} alt="" /> : <span className="bt-phdr-id-ini">{(user?.first_name?.[0] || '')}{(user?.last_name?.[0] || '')}</span>}
+                </span>
+              </button>
+            ) : (
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <button className="bt-phdr-id" aria-label="Mon compte et menu" data-guide="menu.compte">
@@ -615,6 +659,7 @@ export default function PoseurPage() {
                 <DropdownMenuItem onClick={signOut}><LogOut className="h-4 w-4 mr-2" /> Déconnexion</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </div>
           {ui2 && (isToday || selectedDate) && <BandeJours jours={bande} onSelect={openDay} />}
           {ui2 && (isToday || selectedDate) && toSendBanner}
@@ -628,7 +673,11 @@ export default function PoseurPage() {
             <PoseurDay key={dayKey} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : <>{offlineBanner}{toSendBanner}{reservesBanner}{trainingsBanner}</>} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
           ) : (
             <div className="bt-phscroll bt-skin">
-              {view === 'formations' ? (
+              {view === 'plus' && ui2 ? (
+                <PagePlus heures={entreesHeures} compte={entreesCompte} onDeconnexion={signOut} />
+              ) : view === 'team' && ui2 && user ? (
+                <PageEquipe me={user} onChanged={fetchPending} />
+              ) : view === 'formations' ? (
                 <PoseurTrainings items={trainings.items} companyId={user?.company_id} onPatch={trainings.patch} />
               ) : view === 'week' ? (
                 <PoseurWeek onSelectDay={openDay} />

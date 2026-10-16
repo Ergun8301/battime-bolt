@@ -1,7 +1,7 @@
 /* Design salarié · jetons de la planche du designer (copie de docs/design-brief/designer-final/tokens.css, sans les noms shadcn).
    Portée : `.bt-ui2` (l'écran avec ?ui=2), `.dz-portail` (à poser sur une fenêtre Radix, rendue hors de l'écran, dans <body>) et `.dz-voile` (le voile de cette fenêtre, frère de la fenêtre).
    AUCUNE règle ne vise `.bt-skin` ni `:root` : sans ?ui=2, l'ancienne interface ne change pas d'un octet. */
-.bt-ui2, .dz-portail, .dz-voile {
+.bt-ui2, .dz-portail, .dz-voile, .dz-retour, .dz-pointer {
   /* --- ajouts de l'intégration (valeurs de la planche, nommées pour ne laisser aucune couleur en dur dans les règles) --- */
   --dz-blanc: #FFFFFF;
   --dz-creme-30: rgba(242,237,227,.3);   /* contour d'un bouton rond sur le noir */
@@ -89,6 +89,7 @@
   /* --- ombres --- */
   --dz-ombre-bouton: inset 0 -4px 0 #D9A200;
   --dz-jaune-ombre: #D9A200;       /* relief du bouton jaune (la planche le nomme ; l'intégration l'avait oublié, le focus des boutons jaunes en dépendait) */
+  --dz-ombre-flottant: 0 12px 30px rgba(21,18,15,.35); /* retour passager, pastille */
   --dz-voile: rgba(21,18,15,.5);   /* fond des feuilles */
   --dz-r-sheet: 28px;              /* angle haut des feuilles du bas */
   --dz-t-feuille: 260ms;           /* entrée d'une feuille (coupée avec prefers-reduced-motion) */
