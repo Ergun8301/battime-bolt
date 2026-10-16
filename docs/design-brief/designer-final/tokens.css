@@ -1,0 +1,157 @@
+/* BEMEXO · jetons de design · écran salarié (/poseur, /pointer)
+   Portée : .dz-salarie (racine), .bt-skin (classe actuelle des fenêtres, gardée) ET .dz-portail (à poser sur DialogOverlay / DialogContent /
+   AlertDialogContent / Popover / Toast : Radix les rend hors de .dz-salarie, dans <body>).
+   .dz-sombre : zones à fond noir (en-tête, carte de pointage, /pointer) : --ring passe au jaune.
+   Les noms shadcn sur :root ne sont touchés qu'à la dernière étape (cf. integration-technique §2.4).
+   Polices : Archivo + JetBrains Mono, déjà auto-hébergées. Aucune police ni dépendance ajoutée. */
+
+.dz-salarie, .dz-portail, .bt-skin {
+  /* --- shadcn (triplets HSL) --- */
+  --background: 40 36.6% 92%;        /* #F2EDE3 crème */
+  --foreground: 30 16.7% 7.1%;         /* #15120F encre */
+  --card: 42.9 100% 98.6%;             /* #FFFDF8 */
+  --card-foreground: 30 17% 7%;
+  --popover: 42.9 100% 98.6%;
+  --popover-foreground: 30 17% 7%;
+  --primary: 44 100% 55.1%;          /* #FFC21A jaune */
+  --primary-foreground: 30 17% 7%;
+  --secondary: 38.4 33.3% 85.3%;         /* #E6DDCD */
+  --secondary-foreground: 30 17% 7%;
+  --muted: 38.4 33.3% 85.3%;
+  --muted-foreground: 31.8 10.3% 32.4%;  /* #5B534A */
+  --accent: 45.9 100% 90%;           /* #FFF3CC */
+  --accent-foreground: 30 17% 7%;
+  --destructive: 0 66.4% 46.7%;        /* #C62828 · blanc dessus 5,62:1 (était #E53935, 4,19:1) */
+  --destructive-foreground: 0 0% 100%;
+  --border: 37.5 30% 84.3%;            /* #E3DACB */
+  --input: 38.7 27.4% 77.8%;             /* #D6CBB7 */
+  --ring: 30 17% 7%;               /* encre sur clair ; jaune dans .dz-sombre ; voir --dz-focus */
+  --radius: 16px;
+
+  /* --- couleurs de base --- */
+  --dz-encre: #15120F;
+  --dz-encre-2: #1B1713;           /* cartes sombres */
+  --dz-encre-3: #25201B;           /* jours de la bande */
+  --dz-creme: #F2EDE3;
+  --dz-carte: #FFFDF8;
+  --dz-sable: #E6DDCD;
+  --dz-trait: #E3DACB;
+  --dz-trait-fort: #D6CBB7;
+  --dz-texte-2: #5B534A;
+  --dz-texte-3: #655B50;
+  --dz-inactif-fond: #E6DDCD; --dz-inactif-texte: #655B50;      /* bouton inactif : 4,92:1 (plus d'opacité) */
+  --dz-verrou-fond: #EFE9DE;  --dz-verrou-texte: #5B534A;       /* tuiles verrouillées : 5,6:1 (plus d'opacité) */
+  --dz-hors-jetons-planche: #E9E2D4; /* fond de planche seulement, pas dans l'appli */
+  --dz-squelette-clair: #F3ECE0;          /* était #8A7F70 (3,36:1 sur crème) → 5,5:1 */
+  --dz-encre-secondaire: #5B534A;  /* = DAY_PART_INK (day-part.ts:58, aujourd'hui #57524A) et MEETING_TINT.ink. 5,75 / 6,12 / 6,23 / 6,10:1 sur matin, après-midi, soir, réunion */
+  --dz-texte-note: #3A332B;        /* texte courant des notes, 9:1 sur sable */
+  --dz-trait-doux: #EFE7D9;        /* séparateurs de listes, piste de la frise */
+  --dz-jaune: #FFC21A;
+  --dz-jaune-ombre: #D9A200;
+  --dz-jaune-pale: #FFF3CC;
+  --dz-jaune-texte: #5C4300;       /* texte sur jaune pâle */
+  --dz-titre-section: #755800;     /* étiquettes « CHANTIERS DU JOUR » (était #8A6A00, 4,35:1) → 5,7:1 */
+
+  /* --- focus : anneau double, visible sur clair ET sur noir --- */
+  --dz-focus: 0 0 0 2px #FFFDF8, 0 0 0 4px #15120F;
+  --dz-ring-sur-noir: 44 100% 55%; /* jaune, 11,5:1 sur noir (valeur actuelle de .bt-skin) */
+
+  /* --- états des heures --- */
+  --dz-envoye-fond: #15120F;  --dz-envoye-heure: #FFC21A;  --dz-envoye-pastille: #1F7A4D; /* blanc dessus 5,32:1 (était #2FA36B, 3,20:1) */
+  --dz-vert-plein: #1F7A4D;        /* sous texte blanc : ENVOYÉ, EN COURS, coche de la bande, « Journée envoyée ✓ » (5,32:1) */
+  --dz-case-verte: #EEF9F2;        /* lue par day-part.test.ts et missions.test.ts (contrôles 13, 17, 21, 31) */
+  --dz-test-absence: #E7E1D5;      /* repère de missions.test.ts (contrôle 32), gardé */
+  --dz-test-badge-envoye: #EFEAE0; /* repère de missions.test.ts (contrôle 33), gardé */
+  --dz-vert-trait: #2FA36B;        /* traits et segments seulement (jamais sous du texte) */
+  --dz-a-envoyer-fond: #FFE4A8; --dz-a-envoyer-texte: #9A3412; --dz-a-envoyer-trait: #C98500; --dz-a-envoyer-texte-2: #7A3A00;
+  /* à envoyer ≠ après-midi : fond ΔE 20,3 (était 2,1), trait séparé du trait après-midi. Texte 5,89:1 */
+  --dz-en-cours-fond: #E7F6EE; --dz-en-cours: #2FA36B; --dz-en-cours-texte: #17663F; --dz-en-cours-vif: #2ED3A0;
+  --dz-prevu-trait: #9C907E;  /* pointillé 1.5px */
+  --dz-telephone-fond: #E6DDCD;
+  --dz-comptable-fond: #EFE9DE;
+  --dz-erreur-fond: #FCE4E1; --dz-erreur: #C62828; --dz-erreur-bord-doux: #F0B8AE; --dz-erreur-texte-2: #7A2A22; --dz-erreur-vif: #FF6B6B; --dz-erreur-texte: #8E1B14; --dz-erreur-sombre: #3A1414;
+  --dz-oubli: #FF6B3D; --dz-oubli-sombre: #3A1A14;
+  --dz-cloture: #655B50; --dz-cloture-sombre: #1F1B17;
+  --dz-maintenant: #C62828;
+
+  /* --- créneaux (constantes TS : day-part.ts) --- */
+  /* matin inchangé ; soir = valeur rejouée sur le dépôt : matin/soir ΔE 15,02, réunion/soir 11,81 (test:creneaux 5/5) */
+  --dz-matin: #DDEBFA;      --dz-matin-trait: #4A8FE0;
+  --dz-apres-midi: #FCE3CF; --dz-apres-midi-trait: #EE8A43;
+  --dz-soir: #EAD6F4;       --dz-soir-trait: #9A6FD6;
+  --dz-journee: #FFFFFF;    --dz-journee-trait: #15120F;
+  /* réunion : valeurs rejouées sur le dépôt (test:missions 19/19). Pas de barre à gauche (missions.ts:144). */
+  --dz-reunion: #FFE2EC;
+  --dz-reunion-trait: #B7366A;     /* bord ET texte de l'heure (missions-worker.tsx:23) : 4,63:1 sur le fond ; ΔE 10,93 de la barre de chantier la plus proche */
+  --dz-jour-courant-entete: #FFF3CC;
+  --dz-jour-courant-case: #FFF6DB;
+
+  /* --- absences (motif rayé 135°) --- */
+  --dz-conge-a: #EFE6D2;      --dz-conge-b: #E4D6B8;
+  --dz-maladie-a: #F1E2E2;    --dz-maladie-b: #E7D2D2;
+  --dz-intemperie-a: #DCE6EE; --dz-intemperie-b: #CBD9E4;
+  --dz-repos-a: #E7E5DD;      --dz-repos-b: #D8D5CA;
+  /* Absences : le salarié reprend l'angle (45°) et les teintes d'admin-planning.tsx:529-534 (bureau = borne = salarié).
+     Les 6 valeurs ci-dessus sont des propositions à remplacer par celles du code ; repos à ajouter côté code si absent. */
+  --dz-absence-sombre-a: #3A3129; --dz-absence-sombre-b: #2A241E;  /* bande des jours (fond noir) */
+
+  /* --- 7 couleurs de chantier (CHANTIER_PALETTES : bar / tagBg / tagText). Barres ≥ ΔE 58 du fond de réunion ;
+         texte d'étiquette ≥ 5,98:1. La bande de gauche des cartes reste le CRÉNEAU ; le chantier n'apparaît qu'en pastille. --- */
+  --dz-chantier-1: #1D5FA8; --dz-chantier-1-fond: #DFE9F3; --dz-chantier-1-texte: #1B4C82;
+  --dz-chantier-2: #1F7A4D; --dz-chantier-2-fond: #E0ECE6; --dz-chantier-2-texte: #1C603D;
+  --dz-chantier-3: #B4471F; --dz-chantier-3-fond: #F5E5E0; --dz-chantier-3-texte: #8C3A1B;
+  --dz-chantier-4: #6B4FB8; --dz-chantier-4-fond: #EAE6F5; --dz-chantier-4-texte: #56408E;
+  --dz-chantier-5: #8A6A00; --dz-chantier-5-fond: #EFEADB; --dz-chantier-5-texte: #6D5404;
+  --dz-chantier-6: #2E6E78; --dz-chantier-6-fond: #E2EBEC; --dz-chantier-6-texte: #28575E;
+  --dz-chantier-7: #7A3E1D; --dz-chantier-7-fond: #ECE4DF; --dz-chantier-7-texte: #61331A;
+  --dz-chantier-autre: #15120F;
+
+  /* --- typographie --- */
+  --dz-font-ui: 'Archivo', system-ui, sans-serif;
+  --dz-font-chiffres: 'JetBrains Mono', ui-monospace, monospace;
+  /* échelle complète : toutes les tailles de la planche */
+  --dz-fs-12: 12px;  --dz-fs-125: 12.5px; --dz-fs-13: 13px; --dz-fs-14: 14px; --dz-fs-15: 15px; --dz-fs-16: 16px;
+  --dz-fs-19: 19px;  --dz-fs-22: 22px; --dz-fs-24: 24px; --dz-fs-26: 26px; --dz-fs-44: 44px;
+  --dz-fs-xs: 12px; --dz-fs-s: 12.5px; --dz-fs-m: 14px; --dz-fs-l: 16px; --dz-fs-xl: 22px;
+  --dz-fs-total: 52px; /* compteur du pointage (mono 700) */
+  --dz-fw-titre: 900;
+  --dz-tracking-titre: -.02em;
+  --dz-tracking-etiquette: .14em;
+
+  /* --- rayons --- */
+  --dz-r-xs: 6px;   /* étiquettes d'état */
+  --dz-r-s: 12px;   /* champs, boutons d'action */
+  --dz-r-m: 16px;   /* cartes chantier, tuiles */
+  --dz-r-l: 22px;   /* carte du pointage */
+  --dz-r-sheet: 28px;
+  --dz-r-pill: 999px;
+
+  /* --- espacements --- */
+  --dz-sp-1: 4px; --dz-sp-2: 6px; --dz-sp-3: 8px; --dz-sp-4: 10px; --dz-sp-5: 12px; --dz-sp-6: 14px; --dz-sp-7: 18px; --dz-sp-8: 24px;
+
+  /* --- zones tactiles --- */
+  --dz-tap: 44px;        /* minimum */
+  --dz-tap-main: 56px;   /* + / QR / Envoyer ma journée */
+  --dz-tap-tile: 64px;   /* Pauses / Panier */
+
+  /* --- ombres --- */
+  --dz-ombre-bouton: inset 0 -4px 0 #D9A200;
+  --dz-ombre-flottant: 0 12px 30px rgba(21,18,15,.35);
+  --dz-voile: rgba(21,18,15,.5);
+
+  /* --- durées --- */
+  --dz-t-rapide: 120ms;
+  --dz-t-normal: 200ms;
+  --dz-t-feuille: 260ms;
+  --dz-t-pulsation: 1400ms;
+}
+
+.dz-sombre { --ring: var(--dz-ring-sur-noir); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dz-salarie *, .dz-portail *, .bt-skin * { animation-duration: 0s !important; transition-duration: 0s !important; }
+}
+
+/* Fenêtres (dialog / alert-dialog) : valeurs demandées pour components/ui
+   rayon 28px en haut (feuille du bas) / 20px (centrée), liseré haut 4px var(--dz-jaune),
+   voile rgba(21,18,15,.5), ombre 0 30px 80px rgba(21,18,15,.4), entrée 260ms ease-out. */

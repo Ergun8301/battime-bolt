@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#E9E2D4}
+a{color:#15120F}a:hover{color:#B88A00}
+button{font-family:inherit}
+@keyframes bxPulse{0%{box-shadow:0 0 0 0 rgba(47,163,107,.55)}100%{box-shadow:0 0 0 8px rgba(47,163,107,0)}}
+@keyframes bxShimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+</style>
+</helmet>
+
+<section style="padding:64px 64px 96px;font-family:'Archivo',system-ui,sans-serif;color:#15120F;display:flex;flex-direction:column;gap:40px">
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:1100px">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">DOSSIER · ÉCRAN SALARIÉ · /POSEUR + /POINTER · 390 × 844</span>
+    <span style="font-weight:900;font-size:64px;line-height:.95;letter-spacing:-.04em">Tous les états de « Ma journée »</span>
+    <span style="font-size:17px;line-height:1.5;color:#3A332B;text-wrap:pretty">Direction 1c retenue + bande des 7 jours + mini-frise. Chaque écran porte un code (E01…) et les capacités S qu'il couvre ; la correspondance complète est dans <b>design_handoff_salarie/README.md</b>. Données fictives (« Villa Exemple », « Sam Exemple »). Textes tutoyés là où l'écran tutoie aujourd'hui, vouvoyés sur /pointer.</span>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">BANDE DES JOURS · 8 ÉTATS</span>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;background:#15120F;border-radius:22px;padding:20px;max-width:1300px">
+      <sc-for list="{{ stripStates }}" as="s" hint-placeholder-count="8">
+        <div style="display:flex;align-items:center;gap:12px;width:300px">
+          <span style="width:52px;height:60px;flex:none;border-radius:14px;border:{{ s.bd }};background:{{ s.bg }};color:{{ s.fg }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+            <span style="font-size:12px;font-weight:700;opacity:{{ s.op }}">{{ s.l }}</span>
+            <span style="font-weight:900;font-size:16px;opacity:{{ s.op }}">{{ s.n }}</span>
+            <span style="height:16px;min-width:16px;padding:0 3px;border-radius:8px;background:{{ s.dot }};color:{{ s.dotFg }};font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ s.mark }}</span>
+          </span>
+          <div style="display:flex;flex-direction:column;gap:2px;color:#F2EDE3;min-width:0"><span style="font-weight:900;font-size:15px">{{ s.t }}</span><span style="font-size:12px;color:rgba(242,237,227,.7);line-height:1.35">{{ s.d }}</span></div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px;max-width:1300px">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">MINI-FRISE · RÈGLE D'ÉCHELLE</span>
+    <span style="font-size:15px;line-height:1.5;color:#3A332B;max-width:1000px">La frise va de <b>l'heure pleine qui précède le premier début, moins 1 h</b>, à <b>l'heure pleine qui suit la dernière fin, plus 1 h</b>. Sont pris en compte : lignes notées, pointage en cours (fin = maintenant), prévu du bureau. Largeur minimale 8 h (élargie autour du centre). Une fin plus tôt que le début passe minuit : l'axe continue après 24 h et le repère est écrit « minuit ». Sans aucune ligne : axe sur l'horaire de base de l'entreprise, piste vide, texte « Aucune heure notée ». Trois graduations au plus (début, milieu, fin), 12 px. Informative : <code>aria-hidden</code>, non tactile ; le total et les cartes portent l'information.</span>
+    <div style="display:flex;flex-wrap:wrap;gap:16px">
+      <sc-for list="{{ friseDemos }}" as="f" hint-placeholder-count="4">
+        <div style="width:360px;display:flex;flex-direction:column;gap:8px">
+          <span style="font-weight:900;font-size:16px">{{ f.name }}</span>
+          <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:16px;padding:10px 12px 8px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.06em;color:#5B534A"><span>MA JOURNÉE</span><span>{{ f.b.range }}</span></div>
+            <div style="position:relative;height:18px;border-radius:8px;background:#EFE7D9">
+              <sc-for list="{{ f.b.segs }}" as="g" hint-placeholder-count="2"><span style="position:absolute;top:{{ g.t }};bottom:{{ g.bt }};left:{{ g.l }};width:{{ g.w }};border-radius:6px;background:{{ g.bg }};border:{{ g.bd }}"></span></sc-for>
+              <sc-if value="{{ f.b.hasMid }}"><span style="position:absolute;top:-3px;bottom:-3px;left:{{ f.b.midP }};width:1px;background:#15120F"></span></sc-if><sc-if value="{{ f.b.hasNow }}"><span style="position:absolute;top:-4px;bottom:-4px;left:{{ f.b.now }};width:2px;background:#C62828"></span></sc-if>
+              <sc-if value="{{ f.b.isEmpty }}"><span style="position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#5B534A">Aucune heure notée</span></sc-if>
+            </div>
+            <div style="position:relative;height:16px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#5B534A"><sc-for list="{{ f.b.ticks }}" as="t" hint-placeholder-count="3"><span style="position:absolute;top:0;left:{{ t.p }};transform:{{ t.tx }};white-space:nowrap;color:{{ t.c }};font-weight:{{ t.fw }}">{{ t.l }}</span></sc-for></div>
+            <sc-if value="{{ f.b.hasWarn }}"><span style="font-size:12px;font-weight:800;color:#8E1B14">{{ f.b.warn }}</span></sc-if>
+          </div>
+          <span style="font-size:13px;color:#5B534A;line-height:1.4">{{ f.note }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:40px;max-width:1300px">
+    <div style="display:flex;flex-direction:column;gap:14px;width:420px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">BOUTON D'ENVOI · 6 VALEURS (EtatEnvoi)</span>
+      <sc-for list="{{ sendStates }}" as="e" hint-placeholder-count="6">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#15120F">'{{ e.k }}'</span>
+          <span style="height:56px;border-radius:16px;background:{{ e.bg }};color:{{ e.fg }};box-shadow:{{ e.sh }};font-size:16px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ e.t }}</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#655B50">{{ e.h }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;width:420px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">FOCUS · ANNEAU DOUBLE (--dz-focus)</span>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1;height:120px;border-radius:16px;background:#F2EDE3;border:1px solid #E3DACB;display:flex;align-items:center;justify-content:center"><span style="height:48px;padding:0 18px;border-radius:999px;background:#FFFDF8;border:1.5px solid #D6CBB7;box-shadow:0 0 0 2px #FFFDF8, 0 0 0 4px #15120F;display:flex;align-items:center;font-size:16px;font-weight:800">Corriger</span></div>
+        <div style="flex:1;height:120px;border-radius:16px;background:#15120F;display:flex;align-items:center;justify-content:center"><span style="width:44px;height:44px;border-radius:50%;background:#FFC21A;color:#15120F;box-shadow:0 0 0 2px #FFFDF8, 0 0 0 4px #15120F;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900">✦</span></div>
+      </div>
+      <span style="font-size:14px;line-height:1.45;color:#3A332B">2 px crème à l'intérieur + 2 px encre à l'extérieur. Sur clair, l'encre se voit (16:1) ; sur noir, la crème se voit (16:1). Même anneau partout, en-tête et fenêtres comprises. <code>--ring</code> passe au jaune dans <code>.dz-sombre</code>.</span>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:48px 40px;align-items:flex-start">
+    <sc-for list="{{ screens }}" as="s" hint-placeholder-count="6">
+      <div id="{{ s.id }}" style="display:flex;flex-direction:column;gap:12px;width:400px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="height:30px;padding:0 10px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;display:flex;align-items:center">{{ s.id }}</span>
+          <span style="font-weight:900;font-size:20px;letter-spacing:-.02em;line-height:1.1">{{ s.name }}</span>
+        </div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#755800;line-height:1.4">{{ s.covers }}</span>
+        <div style="width:{{ s.fw }};height:{{ s.fh }};border-radius:48px;background:#15120F;padding:10px;box-shadow:0 24px 60px rgba(21,18,15,.22)">
+          <div style="position:relative;width:100%;height:100%;border-radius:40px;overflow:hidden;background:#F2EDE3;display:flex;flex-direction:column">
+
+            <sc-if value="{{ s.isPointer }}">
+              <div style="flex:1;background:{{ s.p.bg }};color:{{ s.p.fg }};display:flex;flex-direction:column;padding:56px 24px 28px;gap:18px">
+                <div style="font-weight:800;font-size:20px">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.16em;color:{{ s.p.kc }}">{{ s.p.kicker }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:{{ s.p.bigFs }};line-height:1;letter-spacing:-.04em">{{ s.p.big }}</span>
+                  <span style="font-weight:900;font-size:26px;letter-spacing:-.02em;line-height:1.1">{{ s.p.title }}</span>
+                  <span style="font-size:15px;line-height:1.45;opacity:.85">{{ s.p.sub }}</span>
+                  <sc-if value="{{ s.p.hasField }}"><div style="display:flex;flex-direction:column;gap:6px"><span style="font-weight:800;font-size:14px">{{ s.p.fieldL }}</span><div style="min-height:52px;border-radius:12px;background:#FFFDF8;color:#15120F;display:flex;align-items:center;padding:0 16px;font-size:16px">{{ s.p.fieldV }}</div></div></sc-if>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ s.p.btns }}" as="b" hint-placeholder-count="2">
+                    <button style="height:56px;border-radius:999px;border:{{ b.bd }};background:{{ b.bg }};color:{{ b.fg }};font-size:16px;font-weight:800">{{ b.l }}</button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ s.isApp }}">
+              <div style="background:#15120F;color:#F2EDE3;padding:42px 14px 12px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                  <sc-if value="{{ s.hasBack }}"><span aria-label="Retour à ma journée" style="width:44px;height:44px;flex:none;border-radius:50%;border:1px solid rgba(242,237,227,.3);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800">‹</span></sc-if><div style="flex:1;display:flex;flex-direction:column;min-width:0"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.16em;color:{{ s.kc }}">{{ s.kicker }}</span><span style="font-weight:900;font-size:22px;letter-spacing:-.02em">{{ s.title }}</span></div>
+                  <sc-if value="{{ s.hdrClose }}"><span aria-label="Fermer l'assistant" style="width:44px;height:44px;flex:none;border-radius:50%;border:1px solid rgba(242,237,227,.3);display:flex;align-items:center;justify-content:center;font-size:16px">✕</span></sc-if>
+                  <sc-if value="{{ s.hdrStd }}">
+                  <div style="display:flex;gap:8px;flex:none">
+                    <button aria-label="Assistant BEMEXO" style="width:44px;height:44px;border-radius:50%;border:0;background:#FFC21A;color:#15120F;font-size:17px;font-weight:900">✦</button>
+                    <span aria-label="Mon compte et menu" style="width:44px;height:44px;border-radius:50%;border:2px solid rgba(242,237,227,.35);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px">SG</span>
+                  </div>
+                  </sc-if>
+                </div>
+                <sc-if value="{{ s.hasStrip }}">
+                  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+                    <sc-for list="{{ s.strip }}" as="d" hint-placeholder-count="7">
+                      <span style="height:60px;border-radius:14px;border:{{ d.bd }};background:{{ d.bg }};color:{{ d.fg }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+                        <span style="font-size:12px;font-weight:700;opacity:{{ d.op }}">{{ d.l }}</span>
+                        <span style="font-weight:900;font-size:16px;opacity:{{ d.op }}">{{ d.n }}</span>
+                        <span style="height:16px;min-width:16px;padding:0 3px;border-radius:8px;background:{{ d.dot }};color:{{ d.dotFg }};font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ d.mark }}</span>
+                      </span>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ s.hasHdrNote }}">
+                  <div style="display:flex;align-items:center;gap:8px;min-height:44px;padding:8px 12px;border-radius:12px;background:{{ s.hdrNote.bg }};font-size:13px;font-weight:700;line-height:1.3"><span style="width:8px;height:8px;flex:none;border-radius:50%;background:{{ s.hdrNote.dot }}"></span>{{ s.hdrNote.t }}<span style="margin-left:auto;flex:none;color:#FFC21A;font-weight:800;font-size:16px">{{ s.hdrNote.cta }}</span></div>
+                </sc-if>
+              </div>
+
+              <div style="flex:1;overflow:hidden;padding:12px 14px 170px;display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:max-content;gap:10px">
+                <sc-for list="{{ s.blocks }}" as="b" hint-placeholder-count="4">
+                  <sc-if value="{{ b.isMsg }}">
+                    <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-radius:16px;background:{{ b.bg }};border:{{ b.bd }};color:{{ b.fg }}">
+                      <span style="font-weight:900;font-size:15px;line-height:1.25">{{ b.title }}</span>
+                      <sc-if value="{{ b.hasSub }}"><span style="font-size:13px;line-height:1.4;opacity:.9;white-space:pre-line">{{ b.sub }}</span></sc-if>
+                      <sc-if value="{{ b.hasBtn }}"><button style="align-self:flex-start;margin-top:4px;height:44px;padding:0 18px;border-radius:999px;border:1.5px solid currentColor;background:transparent;color:inherit;font-size:16px;font-weight:800">{{ b.btn }}</button></sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isRem }}">
+                    <div style="display:flex;gap:6px">
+                      <sc-for list="{{ b.items }}" as="r" hint-placeholder-count="2">
+                        <span style="flex:1;min-height:44px;padding:0 8px;border-radius:14px;background:{{ r.bg }};border:{{ r.bd }};color:{{ r.fg }};display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;font-size:16px">{{ r.l }}</span>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isTc }}">
+                    <div style="background:{{ b.bg }};color:#F2EDE3;border-radius:22px;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+                      <span style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.14em;color:{{ b.kc }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ b.kc }}"></span>{{ b.kicker }}</span>
+                      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:{{ b.bigFs }};line-height:1;letter-spacing:-.04em">{{ b.big }}</span><span style="font-size:13px;color:rgba(242,237,227,.75);text-align:right;line-height:1.3;white-space:pre-line">{{ b.side }}</span></div>
+                      <sc-if value="{{ b.hasInput }}"><span style="font-size:15px;font-weight:800">{{ b.ask }}</span><div style="height:52px;border-radius:14px;background:#F2EDE3;color:#15120F;display:flex;align-items:center;padding:0 16px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px">{{ b.input }}</div></sc-if>
+                      <sc-if value="{{ b.hasNote }}"><span style="font-size:12.5px;line-height:1.4;color:#FFC21A">{{ b.note }}</span></sc-if>
+                      <button style="height:52px;border-radius:999px;border:0;background:{{ b.btnBg }};color:{{ b.btnFg }};font-size:16px;font-weight:800">{{ b.btn }}</button>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isTiles }}">
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                      <div style="background:{{ b.kBg }};border:1px solid #E3DACB;border-radius:18px;padding:12px 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px">
+                        <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;color:#5B534A">{{ b.kLabel }}</span>
+                          <span style="display:flex;align-items:baseline;gap:3px;color:{{ b.kFg }}"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:44px;line-height:1;letter-spacing:-.04em">{{ b.total }}</span><span style="font-weight:800;font-size:16px">h</span></span>
+                          <span style="font-size:12.5px;font-weight:600;color:#5B534A;line-height:1.3">{{ b.kSub }}</span>
+                        </div>
+                        <div aria-hidden="true" style="flex:none;display:flex;gap:4px;align-items:flex-end">
+                          <sc-for list="{{ b.bars }}" as="w" hint-placeholder-count="7"><div style="width:14px;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:48px;display:flex;align-items:flex-end"><span style="display:block;width:14px;height:{{ w.h }};border-radius:4px;background:{{ w.bg }};border:{{ w.bd }}"></span></div><span style="font-size:12px;font-weight:{{ w.fw }};color:{{ w.c }}">{{ w.l }}</span></div></sc-for>
+                        </div>
+                      </div>
+                      <sc-if value="{{ b.hasStats }}"><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">
+                      <sc-for list="{{ b.items }}" as="t" hint-placeholder-count="4">
+                        <span style="min-height:60px;border-radius:14px;background:{{ t.bg }};border:{{ t.bd }};color:{{ t.fg }};padding:8px 9px;display:flex;flex-direction:column;justify-content:space-between;gap:2px;min-width:0"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.04em">{{ t.k }}</span><span style="font-weight:900;font-size:{{ t.fs }};font-family:{{ t.ff }};line-height:1.15">{{ t.v }}</span></span>
+                      </sc-for>
+                    </div></sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isFrise }}">
+                    <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:16px;padding:10px 12px 8px;display:flex;flex-direction:column;gap:6px" aria-hidden="true">
+                      <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.06em;color:#5B534A"><span>MA JOURNÉE</span><span>{{ b.range }}</span></div>
+                      <div style="position:relative;height:18px;border-radius:8px;background:#EFE7D9">
+                        <sc-for list="{{ b.segs }}" as="g" hint-placeholder-count="3">
+                          <span style="position:absolute;top:{{ g.t }};bottom:{{ g.bt }};left:{{ g.l }};width:{{ g.w }};border-radius:6px;background:{{ g.bg }};border:{{ g.bd }}"></span>
+                        </sc-for>
+                        <sc-if value="{{ b.hasMid }}"><span style="position:absolute;top:-3px;bottom:-3px;left:{{ b.midP }};width:1px;background:#15120F"></span></sc-if><sc-if value="{{ b.hasNow }}"><span style="position:absolute;top:-4px;bottom:-4px;left:{{ b.now }};width:2px;background:#C62828;border-radius:1px"></span></sc-if>
+                      </div>
+                      <div style="position:relative;height:16px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#5B534A"><sc-for list="{{ b.ticks }}" as="t" hint-placeholder-count="3"><span style="position:absolute;top:0;left:{{ t.p }};transform:{{ t.tx }};white-space:nowrap;color:{{ t.c }};font-weight:{{ t.fw }}">{{ t.l }}</span></sc-for></div>
+                      <sc-if value="{{ b.hasWarn }}"><span style="font-size:12px;font-weight:800;color:#8E1B14">{{ b.warn }}</span></sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isLabel }}">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.16em;color:#755800;margin-top:2px">{{ b.l }}</span>
+                  </sc-if>
+                  <sc-if value="{{ b.isCard }}">
+                    <div role="button" style="position:relative;background:{{ b.bg }};border:{{ b.bd }};color:{{ b.fg }};border-radius:16px;padding:10px 14px 12px 18px;display:flex;flex-direction:column;gap:4px;overflow:hidden">
+                      <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:{{ b.stripe }}"></span>
+                      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;min-width:0"><span style="flex:none;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.06em;padding:4px 7px;border-radius:6px;background:{{ b.tagBg }};color:{{ b.tagFg }}">{{ b.tag }}</span><span style="min-width:0;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;color:{{ b.timeFg }};text-align:right">{{ b.time }}</span></div>
+                      <span style="font-weight:900;font-size:16px;line-height:1.2;max-height:38.4px;overflow:hidden;overflow-wrap:anywhere;text-decoration:{{ b.deco }}">{{ b.title }}</span>
+                      <span style="font-size:13px;color:{{ b.subFg }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ b.ville }}</span>
+                      <sc-if value="{{ b.hasExtra }}"><div style="margin-top:3px;padding:8px 10px;border-radius:10px;background:{{ b.exBg }};color:{{ b.exFg }};font-size:12.5px;line-height:1.35">{{ b.extra }}</div></sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isGap }}">
+                    <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:14px;background:{{ b.bg }};border:{{ b.bd }}">
+                      <span style="flex:1;font-size:13px;line-height:1.3">{{ b.txt }}</span>
+                      <span style="height:44px;padding:0 14px;border-radius:12px;border:1.5px solid {{ b.rBd }};background:{{ b.rBg }};color:{{ b.rFg }};display:flex;align-items:center;font-weight:800;font-size:16px">Route</span>
+                      <span style="height:44px;padding:0 14px;border-radius:12px;border:1.5px solid {{ b.pBd }};background:{{ b.pBg }};color:{{ b.pFg }};display:flex;align-items:center;font-weight:800;font-size:16px">Pause</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isTasks }}">
+                    <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:16px;padding:10px 14px;display:flex;flex-direction:column;gap:2px">
+                      <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#5B534A;padding:2px 0 4px"><span>TÂCHES DU JOUR</span><span style="font-weight:700;color:#15120F">{{ b.count }}</span></div>
+                      <sc-for list="{{ b.items }}" as="t" hint-placeholder-count="3">
+                        <div style="display:flex;align-items:center;gap:12px;min-height:44px"><span style="width:26px;height:26px;flex:none;border-radius:8px;border:2px solid #15120F;background:{{ t.bg }};color:#FFC21A;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900">{{ t.c }}</span><span style="flex:1;font-size:14px;font-weight:700;text-decoration:{{ t.deco }}">{{ t.l }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5B534A">{{ t.h }}</span></div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isMeet }}">
+                    <div style="position:relative;background:#FFE2EC;border:1.5px solid #B7366A;border-radius:16px;padding:12px 14px;display:flex;justify-content:space-between;gap:8px;overflow:hidden">
+                      <div style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:900;font-size:15px">{{ b.title }}</span><span style="font-size:12.5px;color:#5B534A">{{ b.sub }}</span></div>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#B7366A">{{ b.time }}</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isEmpty }}">
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:34px 18px;border-radius:18px;border:1.5px dashed #D6CBB7;text-align:center">
+                      <span style="font-weight:900;font-size:19px">{{ b.title }}</span>
+                      <span style="font-size:13.5px;color:#5B534A;line-height:1.4">{{ b.sub }}</span>
+                      <sc-if value="{{ b.hasBtn }}"><button style="margin-top:4px;height:48px;padding:0 20px;border-radius:999px;border:1.5px solid #15120F;background:#FFFDF8;font-size:16px;font-weight:800">{{ b.btn }}</button></sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isSkel }}">
+                    <div style="height:{{ b.h }};border-radius:{{ b.r }};background:linear-gradient(90deg,#E6DDCD 0,#F3ECE0 50%,#E6DDCD 100%);background-size:800px 100%;animation:bxShimmer 1.2s linear infinite"></div>
+                  </sc-if>
+                  <sc-if value="{{ b.isDay }}">
+                    <div style="display:flex;align-items:center;gap:12px;min-height:60px;padding:8px 12px;border-radius:16px;background:{{ b.bg }};border:{{ b.bd }}">
+                      <div style="width:44px;flex:none;display:flex;flex-direction:column;align-items:center"><span style="font-size:12px;font-weight:700;color:#5B534A">{{ b.dl }}</span><span style="font-weight:900;font-size:19px">{{ b.dn }}</span></div>
+                      <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-weight:800;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ b.main }}</span><span style="font-size:12px;color:#5B534A;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ b.sub }}</span></div>
+                      <span style="flex:none;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;padding:4px 7px;border-radius:6px;background:{{ b.tagBg }};color:{{ b.tagFg }}">{{ b.tag }}</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isList }}">
+                    <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;overflow:hidden">
+                      <sc-for list="{{ b.items }}" as="x" hint-placeholder-count="3">
+                        <div style="display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 16px 6px {{ x.pl }};border-top:{{ x.bt }}"><div style="flex:1;display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-weight:{{ x.fw }};font-size:{{ x.fs }};color:{{ x.c }}">{{ x.l }}</span><sc-if value="{{ x.hasS }}"><span style="font-size:12px;color:#5B534A">{{ x.s }}</span></sc-if></div><sc-if value="{{ x.hasB }}"><span style="flex:none;height:24px;padding:0 9px;border-radius:999px;background:{{ x.bBg }};color:{{ x.bFg }};font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center">{{ x.b }}</span></sc-if><span style="color:#655B50">›</span></div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isChat }}">
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <sc-for list="{{ b.items }}" as="m" hint-placeholder-count="2">
+                        <span style="align-self:{{ m.al }};max-width:84%;padding:10px 14px;border-radius:{{ m.r }};background:{{ m.bg }};color:{{ m.fg }};border:{{ m.bd }};font-size:15px;line-height:1.4;white-space:pre-line">{{ m.t }}</span>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isHist }}">
+                    <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;overflow:hidden">
+                      <sc-for list="{{ b.items }}" as="h" hint-placeholder-count="3">
+                        <div style="border-top:{{ h.bt }};background:{{ h.bg }}">
+                          <div style="display:flex;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 16px">
+                            <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-weight:800;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ h.t }}</span><span style="font-size:12px;color:#5B534A">{{ h.d }}</span></div>
+                            <sc-if value="{{ h.normal }}"><span aria-label="Supprimer cette conversation" style="width:44px;height:44px;flex:none;border-radius:12px;border:1px solid #E3DACB;display:flex;align-items:center;justify-content:center;font-size:16px;color:#8E1B14">✕</span></sc-if>
+                          </div>
+                          <sc-if value="{{ h.confirm }}">
+                            <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px 12px 16px"><span style="font-size:14px;font-weight:700;color:#8E1B14">Supprimer cette conversation ?</span><div style="display:flex;gap:6px"><span style="flex:1;min-height:48px;border-radius:999px;border:1.5px solid #D6CBB7;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800">Non</span><span style="flex:1;min-height:48px;border-radius:999px;background:#C62828;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800">Oui</span></div></div>
+                          </sc-if>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ b.isBtns }}">
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ b.items }}" as="x" hint-placeholder-count="3">
+                        <span style="flex:{{ x.flex }};min-height:44px;padding:0 14px;border-radius:999px;border:{{ x.bd }};background:{{ x.bg }};color:{{ x.fg }};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px">{{ x.l }}</span>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </sc-for>
+              </div>
+
+              <sc-if value="{{ s.hasAsInput }}">
+                <div style="position:absolute;left:0;right:0;bottom:0;background:#F2EDE3;border-top:1px solid #E3DACB;padding:10px 14px 16px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span aria-label="Joindre une photo ou un PDF" style="width:48px;height:48px;flex:none;border-radius:50%;border:1.5px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;justify-content:center;font-size:18px">⧉</span>
+                    <span style="flex:1;min-height:48px;border-radius:24px;border:1.5px solid #15120F;background:#FFFFFF;display:flex;align-items:center;padding:0 16px;font-size:16px;color:{{ s.asInputC }}">{{ s.asInput }}</span>
+                    <span aria-label="Dicter" style="width:48px;height:48px;flex:none;border-radius:50%;border:1.5px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700">FR·TR</span>
+                    <span aria-label="Envoyer" style="width:48px;height:48px;flex:none;border-radius:50%;background:#FFC21A;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900">↑</span>
+                  </div>
+                  <span style="text-align:center;font-size:12px;color:#5B534A">{{ s.asHint }}</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{ s.hasBar }}">
+                <div style="position:absolute;left:0;right:0;bottom:0;background:#F2EDE3;border-top:1px solid #E3DACB;padding:10px 14px 12px;display:flex;flex-direction:column;gap:8px">
+                  <sc-if value="{{ s.hasSend }}">
+                    <div style="display:flex;gap:8px">
+                      <span aria-label="Ajouter un chantier" style="width:56px;height:56px;flex:none;border-radius:16px;border:2px solid #15120F;background:#FFFDF8;font-size:26px;font-weight:700;display:flex;align-items:center;justify-content:center;opacity:{{ s.plusOp }}">+</span>
+                      <span aria-label="Scanner la borne" style="width:56px;height:56px;flex:none;border-radius:16px;border:2px solid #15120F;background:#FFFDF8;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">QR</span>
+                      <span style="flex:1;height:56px;border-radius:16px;background:{{ s.send.bg }};color:{{ s.send.fg }};box-shadow:{{ s.send.sh }};font-size:16px;font-weight:900;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 8px">{{ s.send.t }}</span>
+                    </div>
+                    <sc-if value="{{ s.send.hasH }}"><span style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.08em;color:#655B50">{{ s.send.h }}</span></sc-if>
+                  </sc-if>
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">
+                    <sc-for list="{{ s.tabs }}" as="t" hint-placeholder-count="4">
+                      <span style="height:44px;border-radius:12px;background:{{ t.bg }};color:{{ t.fg }};display:flex;align-items:center;justify-content:center;gap:5px;font-size:16px;font-weight:800">{{ t.l }}<sc-if value="{{ t.dot }}"><span style="min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#C62828;color:#FFFFFF;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center">2</span></sc-if></span>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ s.hasOv }}">
+              <div style="position:absolute;left:0;right:0;top:0;bottom:0;background:rgba(21,18,15,.5)"></div>
+              <div role="{{ s.ov.role }}" aria-label="{{ s.ov.title }}" style="position:absolute;left:0;right:0;bottom:0;max-height:90%;background:#FFFDF8;border-radius:28px 28px 0 0;display:flex;flex-direction:column;overflow:hidden">
+                <div style="height:4px;background:{{ s.ov.accent }}"></div>
+                <div style="display:flex;justify-content:center;padding-top:8px"><span style="width:44px;height:5px;border-radius:3px;background:#D6CBB7"></span></div>
+                <div style="flex:none;padding:10px 20px 4px;display:flex;justify-content:space-between;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:6px"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#5B534A">{{ s.ov.kicker }}</span><span style="font-weight:900;font-size:24px;letter-spacing:-.03em;line-height:1.05">{{ s.ov.title }}</span></div>
+                  <span aria-label="Fermer" style="width:44px;height:44px;flex:none;border-radius:50%;border:1px solid #D6CBB7;display:flex;align-items:center;justify-content:center;font-size:15px">✕</span>
+                </div>
+                <div style="flex:1 1 auto;min-height:0;overflow:auto;padding:10px 20px 14px;display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:12px">
+                  <sc-if value="{{ s.ov.hasBody }}"><span style="font-size:14.5px;line-height:1.45;color:#3A332B">{{ s.ov.body }}</span></sc-if>
+                  <sc-for list="{{ s.ov.rows }}" as="r" hint-placeholder-count="2">
+                    <sc-if value="{{ r.isField }}">
+                      <div style="display:flex;flex-direction:column;gap:6px"><span style="font-weight:800;font-size:13.5px">{{ r.label }}</span><div style="min-height:50px;border-radius:12px;border:{{ r.bd }};background:{{ r.bg }};display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 14px;font-family:{{ r.ff }};font-weight:700;font-size:15px;color:{{ r.c }}"><span>{{ r.value }}</span><span style="font-family:'Archivo',sans-serif;font-size:12px;font-weight:600;color:#5B534A">{{ r.aside }}</span></div></div>
+                    </sc-if>
+                    <sc-if value="{{ r.isChips }}">
+                      <div style="display:flex;flex-direction:column;gap:6px"><span style="font-weight:800;font-size:13.5px">{{ r.label }}</span><div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ r.chips }}" as="c" hint-placeholder-count="4"><span style="min-height:44px;min-width:44px;padding:0 13px;border-radius:999px;border:1.5px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;opacity:{{ c.op }}">{{ c.l }}</span></sc-for></div></div>
+                    </sc-if>
+                    <sc-if value="{{ r.isNote }}">
+                      <span style="font-size:12.5px;line-height:1.4;padding:9px 12px;border-radius:10px;background:{{ r.bg }};color:{{ r.fg }}">{{ r.t }}</span>
+                    </sc-if>
+                    <sc-if value="{{ r.isTimes }}"><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end"><div style="display:flex;flex-direction:column;gap:6px"><span style="font-weight:800;font-size:13.5px">Début</span><span style="min-height:50px;border-radius:12px;border:{{ r.bd }};background:{{ r.bg }};display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px">{{ r.a }}</span></div><div style="display:flex;flex-direction:column;gap:6px"><span style="font-weight:800;font-size:13.5px">Fin</span><span style="min-height:50px;border-radius:12px;border:{{ r.bd }};background:{{ r.bg }};display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px">{{ r.b }}</span></div><span style="min-height:50px;display:flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#5B534A">{{ r.d }}</span></div></sc-if>
+                    <sc-if value="{{ r.isWheel }}"><div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px"><div style="display:flex;flex-direction:column"><sc-for list="{{ r.h }}" as="v" hint-placeholder-count="3"><span style="min-height:44px;border-radius:12px;background:{{ v.bg }};display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:{{ v.fw }};font-size:{{ v.fs }};color:{{ v.c }}">{{ v.l }}</span></sc-for></div><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:24px">:</span><div style="display:flex;flex-direction:column"><sc-for list="{{ r.m }}" as="v" hint-placeholder-count="3"><span style="min-height:44px;border-radius:12px;background:{{ v.bg }};display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:{{ v.fw }};font-size:{{ v.fs }};color:{{ v.c }}">{{ v.l }}</span></sc-for></div></div></sc-if>
+                    <sc-if value="{{ r.isCal }}"><div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px"><sc-for list="{{ r.days }}" as="d" hint-placeholder-count="7"><span style="min-height:52px;border-radius:10px;border:{{ d.bd }};background:{{ d.bg }};color:{{ d.fg }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:12px;font-weight:700"><span>{{ d.l }}</span><span style="font-size:16px;font-weight:900">{{ d.n }}</span></span></sc-for></div></sc-if>
+                    <sc-if value="{{ r.isRes }}"><div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;border:1px solid #E3DACB;background:#FFFFFF"><div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#5B534A">{{ r.d }}</span><span style="font-weight:800;font-size:15px">{{ r.c }}</span><span style="font-size:13px;color:#3A332B;line-height:1.35">{{ r.t }}</span></div><span style="flex:none;min-height:44px;padding:0 14px;border-radius:999px;background:#FFC21A;display:flex;align-items:center;font-size:16px;font-weight:800">{{ r.btn }}</span></div></sc-if>
+                    <sc-if value="{{ r.isAct }}"><span style="min-height:48px;padding:0 16px;border-radius:999px;border:1.5px solid {{ r.bd }};color:{{ r.fg }};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800">{{ r.l }}</span></sc-if>
+                    <sc-if value="{{ r.isPick }}">
+                      <div style="display:flex;align-items:center;gap:12px;min-height:52px;padding:6px 14px;border-radius:14px;border:1.5px solid {{ r.bd }};background:{{ r.bg }}"><span style="width:12px;height:12px;flex:none;border-radius:50%;background:{{ r.dot }}"></span><div style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:800;font-size:16px">{{ r.l }}</span><span style="font-size:12px;color:#5B534A">{{ r.s }}</span></div></div>
+                    </sc-if>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ s.ov.hasOpts }}"><div style="flex:none;border-top:1px solid #EFE7D9;background:#FFFDF8;padding:12px 20px 20px;display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ s.ov.opts }}" as="o" hint-placeholder-count="2">
+                    <span style="min-height:52px;padding:0 16px;border-radius:999px;border:{{ o.bd }};background:{{ o.bg }};color:{{ o.fg }};box-shadow:{{ o.sh }};display:flex;align-items:center;justify-content:center;text-align:center;font-size:16px;font-weight:800">{{ o.l }}</span>
+                  </sc-for>
+                </div></sc-if>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ s.hasPill }}">
+              <div style="position:absolute;left:14px;right:14px;top:56px;z-index:6;display:flex;align-items:center;gap:10px;padding:6px 6px 6px 8px;border-radius:999px;background:#15120F;color:#F2EDE3;box-shadow:0 14px 40px rgba(21,18,15,.45)">
+                <span style="width:36px;height:36px;flex:none;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900">✦</span>
+                <div style="flex:1;display:flex;flex-direction:column;min-width:0"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#FFC21A">ASSISTANT · EN ATTENTE</span><span style="font-size:13px;font-weight:700;line-height:1.3;overflow-wrap:anywhere">{{ s.pill }}</span></div>
+                <span style="flex:none;height:44px;padding:0 14px;border-radius:999px;border:1px solid rgba(242,237,227,.3);display:flex;align-items:center;font-size:16px;font-weight:800">Reprendre</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ s.hasToast }}">
+              <div data-sonner-toast="" style="position:absolute;left:14px;right:14px;bottom:{{ s.toast.b }};display:flex;align-items:center;gap:10px;padding:12px 8px 12px 16px;border-radius:16px;background:#15120F;color:#F2EDE3;box-shadow:0 12px 30px rgba(21,18,15,.35);font-size:13.5px;line-height:1.35;z-index:5"><span style="flex:1">{{ s.toast.t }}</span><sc-if value="{{ s.toast.hasA }}"><span style="flex:none;height:44px;padding:0 14px;border-radius:999px;background:#FFC21A;color:#15120F;display:flex;align-items:center;font-weight:800">{{ s.toast.a }}</span></sc-if></div>
+            </sc-if>
+          </div>
+        </div>
+        <span style="font-size:13px;color:#5B534A;line-height:1.45">{{ s.note }}</span>
+      </div>
+    </sc-for>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const INK='#15120F';
+const TINT={matin:['#DDEBFA','#4A8FE0'],apm:['#FCE3CF','#EE8A43'],soir:['#EAD6F4','#9A6FD6'],jour:['#FFFFFF','#15120F']};
+const crOf=t=>{if(!t)return'jour';const h=parseInt(t);return h<12?'matin':h<18?'apm':'soir';};
+const SS={
+  e:{bd:'1.5px solid transparent',bg:'#25201B',fg:'#F2EDE3',op:1,dot:'#1F7A4D',dotFg:'#FFFFFF',mark:'✓',t:'Envoyé',d:'Toutes les heures sont au bureau.'},
+  o:{bd:'2px solid #FF6B3D',bg:'#3A1A14',fg:'#F2EDE3',op:1,dot:'#FF6B3D',dotFg:INK,mark:'!',t:'À envoyer / oublié',d:'Jour passé planifié sans heures envoyées, ou lignes non envoyées.'},
+  T:{bd:'2px solid #F2EDE3',bg:'#FFC21A',fg:INK,op:1,dot:INK,dotFg:'#FFC21A',mark:'●',t:'Aujourd\'hui',d:'Fond jaune ; la pastille reprend l\'état du jour.'},
+  f:{bd:'1.5px dashed rgba(242,237,227,.3)',bg:'transparent',fg:'#F2EDE3',op:.6,dot:'transparent',dotFg:'rgba(242,237,227,.6)',mark:'·',t:'À venir',d:'Atténué, pointillé si du prévu. Jamais un oubli.'},
+  a:{bd:'1.5px solid transparent',bg:'repeating-linear-gradient(135deg,#3A3129 0 6px,#2A241E 6px 12px)',fg:'#F2EDE3',op:.85,dot:'#E6DDCD',dotFg:INK,mark:'C',t:'Absence',d:'Rayures + lettre : C congé, M maladie, I intempérie, R repos.'},
+  v:{bd:'1.5px solid transparent',bg:'#25201B',fg:'#F2EDE3',op:.6,dot:'transparent',dotFg:'transparent',mark:'',t:'Rien de prévu',d:'Jour passé sans planning ni heures.'},
+  c:{bd:'1.5px solid #655B50',bg:'#1F1B17',fg:'#F2EDE3',op:.7,dot:'#655B50',dotFg:INK,mark:'▣',t:'Clôturé',d:'Mois ou heures clôturés par le bureau : lecture seule.'},
+  r:{bd:'2px solid #C62828',bg:'#3A1414',fg:'#F2EDE3',op:1,dot:'#C62828',dotFg:'#FFFFFF',mark:'↺',t:'Renvoyé par le bureau',d:'Motif à lire, lignes à corriger puis renvoyer.'}
+};
+const DL=['L','M','M','J','V','S','D'],DN=[12,13,14,15,16,17,18];
+const strip=code=>code.split('').map((k,i)=>({k,l:DL[i],n:DN[i],...SS[k]}));
+const ST={
+  envoye:{bg:INK,bd:'1.5px solid '+INK,fg:'#F2EDE3',subFg:'rgba(242,237,227,.65)',timeFg:'#FFC21A',tag:'ENVOYÉ ✓',tagBg:'#1F7A4D',tagFg:'#FFFFFF'},
+  brouillon:{bg:'#FFFFFF',bd:'1.5px solid '+INK,fg:INK,subFg:'#5B534A',timeFg:INK,tag:'À ENVOYER',tagBg:'#FFE4A8',tagFg:'#9A3412'},
+  prevu:{bd:'1.5px dashed #9C907E',fg:INK,subFg:'#5B534A',timeFg:'#5B534A',tag:'PRÉVU',tagBg:'transparent',tagFg:'#5B534A'},
+  live:{bg:'#E7F6EE',bd:'1.5px solid #2FA36B',fg:INK,subFg:'#5B534A',timeFg:'#17663F',tag:'EN COURS',tagBg:'#1F7A4D',tagFg:'#FFFFFF',stripe:'#2FA36B'},
+  tel:{bg:'#FFFFFF',bd:'1.5px dashed '+INK,fg:INK,subFg:'#5B534A',timeFg:INK,tag:'SUR LE TÉLÉPHONE',tagBg:'#E6DDCD',tagFg:INK},
+  comptable:{bg:'#EFE9DE',bd:'1.5px solid #D6CBB7',fg:INK,subFg:'#5B534A',timeFg:'#5B534A',tag:'▣ CHEZ LE COMPTABLE',tagBg:INK,tagFg:'#FFC21A'},
+  retire:{bg:'#EFE9DE',bd:'1.5px solid #D6CBB7',fg:'#5B534A',subFg:'#655B50',timeFg:'#655B50',tag:'RETIRÉ',tagBg:'#E6DDCD',tagFg:'#5B534A',deco:'line-through'},
+  oublie:{bg:'#FCE4E1',bd:'1.5px solid #C62828',fg:INK,subFg:'#7A2A22',timeFg:'#8E1B14',tag:'SORTIE OUBLIÉE',tagBg:'#C62828',tagFg:'#FFFFFF',stripe:'#C62828'},
+  refus:{bg:'#FFFFFF',bd:'2px solid #C62828',fg:INK,subFg:'#5B534A',timeFg:'#8E1B14',tag:'À ENVOYER',tagBg:'#FFE4A8',tagFg:'#9A3412'},
+  renvoye:{bg:'#FFFFFF',bd:'2px solid #C62828',fg:INK,subFg:'#5B534A',timeFg:INK,tag:'À ENVOYER',tagBg:'#FFE4A8',tagFg:'#9A3412'}
+};
+const EX={bureau:['#FFF3CC','#5C4300'],err:['#FCE4E1','#8E1B14'],info:['#E6DDCD','#3A332B'],ok:['#E7F6EE','#17663F']};
+const card=(title,ville,start,end,st,x={})=>{const s=ST[st],t=TINT[crOf(start)];
+  const dur=x.dur||'';const time=x.time||(start?(end?start+' → '+end+(dur?' · '+dur:''):start+' → ?'):'heures à préciser');
+  return {isCard:true,title,ville,time,bg:s.bg||t[0],bd:s.bd,fg:s.fg,subFg:s.subFg,timeFg:s.timeFg,tag:x.tag||s.tag,tagBg:s.tagBg,tagFg:s.tagFg,stripe:s.stripe||t[1],deco:s.deco||'none',
+    hasExtra:!!x.extra,extra:x.extra||'',exBg:x.ex?EX[x.ex][0]:'',exFg:x.ex?EX[x.ex][1]:''};};
+const msg=(title,sub,tone,btn)=>{const T={warn:['#FFF3CC','1.5px solid #FFC21A','#5C4300'],err:['#FCE4E1','1.5px solid #C62828','#8E1B14'],off:['#E6DDCD','1.5px solid #655B50',INK],ok:['#E7F6EE','1.5px solid #2FA36B','#17663F'],dark:[INK,'1.5px solid '+INK,'#F2EDE3'],lock:['#EFE9DE','1.5px solid #655B50',INK]}[tone];
+  return {isMsg:true,title,sub:sub||'',hasSub:!!sub,bg:T[0],bd:T[1],fg:T[2],hasBtn:!!btn,btn:btn||''};};
+const rem=items=>({isRem:true,items:items.map(([l,k])=>({l,...({red:{bg:'#FCE4E1',bd:'0',fg:'#8E1B14'},light:{bg:'#FFFDF8',bd:'1px solid #E3DACB',fg:INK},yel:{bg:'#FFC21A',bd:'0',fg:INK}}[k])}))});
+const tc=(o)=>({isTc:true,bg:'#1B1713',kc:'#2ED3A0',bigFs:'52px',btnBg:'#F2EDE3',btnFg:INK,hasInput:false,ask:'',input:'',hasNote:false,note:'',...o});
+const WK={e:[INK,'0'],o:['#FFE4A8','2px solid #C98500'],T:['#FFC21A','1.5px solid '+INK],a:['repeating-linear-gradient(135deg,#E7E1D5 0 3px,#D6CBB7 3px 6px)','0'],f:['transparent','1.5px dashed #9C907E'],v:['#E3DACB','0'],c:['#D6CBB7','0'],r:['#FCE4E1','2px solid #C62828']};
+const hm=t=>{if(!t||t.indexOf(':')<0)return 0;const [h,m]=t.split(':').map(Number);return h+m/60;};
+const barsFor=(code,H,tH)=>code.split('').map((k,i)=>{const v=k==='T'?tH:k==='a'?10:k==='v'?0:k==='c'?(H[i]||0):(H[i]||0);return{l:DL[i],h:Math.max(6,Math.min(100,v/10*100))+'%',bg:WK[k][0],bd:WK[k][1],fw:k==='T'?900:600,c:k==='T'?INK:'#5B534A'};});
+const fmtH=x=>Math.floor(x)+':'+String(Math.round((x%1)*60)).padStart(2,'0');
+const tiles=(total,pause,panier,o={})=>{const ch=o.ch??2,pz=o.pz??'0:00',route=o.route??'0:00',code=o.code||'eoeTafv',dim=!!o.dim,H=o.week||[7.5,8,8.5,0,8,7.5,0],tH=o.todayH??hm(total);
+  const wk=code.split('').reduce((a,k,i)=>a+(k==='e'||k==='c'?(H[i]||0):k==='T'?tH:0),0);
+  const st=(k,v,x={})=>({k,v,bg:dim?'#EFE9DE':'#FFFDF8',bd:'1px solid '+(dim?'#D6CBB7':'#E3DACB'),fg:dim?'#5B534A':INK,ff:"'JetBrains Mono',monospace",fs:'16px',...(dim?{}:x)});
+  return {isTiles:true,H,tH,lockCode:!!o.code,hasStats:!o.noStats,kLabel:o.label||(dim?'▣ TOTAL · VERROUILLÉ':'TOTAL AUJOURD\'HUI'),total,kSub:o.sub||(ch+(ch>1?' chantiers':' chantier')+' · semaine '+fmtH(wk)),kBg:dim?'#EFE9DE':'#FFFDF8',kFg:dim?'#5B534A':INK,bars:barsFor(code,H,tH),
+    items:[st('CHANTIERS',String(ch)),pause==='ok'?st('PAUSES',pz):st('PAUSES',pause.replace(' ↓',''),{bg:'#FFE4A8',bd:'2px solid #C98500',fg:'#7A3A00',ff:"'Archivo',sans-serif",fs:'13px'}),st('ROUTE',route),
+      panier?st('PANIER','✓ Pris',{bg:INK,bd:'1px solid '+INK,fg:'#FFC21A',ff:"'Archivo',sans-serif"}):st('PANIER','Non pris',{ff:"'Archivo',sans-serif",fs:'14px'})]};};
+const pct=t=>{const [h,m]=t.split(':').map(Number);return Math.max(0,Math.min(100,((h*60+m)-420)/660*100));};
+const seg=(a,b,k)=>{const S={fait:[INK,'0'],envoyer:['#FFFFFF','1.5px solid '+INK],cours:['#2FA36B','0'],prevu:['rgba(238,138,67,.25)','1.5px dashed #9C907E'],trou:['repeating-linear-gradient(135deg,#FFE4A8 0 4px,#C98500 4px 6px)','0']}[k];return{l:pct(a)+'%',w:(pct(b)-pct(a))+'%',bg:S[0],bd:S[1]};};
+const toM=t=>{const [h,m]=t.split(':').map(Number);return h*60+m;};
+const SEGK={fait:[INK,'0'],envoyer:['#FFFFFF','1.5px solid '+INK],cours:['#2FA36B','0'],prevu:['rgba(238,138,67,.25)','1.5px dashed #9C907E'],trou:['repeating-linear-gradient(135deg,#FFE4A8 0 4px,#C98500 4px 6px)','0'],conflit:['repeating-linear-gradient(135deg,#FCE4E1 0 4px,#C62828 4px 7px)','1.5px solid #C62828']};
+// Règle : de (heure pleine <= premier début) - 1 h à (heure pleine >= dernière fin) + 1 h ; largeur mini 8 h ; minuit passé = +24 h.
+const frise=(segs,now,o={})=>{
+  const list=segs.map(([a,b,k,lane])=>{let s=toM(a),e=toM(b);if(e<=s)e+=1440;return{s,e,k,lane};});
+  for(let i=1;i<list.length;i++){if(list[i].s<list[0].s-360){list[i].s+=1440;list[i].e+=1440;}}
+  let nowM=now?toM(now):null;if(nowM!==null&&list.length&&nowM<list[0].s-360)nowM+=1440;
+  let lo,hi;
+  if(!list.length){const B=o.base||[8,17];lo=B[0]*60;hi=B[1]*60;}
+  else{lo=Math.floor(Math.min(...list.map(x=>x.s))/60)*60-60;hi=Math.ceil(Math.max(...list.map(x=>x.e),nowM||0)/60)*60+60;}
+  if(hi-lo<480){const c=(hi+lo)/2;lo=Math.floor((c-240)/60)*60;hi=lo+480;}
+  const P=m=>Math.max(0,Math.min(100,(m-lo)/(hi-lo)*100));
+  const hl=m=>{const h=Math.round(m/60);return h%24===0&&h>0?'minuit':(h%24)+'h';};
+  const mid=(lo<1440&&hi>1440)?1440:Math.round((lo+hi)/120)*60;
+  const lanes=list.some(x=>x.lane);
+  return {isFrise:true,range:o.range||(list.length?segs[0][0]+' → '+segs[segs.length-1][1]:'horaire de base'),
+    segs:list.map(x=>{const K=SEGK[x.k];return{l:P(x.s)+'%',w:(P(x.e)-P(x.s))+'%',bg:K[0],bd:K[1],t:lanes?(x.lane?'50%':'0'):'0',bt:lanes?(x.lane?'0':'50%'):'0'};}),
+    hasNow:nowM!==null,now:P(nowM||0)+'%',isEmpty:!list.length,
+    ticks:[lo,mid,hi].map((m,i)=>({l:hl(m),p:P(m)+'%',tx:i===0?'none':i===2?'translateX(-100%)':'translateX(-50%)',c:hl(m)==='minuit'?INK:'#5B534A',fw:hl(m)==='minuit'?800:500})),
+    hasMid:mid===1440,midP:P(1440)+'%',
+    hasWarn:!!o.warn,warn:o.warn||''};
+};
+const label=l=>({isLabel:true,l});
+const gap=(txt,ans)=>({isGap:true,txt,bg:ans?'#E6DDCD':'#FFE4A8',bd:ans?'1px solid #D6CBB7':'2px solid #C98500',
+  rBg:ans==='r'?INK:'#FFFDF8',rFg:ans==='r'?'#FFC21A':INK,rBd:ans==='r'?INK:'#D6CBB7',pBg:ans==='p'?INK:'#FFFDF8',pFg:ans==='p'?'#FFC21A':INK,pBd:ans==='p'?INK:'#D6CBB7'});
+const skel=(h,r)=>({isSkel:true,h,r:r||'16px'});
+const empty=(title,sub,btn)=>({isEmpty:true,title,sub,hasBtn:!!btn,btn:btn||''});
+const day=(dl,dn,main,sub,tag,k)=>{const K={e:['#1F7A4D','#FFFFFF'],o:['#FFE4A8','#9A3412'],a:['#E6DDCD',INK],f:['transparent','#5B534A'],T:['#FFC21A',INK],c:[INK,'#FFC21A'],r:['#FCE4E1','#8E1B14']}[k];
+  return {isDay:true,dl,dn,main,sub,tag,tagBg:K[0],tagFg:K[1],bg:k==='T'?'#FFF6DB':'#FFFDF8',bd:k==='T'?'2px solid #FFC21A':'1px solid #E3DACB'};};
+const list=items=>({isList:true,items:items.map((x,i)=>({pl:x.sub?'34px':'16px',fw:x.sub?600:800,fs:x.sub?'14px':'15px',c:x.c||INK,l:x.l,hasS:!!x.s,s:x.s||'',hasB:!!x.b,b:x.b||'',bBg:x.bBg||'#E6DDCD',bFg:x.bFg||INK,bt:i?'1px solid #EFE7D9':'0'}))});
+const btns=items=>({isBtns:true,items:items.map(([l,k,flex])=>({l,flex:flex||'1',...({y:{bg:'#FFC21A',fg:INK,bd:'0'},d:{bg:INK,fg:'#FFC21A',bd:'0'},o:{bg:'#FFFDF8',fg:INK,bd:'1.5px solid #D6CBB7'},r:{bg:'#FCE4E1',fg:'#8E1B14',bd:'1.5px solid #F0B8AE'}}[k])}))});
+const SEND={
+  off:{t:'Envoyer ma journée →',bg:'#D6CBB7',fg:'#5B534A',sh:'none',h:'HORS-LIGNE · L\'ENVOI ATTEND LE RÉSEAU'},
+  reste:{t:'Envoyer ce qui reste (2)',bg:INK,fg:'#FFC21A',sh:'none',h:'TRANSFÈRE LES SAISIES DU TÉLÉPHONE, PUIS ENVOIE'},
+  pret:{t:'Envoyer ma journée →',bg:'#FFC21A',fg:INK,sh:'inset 0 -4px 0 #D9A200',h:'LE POINTAGE EN COURS NE PART PAS'},
+  envoye:{t:'Journée envoyée ✓',bg:'#1F7A4D',fg:'#FFFFFF',sh:'none',h:'REÇUE PAR LE BUREAU'},
+  rien:{t:'Envoyer ma journée →',bg:'#E6DDCD',fg:'#655B50',sh:'none',h:'RIEN À ENVOYER'},
+  spin:{t:'Envoi…',bg:'#FFC21A',fg:INK,sh:'inset 0 -4px 0 #D9A200',h:'NE FERME PAS L\'APPLICATION'}
+};
+const TABS=(i,dot=true)=>['Journée','Semaine','Mois','Plus'].map((l,j)=>({l,dot:dot&&j===3,bg:i===j?INK:'transparent',fg:i===j?'#FFC21A':'#5B534A'}));
+const chip=(l,on,dis)=>({l,bg:on?'#FFC21A':dis?'#EFE9DE':'#FFFFFF',fg:dis?'#5B534A':INK,bd:on?INK:dis?'#E3DACB':'#D6CBB7',op:1});
+const opt=(l,k)=>({l,...({y:{bg:'#FFC21A',fg:INK,bd:'0',sh:'inset 0 -3px 0 #D9A200'},d:{bg:INK,fg:'#F2EDE3',bd:'0',sh:'none'},o:{bg:'transparent',fg:INK,bd:'1.5px solid #D6CBB7',sh:'none'},r:{bg:'transparent',fg:'#8E1B14',bd:'1.5px solid #C62828',sh:'none'},g:{bg:'#1F7A4D',fg:'#FFFFFF',bd:'0',sh:'none'}}[k])});
+const ov=(o)=>({role:'dialog',accent:'#FFC21A',kicker:'',hasBody:!!o.body,body:o.body||'',rows:[],opts:[],...o});
+const chat=items=>({isChat:true,items:items.map(([w,t])=>w==='me'?{al:'flex-end',t,bg:INK,fg:'#F2EDE3',bd:'0',r:'18px 18px 4px 18px'}:{al:'flex-start',t,bg:'#FFFDF8',fg:INK,bd:'1px solid #E3DACB',r:'18px 18px 18px 4px'})});
+const hist=items=>({isHist:true,items:items.map(([t,d,c],i)=>({t,d,confirm:!!c,normal:!c,bg:c?'#FCE4E1':'transparent',bt:i?'1px solid #EFE7D9':'0'}))});
+const field=(label,value,o={})=>({isField:true,label,value,bg:o.bg||'#FFFFFF',aside:o.aside||'',ff:o.mono===false?"'Archivo',sans-serif":"'JetBrains Mono',monospace",bd:o.bd||'1px solid #D6CBB7',c:o.c||INK});
+const chips=(label,arr)=>({isChips:true,label,chips:arr});
+const note=(t,k)=>({isNote:true,t,bg:(EX[k||'info'])[0],fg:(EX[k||'info'])[1]});
+const act=(l,k)=>({isAct:true,l,bd:k==='r'?'#C62828':'#D6CBB7',fg:k==='r'?'#8E1B14':INK});
+const times=(a,b,d)=>({isTimes:true,a,b,d,bg:'#FFFFFF',bd:'1px solid #D6CBB7'});
+const wcol=(arr,sel)=>arr.map((l,i)=>({l,bg:i===sel?'#FFF3CC':'transparent',fw:i===sel?700:500,fs:i===sel?'24px':'16px',c:i===sel?INK:'#5B534A'}));
+const wheel=(h,m,sh,sm)=>({isWheel:true,h:wcol(h,sh),m:wcol(m,sm)});
+const cal=days=>({isCal:true,days:days.map(([l,n,k])=>({l,n,...({on:{bg:'#FFC21A',fg:INK,bd:'2px solid '+INK},off:{bg:'#FFFFFF',fg:INK,bd:'1px solid #D6CBB7'},no:{bg:'#EFE9DE',fg:'#5B534A',bd:'1px dashed #D6CBB7'}}[k])}))});
+const res=(d,c,t,btn)=>({isRes:true,d,c,t,btn});
+const LONG='Résidence Les Jardins de la Doua – Bâtiment C lot 14';
+const pick=(l,s,dot,on)=>({isPick:true,l,s,dot,bg:on?'#FFF3CC':'#FFFFFF',bd:on?INK:'#E3DACB'});
+
+const MAIN_CARDS=[card('Maison Démo','Bron','07:30','11:30','brouillon',{dur:'4:00'}),gap('1:00 entre 11:30 et 12:30 — c\'était quoi ?'),card('Villa Exemple','Lyon',null,null,'live',{time:'en cours depuis 12:30',tag:'EN COURS · ⧉ 2'})];
+
+class Component extends DCLogic {
+  renderVals(){
+    const A=(o)=>({isApp:true,isPointer:false,hasStrip:true,kicker:'AUJOURD\'HUI',kc:'#FFC21A',title:'Jeudi 15 octobre',strip:strip('eoeTafv'),hasHdrNote:false,hdrNote:{},blocks:[],hasBar:true,hasSend:true,send:SEND.pret,plusOp:1,tabs:TABS(0),fw:'390px',fh:'844px',hasOv:false,ov:{rows:[],opts:[]},hasToast:false,toast:{},note:'',hdrStd:true,hdrClose:false,hasAsInput:false,asInput:'',asInputC:'#655B50',asHint:'',hasPill:false,pill:'',...o});
+    const AS=(o)=>A({hasStrip:false,hasBar:false,hdrStd:false,hdrClose:true,hasAsInput:true,kicker:'ASSISTANT BEMEXO · 18 QUESTIONS RESTANTES',title:'Bonjour Sam',asInput:'Votre question…',asHint:'Rien ne part avant « Envoyer » · français ou turc',...o});
+    const P=(o)=>({fw:'390px',fh:'844px',isApp:false,isPointer:true,hasOv:false,ov:{rows:[],opts:[]},hasToast:false,toast:{},hasBar:false,p:{bg:INK,fg:'#F2EDE3',kc:'#2ED3A0',bigFs:'64px',btns:[],...o.p},...o,p:{bg:INK,fg:'#F2EDE3',kc:'#2ED3A0',bigFs:'64px',btns:[],...o.p}});
+    const pb=(l,k)=>({l,...({y:{bg:'#FFC21A',fg:INK,bd:'0'},o:{bg:'transparent',fg:'inherit',bd:'1.5px solid currentColor'}}[k])});
+    const hdrNote={t:'Mardi 13 à envoyer',dot:'#FF6B3D',bg:'#3A1A14',cta:'Ouvrir ›'};
+    const mainBlocks=[rem([['1 réserve à lever ›','red'],['2 formations à voir ›','light']]),
+      tc({kicker:'POINTAGE EN COURS · DEPUIS 12:30',big:'2:42',side:'Villa Exemple\nLyon',btn:'Terminer ma journée'}),
+      tiles('6:42','1 à préciser ↓',false),frise([['07:30','11:30','envoyer'],['11:30','12:30','trou'],['12:30','15:12','cours'],['15:12','17:00','prevu']],'15:12'),
+      label('CHANTIERS DU JOUR'),...MAIN_CARDS,
+      {isMeet:true,title:'Réunion sécurité',sub:'Dépôt · toute l\'équipe · ne compte pas',time:'17:15'},
+      {isTasks:true,count:'1/3',items:[{l:'Ranger le dépôt',h:'matin',c:'✓',bg:INK,deco:'line-through'},{l:'Photos avant pose',h:'',c:'',bg:'transparent',deco:'none'},{l:'Rendre la clé',h:'17:00',c:'',bg:'transparent',deco:'none'}]}];
+
+    const screens=[
+      A({id:'E01',name:'Chargement',covers:'S102 · squelette au gabarit de l\'écran',hasStrip:false,title:'Ma journée',kicker:'…',hasSend:false,
+        blocks:[skel('44px','14px'),skel('150px','22px'),skel('64px'),skel('60px'),skel('70px'),skel('70px')],note:'Tant que les données ne sont pas lues : squelette gris, aucun bouton actif. Même gabarit pour Semaine, Mois, Historique, Congés (chargés à la demande).'}),
+      A({id:'E02',name:'Échec de chargement',covers:'S102 · « Impossible de charger tes données » · vue différée',hasStrip:false,title:'Ma journée',kicker:'ERREUR',kc:'#FF6B3D',send:SEND.rien,
+        blocks:[msg('Impossible de charger tes données','Vérifie le réseau, puis réessaie. Tes saisies sur le téléphone sont gardées.','err','Réessayer'),msg('Cet écran n\'a pas pu se charger…','Variante des onglets Semaine, Mois, Historique, Congés : nouvelle tentative automatique au retour du réseau.','off','Réessayer')],note:'Deux messages : données (bloquant) et vue différée (onglet). Le ✦ reste accessible.'}),
+      A({id:'E03',name:'Journée vide',covers:'S33 · S81 · S32',strip:strip('eeeTffv'),send:SEND.rien,
+        blocks:[tiles('0:00','ok',true,{ch:0}),empty('Aucun chantier aujourd\'hui.','Ajoute une intervention avec « + », ou reprends la journée d\'hier.','Copier la journée d\'hier')],note:'Panier cochable même sans ligne (posé sur la première). « Copier la journée d\'hier » : en ligne, mois ouvert, sans carte prévue.'}),
+      A({id:'E04',name:'Planifiée, rien saisi',covers:'S2 · S3 · S5 · S104',strip:strip('eeeTffv'),
+        blocks:[msg('+ 7:30 prévues par le bureau, pas encore confirmées','Touche une carte pour noter tes heures, ou confirme à l\'envoi.','warn'),tiles('0:00','ok',false,{ch:0}),label('PRÉVU AUJOURD\'HUI'),
+          card('Maison Démo','Bron','08:00','12:00','prevu',{tag:'PRÉVU · ⧉ 1'}),card('Villa Exemple','Lyon','13:30','17:00','prevu')],
+        note:'Le prévu est en pointillés, hors total. Suite défilée : E04b.'}),
+      A({id:'E04b',name:'Planifiée · défilé',covers:'S4 · S9',strip:strip('eeeTffv'),
+        blocks:[label('↑ DÉFILÉ · PRÉVU AUJOURD\'HUI'),card('Villa Exemple','Lyon','13:30','17:00','prevu'),card('Résidence Test','Villeurbanne','16:30',null,'prevu',{time:'16:30 · fin à préciser',extra:'Ne partira pas : chevauche Villa Exemple et n\'a pas de fin.',ex:'err'}),card('Atelier Fictif','Vénissieux',null,null,'prevu',{time:'heures à préciser',extra:'Terminé le 15 octobre 2026',ex:'info'})],
+        note:'Un créneau qui ne partira pas le dit sur sa carte (S4). Un chantier terminé l\'affiche (S9).'}),
+      A({id:'E05',name:'En cours · écran principal',covers:'S1 · S6 · S7 · S8 · S12 · S13 · S16 · S31 · S32 · S47 · S59 · S62 · S104',hasHdrNote:true,hdrNote,blocks:mainBlocks,
+        note:'Haut de l\'écran (non défilé). Suite : E05b, E05c. Mini-frise informative (aria-hidden, non tactile) : noir fait, blanc à envoyer, vert en cours, hachures trou, pointillés prévu, trait rouge maintenant.'}),
+      A({id:'E05b',name:'En cours · défilé (milieu)',covers:'S31 · S4 · S2',hasHdrNote:true,hdrNote,
+        blocks:[label('↑ DÉFILÉ DE 330 PX · CHANTIERS DU JOUR'),...MAIN_CARDS.slice(1),card('Résidence Test','Villeurbanne','16:30',null,'prevu',{time:'16:30 · fin à préciser',extra:'Ne partira pas : chevauche Villa Exemple et n\'a pas de fin.',ex:'err'})],
+        note:'Même écran que E05, défilé. La rangée Route / Pause (S31) et le prévu restent au-dessus de la barre du pouce : réserve de 170 px en bas du contenu.'}),
+      A({id:'E05c',name:'En cours · défilé (bas)',covers:'S6 · S7 · S8 · S34',hasHdrNote:true,hdrNote,
+        blocks:[label('↑ DÉFILÉ JUSQU\'EN BAS'),
+          {isMeet:true,title:'Réunion sécurité',sub:'Dépôt · toute l\'équipe · ne compte pas',time:'17:15'},
+          {isTasks:true,count:'1/3',items:[{l:'Ranger le dépôt',h:'matin',c:'✓',bg:INK,deco:'line-through'},{l:'Photos avant pose',h:'',c:'',bg:'transparent',deco:'none'},{l:'Rendre la clé',h:'17:00',c:'',bg:'transparent',deco:'none'}]},
+          btns([['Dupliquer cette journée','o']])],
+        note:'Fin de la liste : réunion (S6), tâches et compteur (S7), cases de 44 px (S8), puis « Dupliquer cette journée » (S34). Le dernier élément s\'arrête à 16 px au-dessus de la barre.'}),
+      A({id:'E06',name:'Hors-ligne',covers:'S78 · S79 · S8 grisé',hasHdrNote:true,hdrNote:{t:'Hors-ligne, tout est gardé · 2 en attente',dot:'#E6DDCD',bg:'#3A3129',cta:''},send:SEND.off,
+        blocks:[tiles('6:30','ok',true),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','07:30','11:30','tel',{dur:'4:00'}),card('Villa Exemple','Lyon','12:30','15:00','tel',{dur:'2:30'}),{isTasks:true,count:'0/1',items:[{l:'Rendre la clé (réseau requis)',h:'',c:'',bg:'#E6DDCD',deco:'none'}]}],
+        note:'Saisir, modifier, retirer, qualifier les trous, panier : possibles. Envoyer, copier, cocher une tâche, lever une réserve : grisés.'}),
+      A({id:'E07',name:'Retour du réseau',covers:'S39 (état 2) · S80',hasHdrNote:false,send:SEND.reste,
+        blocks:[msg('Réseau revenu','2 saisies vont partir en « à envoyer ». Un second geste envoie la journée.','ok'),tiles('6:30','ok',true),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','07:30','11:30','tel',{dur:'4:00'}),card('Villa Exemple','Lyon','12:30','15:00','brouillon',{dur:'2:30'})],
+        note:'« Envoyer ce qui reste (N) » ne fait que transférer. Le cas rare de coupure en plein envoi : retour passager « Journée gardée sur le téléphone — elle partira dès que tu auras du réseau ».'}),
+      A({id:'E08',name:'Contrôle · horaires prévus',covers:'S40 · contrôle 3',blocks:[tiles('4:00','ok',false,{ch:1}),...MAIN_CARDS.slice(0,1)],hasOv:true,
+        ov:ov({kicker:'AVANT L\'ENVOI · 1/3',title:'Horaires prévus par le bureau',body:'Villa Exemple 13:30 → 17:00 (3:30). Tu as travaillé exactement ces horaires ?',opts:[opt('Oui, envoyer ces horaires','y'),opt('Non, je corrige','o'),opt('Envoyer seulement mes heures notées','o')]}),
+        note:'« Envoyer seulement mes heures notées » n\'apparaît que s\'il y a déjà des heures notées. Le focus initial va sur « Non, je corrige » : Entrée n\'envoie jamais.'}),
+      A({id:'E09',name:'Contrôle · pause',covers:'S41 · contrôle 4',blocks:[tiles('7:30','ok',false,{ch:1})],hasOv:true,
+        ov:ov({kicker:'AVANT L\'ENVOI · 2/3',title:'Tu as pris une pause ?',body:'De 07:30 à 15:00 sans arrêt (7:30 d\'affilée).',rows:[chips('Durée',[chip('Non'),chip('15 min'),chip('30 min',true),chip('45 min'),chip('1 h'),chip('1 h 30'),chip('2 h'),chip('Autre')])],opts:[opt('Valider · pause 30 min','y')]}),
+        note:'Une plage à la fois. Fermer (✕ ou retour Android) abandonne l\'envoi.'}),
+      A({id:'E10',name:'Contrôle · plus de 10 h',covers:'S42 · contrôle 6',blocks:[tiles('10:45','ok',true)],hasOv:true,
+        ov:ov({kicker:'AVANT L\'ENVOI · 3/3',title:'Vérification',body:'Tu vas envoyer 10:45 de travail aujourd\'hui. C\'est bien ça ?',opts:[opt('Corriger','o'),opt('Confirmer l\'envoi','y')]}),note:'Seuil strict > 10 h, sur les heures qui vont partir (pause déduite).'}),
+      A({id:'E11',name:'Arrêt · chevauchement',covers:'S43 · S26 · contrôles 1, 2, 5',send:SEND.pret,
+        blocks:[msg('Envoi impossible : deux chantiers se chevauchent','Maison Démo 07:30 → 11:30 et Villa Exemple 11:00 → 15:00. Corrige l\'un des deux.','err'),frise([['07:30','11:30','envoyer',0],['11:00','15:00','envoyer',1],['11:00','11:30','conflit',0],['11:00','11:30','conflit',1]],null,{warn:'Chevauchement 11:00–11:30'}),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','07:30','11:30','refus',{dur:'4:00'}),card('Villa Exemple','Lyon','11:00','15:00','refus',{dur:'4:00',tag:'11:00–11:30'})],
+        note:'Mêmes phrases pour « sortie oubliée sans fin » et « Ajoute un chantier » (aucune ligne). Les cartes fautives sont cerclées de rouge.'}),
+      A({id:'E12',name:'Journée envoyée',covers:'S39 (état 4) · S37 · S28 · S36',strip:strip('eoeTafv'),send:SEND.envoye,
+        blocks:[tiles('7:30','ok',true,{route:'0:30'}),frise([['07:30','11:30','fait'],['12:00','15:30','fait']],'16:05'),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','07:30','11:30','envoye',{dur:'4:00'}),card('Villa Exemple','Lyon','12:00','15:30','envoye',{dur:'3:30',extra:'Endroit noté',ex:'info'}),card('Résidence Test','Villeurbanne','16:00','16:30','retire',{dur:'0:30'})],
+        hasToast:true,toast:{t:'Journée envoyée',hasA:false,a:'',b:'170px'},note:'Une ligne retirée (déjà envoyée une fois) reste visible, barrée, hors total. « Endroit noté » : anciennes lignes seulement.'}),
+      A({id:'E13',name:'Journée déjà envoyée',covers:'S44',send:SEND.envoye,blocks:[tiles('7:30','ok',true),card('Maison Démo','Bron','07:30','11:30','envoye',{dur:'4:00'})],hasOv:true,
+        ov:ov({kicker:'MODIFIER',title:'Journée déjà envoyée',body:'Si tu continues, la secrétaire sera prévenue de ta correction.',opts:[opt('Annuler','o'),opt('Continuer','y')]}),note:'Seulement si toutes les lignes du jour sont envoyées et rien n\'attend sur le téléphone. Journée mixte : pas de question, retour passager après enregistrement.'}),
+      A({id:'E14',name:'Renvoyée par le bureau',covers:'S45 · S47',strip:strip('erTffav'),title:'Mardi 13 octobre',kicker:'RENVOYÉE',kc:'#FF6B6B',
+        blocks:[msg('Le bureau t\'a renvoyé cette journée','Motif : « Il manque la pause de midi chez Maison Démo. » Corrige, puis renvoie.','err'),tiles('8:00','1 à préciser ↓',true,{ch:1}),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','08:00','16:00','renvoye',{dur:'8:00'})],
+        note:'Bande : anneau rouge + ↺. Les lignes repassent « à envoyer ». Le motif reste affiché jusqu\'au renvoi.'}),
+      A({id:'E15',name:'Corrigée par le bureau',covers:'S35 · S27',strip:strip('eeTfffv'),title:'Mercredi 14 octobre',kicker:'MERCREDI',send:SEND.envoye,
+        blocks:[tiles('8:30','ok',true),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','08:00','12:30','envoye',{dur:'4:30',extra:'Le bureau a corrigé : 08:00–12:00 → 08:00–12:30 · « Oubli du quart d\'heure de rangement »',ex:'bureau'}),card('Villa Exemple','Lyon','13:30','17:30','envoye',{dur:'4:00',extra:'Ton chef a corrigé : 13:30–17:00 → 13:30–17:30',ex:'bureau'})],
+        note:'La correction s\'affiche sur la carte, avec avant → après et le motif.'}),
+      A({id:'E16',name:'Verrouillée',covers:'S46 · chez le comptable',strip:strip('cccTfff'),send:{...SEND.rien,h:'MOIS CLÔTURÉ · DEMANDE À LA SECRÉTAIRE DE ROUVRIR'},plusOp:.35,
+        blocks:[msg('Mois clôturé','Le bureau a clôturé tes heures jusqu\'au 31 octobre. Pour une correction, demande à la secrétaire : elle peut rouvrir.','lock'),tiles('7:30','ok',true,{dim:true}),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','07:30','11:30','comptable',{dur:'4:00'}),card('Villa Exemple','Lyon','12:00','15:30','comptable',{dur:'3:30'})],
+        note:'Plus d\'ajout, d\'ouverture, de panier, de route/pause ni de copie. Variante « Heures clôturées » : même message, autre titre. Bande : ▣.'}),
+      A({id:'E17',name:'Pointage oublié',covers:'S14',hasHdrNote:false,
+        blocks:[tc({bg:'#3A1414',kc:'#FF6B6B',kicker:'SORTIE OUBLIÉE · VILLA EXEMPLE',big:'lun. 08:00',bigFs:'38px',side:'ouvert depuis\n3 jours',hasInput:true,input:'06:30',hasNote:true,note:'Fin le lendemain (mardi 06:30) — la nuit est comptée sur la journée du début.',btn:'Enregistrer la fin',btnBg:'#FFC21A',btnFg:INK}),tiles('0:00','ok',false,{ch:0})],
+        note:'« Tu as fini à quelle heure ? » Fin = début : refusée. Fin < début : annoncée avant d\'écrire. Fermeture en échec : « La fermeture a échoué. Le pointage reste ouvert. »'}),
+      A({id:'E18',name:'Sortie oubliée à compléter',covers:'S15 · contrôle 1',strip:strip('oeeTffv'),title:'Lundi 12 octobre',kicker:'LUNDI',
+        blocks:[msg('1 ligne « fin à compléter »','Elle a été créée cette nuit. Sans fin, elle ne peut pas partir.','err'),label('CHANTIERS DU JOUR'),card('Villa Exemple','Lyon','08:00',null,'oublie',{time:'08:00 → fin à compléter'}),card('Maison Démo','Bron','08:00','12:00','oublie',{dur:'4:00',tag:'SORTIE OUBLIÉE',extra:'Fin posée sur l\'heure prévue (12:00). Vérifie avant d\'envoyer.',ex:'bureau'})],
+        note:'Deux cas : fin prévue connue (posée, à vérifier) ou inconnue (bloquante).'}),
+      A({id:'E19',name:'Transfert en échec',covers:'S80',hasHdrNote:true,hdrNote:{t:'2 chantiers du 14/10 ne partent pas. Préviens le bureau.',dot:'#FF6B6B',bg:'#3A1414',cta:'Relancer'},send:SEND.reste,
+        blocks:[tiles('6:30','ok',true),card('Maison Démo','Bron','07:30','11:30','tel',{dur:'4:00',extra:'Refusé par le serveur : jour clôturé',ex:'err'}),card('Villa Exemple','Lyon','12:30','15:00','tel',{dur:'2:30',extra:'5 essais sans réussite',ex:'err'})],
+        note:'Refus définitif ou 5 échecs : bandeau rouge, relançable d\'un toucher. Jamais de double.'}),
+      A({id:'E20',name:'Lever une réserve',covers:'S38 · S59 · S60 · S61',blocks:mainBlocks.slice(0,3),hasOv:true,
+        ov:ov({kicker:'RÉSERVE · LUN. 12 · RÉSIDENCE TEST · VILLEURBANNE',title:'Lever la réserve',body:'« Joint du portail à reprendre côté gauche. »',rows:[field('Commentaire (facultatif, 500 car.)','Joint refait ce matin',{mono:false}),chips('Photo (facultative)',[chip('Prendre une photo'),chip('Choisir')]),note('Indisponible hors-ligne. Marche même sur un mois clôturé.')],opts:[opt('Annuler','o'),opt('Lever la réserve','y')]}),
+        hasToast:false,note:'Après levée : la liste se referme, retour passager « Réserve levée · Annuler » 10 s, touchable au-dessus de la barre.'}),
+      A({id:'E21',name:'Éditeur d\'intervention',covers:'S17–S29 · S22 · S23 · S24 · S25',blocks:mainBlocks.slice(0,3),hasOv:true,
+        ov:ov({kicker:'MAISON DÉMO · BRON · À ENVOYER',title:'Modifier l\'intervention',rows:[field('Début → fin','07:30 → 11:30',{aside:'4:00 net'}),chips('Total des pauses',[chip('0',true),chip('15'),chip('30'),chip('45'),chip('1 h'),chip('1 h 30'),chip('2 h'),chip('Autre')]),chips('Statut du chantier (facultatif)',[chip('En cours'),chip('Sans réserve'),chip('Avec réserve')]),field('Note','',{mono:false}),note('Heure exacte gardée : 07:32 — la molette ne montre que les quarts d\'heure.'),act('Documents (2)','o'),act('Retirer cette intervention','r')],opts:[opt('OK','y')]}),
+        note:'Chantier figé sur une ligne existante. « Autre » des pauses : aperçu « = 1 h 15 », messages de lecture du cahier. Annuler = ✕ ou retour Android, sans confirmation.'}),
+      A({id:'E21b',name:'Éditeur · 360 × 640',covers:'S17–S29 · petit écran',fw:'360px',fh:'640px',hasStrip:false,hasHdrNote:false,blocks:[tiles('6:42','1 à préciser ↓',false)],hasOv:true,
+        ov:ov({kicker:'MAISON DÉMO · BRON · À ENVOYER',title:'Modifier l\'intervention',rows:[field('Début → fin','07:30 → 11:30',{aside:'4:00 net'}),chips('Total des pauses',[chip('0',true),chip('15'),chip('30'),chip('45'),chip('1 h'),chip('1 h 30'),chip('2 h'),chip('Autre')]),chips('Statut du chantier (facultatif)',[chip('En cours'),chip('Sans réserve'),chip('Avec réserve')]),field('Note','',{mono:false}),note('Heure exacte gardée : 07:32 — la molette ne montre que les quarts d\'heure.'),act('Documents (2)','o'),act('Retirer cette intervention','r')],opts:[opt('OK','y')]}),
+        note:'Feuille = en-tête fixe + corps qui défile + pied fixe. OK reste toujours visible dans le pied ; Documents et Retirer passent dans le corps. Hauteur max : 100 % − 24 px.'}),
+      A({id:'E22',name:'Choisir le chantier',covers:'S18 · S19',blocks:[],hasOv:true,
+        ov:ov({kicker:'NOUVELLE INTERVENTION',title:'Sur quel chantier ?',rows:[field('Rechercher','vil',{mono:false,bd:'2px solid #15120F'}),pick('Villa Exemple','Fenêtres · Lyon','#4A8FE0',true),pick('Résidence Test','Portail · Villeurbanne','#B7366A'),pick('Autre chantier — travail non prévu','Toujours proposé, même sans résultat','#15120F')],opts:[opt('Continuer','y')]}),
+        note:'« Autre chantier » → « C\'était quoi ? » (nom 80, ville 60) + « Ajouter ce chantier » (réseau requis, sinon heures sur « Autre »).'}),
+      A({id:'E23',name:'Pointage encore en cours',covers:'S26 · S30',blocks:mainBlocks.slice(0,3),hasOv:true,
+        ov:ov({kicker:'VOTRE POINTAGE',title:'Votre pointage est encore en cours',body:'Cette intervention (13:00 → 16:00) recouvre votre pointage chez Villa Exemple depuis 12:30.',opts:[opt('Corriger les heures','o'),opt('Terminer le pointage à 13:00, puis ajouter','y')]}),
+        note:'Vouvoiement conservé (texte cité par l\'assistant). Cas à bouton unique : seul « Corriger les heures ».'}),
+      A({id:'E24',name:'Dupliquer la journée',covers:'S34',blocks:mainBlocks.slice(0,3),hasOv:true,
+        ov:ov({kicker:'DUPLIQUER · JEU. 15',title:'Sur quels jours ?',rows:[chips('Aujourd\'hui ou à venir',[chip('ven. 16',true),chip('sam. 17'),chip('lun. 19',true),chip('mar. 20'),chip('mer. 21')]),note('Chantier, heures, pause et note copiés. Jamais le panier ni les lignes retirées. Un jour déjà rempli recevra des chevauchements.','bureau')],opts:[opt('Copier sur 2 jours','y')]}),
+        note:'Échec du serveur : un seul message « Impossible de copier ». En ligne seulement.'}),
+      A({id:'E25',name:'Semaine',covers:'S49 · S54 · S58 · S6',title:'Semaine 42',kicker:'12 – 18 OCT. · 31:30 ENVOYÉES',strip:strip('eoeTafv'),hasSend:false,tabs:TABS(1),
+        blocks:[day('Lun',12,'Maison Démo · Villa Exemple','08:00–12:00 · 13:30–17:00','7:30 ✓','e'),day('Mar',13,'Maison Démo','prévu 08:00–16:00','À ENVOYER','o'),day('Mer',14,'Maison Démo · Villa Exemple','envoyées','8:30 ✓','e'),day('Jeu',15,'Villa Exemple · Réunion 17:15','en cours','6:42','T'),day('Ven',16,'Congé','« vacances »','CONGÉ','a'),day('Sam',17,'Villa Exemple','prévu Matin','PRÉVU','f'),day('Dim',18,'—','','','f')],
+        note:'7 jours toujours visibles, en liste (plus de grille à 6 colonnes). Toucher un jour l\'ouvre.'}),
+      A({id:'E26',name:'Plus',covers:'S51 · S52 · S53 · S55 · S62 · S72–S77',hasStrip:false,title:'Sam Exemple',kicker:'ENTREPRISE TEST · POSEUR',hasSend:false,tabs:TABS(3),
+        blocks:[label('MES HEURES'),list([{l:'Historique',b:'PDF'},{l:'Interventions supprimées',s:'60 jours · lecture seule',sub:true},{l:'Formations',b:'2 à voir',bBg:'#C62828',bFg:'#FFFFFF'},{l:'Mes congés',b:'1 en attente',bBg:'#FFF3CC',bFg:'#6B4E00'},{l:'Mon équipe',b:'chef'}]),label('MON COMPTE'),list([{l:'Notifications',b:'Activer'},{l:'Informations',s:'L\'endroit au pointage · confidentialité'},{l:'Changer ma photo'}]),btns([['Déconnexion','r']])],
+        note:'« Interventions supprimées » sous Historique (si disponible). « Mon équipe » : chef d\'équipe seulement. Notifications : Activer / Couper / Bloquées, absente si non gérée.'}),
+      A({id:'E27',name:'Mon équipe (chef)',covers:'S69 · S70 · S71',hasStrip:false,title:'Mon équipe',kicker:'7 DERNIERS JOURS',hasSend:false,tabs:TABS(3),
+        blocks:[btns([['mer. 14','o'],['jeu. 15','y'],['ven. 9','o']]),btns([['Alex','d'],['Bruno','o'],['Chloé','o']]),card('Villa Exemple','Lyon','08:00','12:00','envoye',{dur:'4:00'}),card('Maison Démo','Bron','13:30','17:00','brouillon',{dur:'3:30'}),card('Résidence Test','Villeurbanne','17:00','18:00','comptable',{dur:'1:00'}),btns([['Corriger','o'],['Envoyer','y']]),btns([['+ Ajouter des heures pour Alex','d']])],
+        note:'« Corriger » indisponible chez le comptable. « OK — envoyer au bureau » dans le formulaire d\'ajout. Corriger du déjà envoyé prévient le salarié.'}),
+      A({id:'E28',name:'Compte archivé',covers:'S102',hasStrip:false,title:'BEMEXO',kicker:'COMPTE',hasBar:false,
+        blocks:[empty('Ce compte a été archivé par votre entreprise.','Vous allez être déconnecté. Pour toute question, contactez votre bureau.','Se déconnecter')],note:'Puis déconnexion. Autre rôle : renvoi à la connexion.'}),
+      A({id:'E29',name:'Noms longs · 52 caractères',covers:'S37 · gabarit de CarteChantier',strip:strip('eoeTafv'),
+        blocks:[label('CHANTIERS DU JOUR'),card(LONG,'Villeurbanne','07:30','11:30','brouillon',{dur:'4:00'}),card(LONG,'Saint-Priest',null,null,'live',{time:'en cours depuis 12:30',tag:'EN COURS · ⧉ 2'}),card(LONG,'Villeurbanne','13:00','17:30','comptable',{dur:'4:30'})],
+        note:'Étiquette d\'état et heures sur la 1re ligne, nom sur 2 lignes au plus (52 car. tiennent à 390 et à 360), ville sur la 3e. L\'étiquette la plus longue (« ▣ CHEZ LE COMPTABLE ») ne pousse plus le nom.'}),
+      P({id:'P01',name:'/pointer · arrivée',covers:'S94 · S96 · S100',p:{kicker:'ARRIVÉE ENREGISTRÉE',big:'07:45',title:'Bonne journée, Sam !',sub:'Villa Exemple · Lyon',btns:[pb('Ouvrir mon espace','y'),pb('Ajouter une intervention faite avant','o')]},note:'Attente (vérification, position) : même page, squelette + « Vérification du QR… ». Sans session : connexion sur place (#kx-pass conservé).'}),
+      P({id:'P02',name:'/pointer · départ',covers:'S97 · S100',p:{kicker:'DÉPART ENREGISTRÉ',big:'16:30',title:'À bientôt, Sam !',sub:'Heures enregistrées : 07:45 → 16:30',btns:[pb('Envoyer ma journée','y'),pb('Ouvrir mon espace','o')]},note:'Un seul raccourci par affichage (ici Envoyer ; sinon « Ajouter une intervention »). Valable 3 min.'}),
+      P({id:'P03',name:'/pointer · non enregistré',covers:'S98 · S99 · S95',p:{bg:'#3A1414',kc:'#FF6B6B',bigFs:'40px',kicker:'POINTAGE NON ENREGISTRÉ',big:'QR expiré',title:'Ce QR n\'est plus valable',sub:'Il change chaque minute. Scannez celui affiché maintenant sur la borne, ou ajoutez votre intervention à la main.',btns:[pb('Réessayer','y'),pb('Ajouter mon intervention à la main','o')]},note:'« Réessayer » seulement si un ticket est connu. Annulé (< 1 min) et « rien à enregistrer » : même page en neutre (fond crème), « Ouvrir mon espace » seul.'})
+    ];
+    const asTop=btns([['+ Nouveau chat','o'],['Historique','o']]);
+    screens.push(
+      AS({id:'AS1',name:'Assistant · accueil',covers:'S82 · S83 · S84 · S85 · S91',blocks:[asTop,chat([['bot','Bonjour Sam. Demandez-moi de noter vos heures, de poser un congé, ou comment faire quelque chose.']]),label('SUGGESTIONS'),list([{l:'Ce matin 7h30-12h, après-midi 13h-16h30'},{l:'J\'ai fini ma journée'},{l:'Demander un congé'},{l:'Comment je signale une réserve ?'}])],
+        note:'Plein écran sur téléphone (couche 70), ✕ en haut à droite. Les 4 suggestions sont les libellés exacts. Vouvoiement conservé.'}),
+      AS({id:'AS2',name:'Assistant · heures dites',covers:'S86 · S87 (geste simple)',blocks:[chat([['me','Ce matin 7h30-12h, après-midi 13h-16h30'],['bot','Le matin est noté sur Maison Démo. Sur quel chantier pour l\'après-midi ?']]),btns([['Villa Exemple','o'],['Résidence Test','o'],['Autre chantier','o']]),msg('Fait — Maison Démo 07:30 → 12:00','À envoyer. Visible dans Ma journée.','ok'),btns([['Annuler','o'],['Modifier','o']])],asInput:'',
+        note:'Heures claires : notées tout de suite + Annuler / Modifier. Chantier inconnu : question en boutons de 44 px.'}),
+      AS({id:'AS3',name:'Assistant · à confirmer',covers:'S87 (à confirmer) · S88',blocks:[chat([['me','J\'ai fini, envoie ma journée et mets le panier']]),msg('2 actions à confirmer','• Panier : pris\n• Envoyer ma journée (7:30)','dark'),btns([['Ignorer','o'],['Tout confirmer','y']]),chat([['bot','L\'envoi passe par les mêmes vérifications que le bouton « Envoyer ma journée ».']])],
+        note:'Envoyer, créer un chantier, e-mail client, corriger du déjà envoyé, toute suppression : fiche à confirmer.'}),
+      AS({id:'AS4',name:'Assistant · historique',covers:'S92 · liste, suppression en place, Tout effacer',title:'Historique',kicker:'PRIVÉ · GARDÉ 30 JOURS',hasAsInput:false,blocks:[btns([['‹ Retour à la conversation','o']]),hist([['Heures de mardi','Aujourd\'hui · 09:12'],['Congé de novembre','Hier · 18:40',true],['Comment lever une réserve','12 oct. · 07:55'],['Où est le dépôt ?','10 oct. · 06:58']]),btns([['Tout effacer','r']])],
+        note:'Toucher une ligne rouvre la conversation. ✕ sur une ligne : confirmation en place (fond rouge, Garder / Supprimer), focus sur Garder.'}),
+      AS({id:'AS5',name:'Assistant · historique vide',covers:'S92 · état vide',title:'Historique',kicker:'PRIVÉ · GARDÉ 30 JOURS',hasAsInput:false,blocks:[btns([['‹ Retour à la conversation','o']]),empty('Aucune conversation','Vos conversations sont gardées 30 jours, visibles par vous seul.','+ Nouveau chat')],note:'« Tout effacer » masqué quand la liste est vide.'}),
+      AS({id:'AS6',name:'Assistant · tout effacer',covers:'S92 · confirmation',title:'Historique',kicker:'PRIVÉ · GARDÉ 30 JOURS',hasAsInput:false,blocks:[hist([['Heures de mardi','Aujourd\'hui · 09:12'],['Congé de novembre','Hier · 18:40'],['Comment lever une réserve','12 oct. · 07:55']])],hasOv:true,
+        ov:ov({role:'alertdialog',accent:'#C62828',kicker:'HISTORIQUE',title:'Tout effacer ?',body:'Les 3 conversations seront supprimées. Cette action ne s\'annule pas.',opts:[opt('Garder','o'),opt('Tout effacer','r')]}),note:'Focus sur « Garder ». Entrée et Échap ne suppriment rien.'}),
+      A({id:'AS7',name:'Formulaire pré-rempli + assistant réduit',covers:'S86 · S89 · pastille',hasHdrNote:true,hdrNote,blocks:mainBlocks.slice(0,3),hasPill:true,pill:'« après-midi 13h-16h30 chez Villa Exemple »',hasOv:true,
+        ov:ov({kicker:'✦ PRÉ-REMPLI PAR L\'ASSISTANT',title:'Nouvelle intervention',rows:[field('Chantier','Villa Exemple',{mono:false,bg:'#FFF3CC',bd:'2px solid #15120F',aside:'✦'}),field('Début → fin','13:00 → 16:30',{bg:'#FFF3CC',bd:'2px solid #15120F',aside:'3:30 net'}),chips('Total des pauses',[chip('0',true),chip('15'),chip('30'),chip('45'),chip('1 h')]),note('Les champs en jaune viennent de l\'assistant. Rien n\'est écrit avant « OK ».','bureau')],opts:[opt('OK','y'),opt('Annuler','o')]}),
+        note:'L\'assistant se réduit en pastille au-dessus du voile, sous la barre d\'état : il ne cache aucun champ. « Reprendre » passe par « Abandonner la modification ? » si le formulaire a changé.'}),
+      AS({id:'AS8',name:'Assistant · retour après OK',covers:'S86 · S87',blocks:[chat([['me','après-midi 13h-16h30 chez Villa Exemple'],['bot','J\'ai ouvert le formulaire pré-rempli.']]),msg('Fait — Villa Exemple 13:00 → 16:30','À envoyer. Visible dans Ma journée.','ok'),btns([['Annuler','o'],['Modifier','o']]),chat([['bot','Si vous fermez le formulaire sans OK : « Formulaire fermé, rien n\'a été ajouté. »']])],asInput:'',
+        note:'L\'assistant se rouvre seul, au même endroit de la conversation.'})
+    );
+
+    const byId=id=>{const i=screens.findIndex(x=>x.id===id);if(i<0)throw new Error('no '+id);return i;};
+    const put=(id,f)=>{const i=byId(id);screens[i]={...screens[i],...(typeof f==='function'?f(screens[i]):f)};};
+    const after=(id,...a)=>{screens.splice(byId(id)+1,0,...a);};
+    const before=(id,...a)=>{screens.splice(byId(id),0,...a);};
+    const EDROWS=(o={})=>[times(o.a||'07:32',o.b||'11:30',o.d||'3:58 net'),...(o.err?[note(o.err,'err')]:[]),chips('Total des pauses',o.pz||[chip('0',true),chip('15'),chip('30'),chip('45'),chip('1 h'),chip('1 h 30'),chip('2 h'),chip('Autre')]),chips('Statut du chantier (facultatif)',o.st||[chip('En cours'),chip('Sans réserve'),chip('Avec réserve')]),...(o.extra||[field('Note','',{mono:false})]),note(o.hx||'Heure exacte gardée : 07:32 — la molette ne montre que les quarts d\'heure.'),act('Documents (2)','o'),act('Retirer ce chantier','r')];
+    const EDOV=(o={})=>ov({kicker:'MAISON DÉMO · BRON · À ENVOYER',title:'Modifier l\'intervention',rows:EDROWS(o),opts:[opt('OK','y')]});
+    const PZ=[chip('Non'),chip('15 min'),chip('30 min'),chip('45 min'),chip('1 h'),chip('1 h 30'),chip('2 h'),chip('Autre')];
+    const PAUSE_NOTE=note('Pendant cette plage. Plusieurs pauses ? Additionne-les.');
+    put('E02',{hasSend:false,note:'Données (bloquant) et vue différée (Semaine, Mois…). Ni « + » actif ni « Rien à envoyer » tant que rien n\'est chargé ; le ✦ reste accessible.'});
+    put('E07',{send:{...SEND.reste,t:'Envoyer ce qui reste (1)'},blocks:[tiles('6:30','ok',true),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','07:30','11:30','brouillon',{dur:'4:00'}),gap('1:00 entre 11:30 et 12:30 · répondu : Route','r'),card('Villa Exemple','Lyon','12:30','15:00','tel',{dur:'2:30'})],note:'La file du téléphone se vide seule : retour passager « N chantier(s) envoyé(s) », aucun bouton. Ici, 1 ligne est partie (« À ENVOYER »), 1 attend encore. Rangée Route / Pause : état répondu.'});
+    put('E08',{ov:ov({kicker:'AVANT L\'ENVOI',title:'Le bureau avait prévu…',rows:[pick('Villa Exemple','13:30 → 17:00 · 3:30','#1D5FA8',false)],opts:[opt('Oui, envoyer ces horaires','y'),opt('Non, je corrige mes heures','o'),opt('Envoyer seulement mes heures notées','o')]}),note:'Contrôle 3 sur 7 (ordre : README §2). 3e choix seulement s\'il y a aussi des heures notées. Focus initial : comportement actuel (premier bouton). Deux prévus qui se recouvrent : arrêt E11.'});
+    put('E09',{ov:ov({kicker:'AVANT L\'ENVOI · PLAGE 1 SUR 2',title:'Tu as pris une pause ?',body:'De 07:30 à 15:00 : 7:30 d\'affilée.',rows:[chips('Durée',PZ),PAUSE_NOTE],opts:[]}),note:'Rien de présélectionné, pas de « Valider » : un toucher répond. Plus de 6 h d\'affilée sans pause notée (écarts de moins de 20 min comptés comme continus). Une plage à la fois : E09b. « Autre » : E39.'});
+    after('E09',A({id:'E09b',name:'Contrôle · pause, 2e plage',covers:'S41 · contrôle 4',blocks:[tiles('11:30','ok',false)],hasOv:true,ov:ov({kicker:'AVANT L\'ENVOI · PLAGE 2 SUR 2',title:'Tu as pris une pause ?',body:'De 15:30 à 22:00 : 6:30 d\'affilée.',rows:[chips('Durée',PZ),PAUSE_NOTE],opts:[]}),note:'Posée après la réponse à la 1re plage.'}));
+    put('E10',{ov:ov({kicker:'AVANT L\'ENVOI',title:'Vérification',body:'Total : 10:45 (dépasse 10h). Vérifie tes horaires.',opts:[opt('Corriger','o'),opt('Confirmer l\'envoi','y')]}),note:'Strictement plus de 10 h sur ce qui va partir (pause déduite). 10:00 pile : aucune question.'});
+    put('E11',{blocks:[msg('Deux chantiers se chevauchent : 07:30–11:30 et 11:00–15:00. Corrige l\'un des deux avant d\'envoyer.','','err'),frise([['07:30','11:30','envoyer',0],['11:00','15:00','envoyer',1],['11:00','11:30','conflit',0],['11:00','11:30','conflit',1]],null,{warn:'Chevauchement 11:00–11:30'}),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','07:30','11:30','refus',{dur:'4:00'}),card('Villa Exemple','Lyon','11:00','15:00','refus',{dur:'4:00'})],note:'Contrôle 2. Les étiquettes restent celles du cahier (À ENVOYER) ; le cercle rouge désigne les fautives. Si l\'une est déjà envoyée (non modifiable) : même arrêt, seule l\'autre se corrige. Sortie oubliée : E31. Aucune ligne : E32.'});
+    after('E11',A({id:'E31',name:'Arrêt · sortie oubliée',covers:'S43 · contrôle 1',strip:strip('oeeTafv'),blocks:[msg('Sortie oubliée : mets ton heure de fin avant d\'envoyer.','','err'),label('CHANTIERS DU JOUR'),card('Villa Exemple','Lyon','08:00',null,'oublie',{time:'08:00 → fin à compléter'}),card('Maison Démo','Bron','13:00','16:00','brouillon',{dur:'3:00'})],note:'Toucher le message amène à la ligne à compléter.'}),
+      A({id:'E32',name:'Arrêt · journée vide',covers:'S43 · contrôle 5',blocks:[msg('Ajoute un chantier','','err'),tiles('0:00','ok',false,{ch:0}),empty('Aucun chantier aujourd\'hui.','Ajoute une intervention avec « + », ou reprends la journée d\'hier.','Copier la journée d\'hier')],note:'Plus rien à envoyer au moment de continuer.'}));
+    put('E12',{blocks:[tiles('7:30','ok',true,{route:'0:30'}),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','07:30','11:30','envoye',{dur:'4:00'}),card('Résidence Test','Villeurbanne','16:00','16:30','retire',{dur:'0:30'}),card('Villa Exemple','Lyon','12:00','15:30','envoye',{dur:'3:30',extra:'Endroit noté',ex:'info'})]});
+    after('E12',A({id:'E33',name:'Envoi en cours',covers:'S39 · contrôle 7',send:SEND.spin,blocks:mainBlocks.slice(0,3),note:'« Envoi… » pendant l\'écriture : inactif, aucun second envoi.'}),
+      A({id:'E34',name:'Issues d\'envoi',covers:'S39 · B1 · B2 · B3',blocks:[msg('1 chantier envoyé sur 2 — les autres sont verrouillés.','','warn'),msg('Rien n\'a été envoyé : la journée est verrouillée ou a changé. Recharge.','','err'),msg('Impossible d\'envoyer','+ cause renvoyée par le serveur. L\'écran se recharge.','err')],note:'Un message à la fois (empilés pour la revue). Après échec, l\'écran ne garde pas de cartes « prévu » périmées.'}),
+      A({id:'E35',name:'Envoi demandé hors-ligne',covers:'S39 · S78 · B4',hasHdrNote:true,hdrNote:{t:'Hors-ligne, tout est gardé · 2 en attente',dot:'#E6DDCD',bg:'#3A3129',cta:''},send:SEND.off,blocks:[tiles('6:30','ok',true)],hasToast:true,toast:{t:'Journée gardée sur le téléphone — elle partira dès que tu auras du réseau.',hasA:false,a:'',b:'170px'},note:'Le geste d\'envoi est gardé ; les prévus confirmés rejoignent la file.'}),
+      A({id:'E36',name:'Envoi après scan',covers:'S48 · S97 · B8',blocks:[tiles('8:45','ok',true)],hasOv:true,ov:ov({kicker:'APRÈS LE SCAN',title:'Envoyer votre journée maintenant ?',body:'Total de la journée : 8:45.',opts:[opt('Pas maintenant','o'),opt('Oui, envoyer ma journée','y')]}),note:'Focus sur « Pas maintenant » ; Entrée n\'envoie jamais. Valable 3 min, même compte, jour courant, sinon « Ce raccourci a expiré : touchez « Envoyer ma journée » ».'}));
+    put('E14',{strip:strip('ereTafv'),hasBack:true,blocks:[msg('Le bureau t\'a renvoyé cette journée','Motif : « Il manque la pause de midi chez Maison Démo. » Corrige, puis renvoie.','err'),tiles('8:00','1 à préciser',true,{ch:1,label:'TOTAL · MARDI 13',code:'ereTafv',todayH:6.7}),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','08:00','16:00','renvoye',{dur:'8:00'})],note:'Les lignes repassent « À ENVOYER ». Bande : ↺ prime sur « oublié ». Le motif reste jusqu\'au renvoi.'});
+    put('E15',{strip:strip('eeeTafv'),hasBack:true,blocks:[tiles('8:30','ok',true,{label:'TOTAL · MERCREDI 14',route:'1:00',code:'eeeTafv',todayH:6.7}),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','08:00','12:30','envoye',{dur:'4:30',extra:'Le bureau a corrigé : 08:00–12:00 → 08:00–12:30 · « Oubli du quart d\'heure de rangement »',ex:'bureau'}),card('Villa Exemple','Lyon','13:30','17:30','envoye',{dur:'4:00',extra:'Ton chef a corrigé : 13:30–17:00 → 13:30–17:30',ex:'bureau'})]});
+    put('E16',{plusOp:1,blocks:[tiles('7:30','ok',true,{dim:true,code:'cccTfff'}),label('CHANTIERS DU JOUR'),card('Maison Démo','Bron','07:30','11:30','comptable',{dur:'4:00'}),card('Villa Exemple','Lyon','12:00','15:30','comptable',{dur:'3:30'})],hasOv:true,ov:ov({kicker:'CORRECTION IMPOSSIBLE',title:'Mois clôturé',body:'Le bureau a clôturé ce mois : la paie est partie… elle peut rouvrir le mois.',opts:[opt('Compris','y')]}),note:'Pas de bandeau : la fenêtre s\'ouvre au toucher d\'une carte, de « + », du panier, de « Copier », de Route / Pause. Texte complet = texte actuel. Verrouillé = couleurs dédiées, plus d\'opacité. Variante : E16b.'});
+    after('E16',A({id:'E16b',name:'Heures clôturées',covers:'S46',strip:strip('cccTfff'),send:SEND.rien,blocks:[tiles('7:30','ok',true,{dim:true,code:'cccTfff'})],hasOv:true,ov:ov({kicker:'CORRECTION IMPOSSIBLE',title:'Heures clôturées',body:'Le bureau a clôturé tes heures jusqu\'au 31 octobre.',opts:[opt('Compris','y')]}),note:'Clôture du salarié (pas du mois). Panier verrouillé : « Journée chez le comptable : vois avec la secrétaire. »'}));
+    const TCO=o=>tc({bg:'#3A1414',kc:'#FF6B6B',kicker:'SORTIE OUBLIÉE · VILLA EXEMPLE',big:'lun. 08:00',bigFs:'38px',side:'depuis lundi\n08:00',hasInput:true,ask:'Tu as fini à quelle heure ?',input:'06:30',hasNote:true,note:'Fin le lendemain (mardi 06:30) à 06:30 : la nuit est comptée sur la journée du début.',btn:'Terminer ma journée',btnBg:'#FFC21A',btnFg:INK,...o});
+    put('E17',{strip:strip('oeeTafv'),blocks:[TCO({}),tiles('0:00','ok',false,{ch:0})],note:'Fin annoncée avant d\'écrire. Plus de 14 h ouvert : « sortie oubliée » la nuit ; un poste commencé à 21 h reste « en cours ». Fermeture en échec : « La fermeture a échoué. Le pointage reste ouvert. » Refus : E17b.'});
+    after('E17',A({id:'E17b',name:'Pointage oublié · fin refusée',covers:'S14',strip:strip('oeeTafv'),blocks:[TCO({input:'08:00',note:'Fin et début à la même heure (08:00) : rien à compter'}),tiles('0:00','ok',false,{ch:0})],note:'Aujourd\'hui, fin avant début : « Indique une heure après 08:00 ».'}));
+    put('E18',{hasBack:true});
+    before('E20',A({id:'E20a',name:'Liste des réserves',covers:'S38 · S59',blocks:mainBlocks.slice(0,3),hasOv:true,ov:ov({kicker:'RÉSERVES',title:'Réserves à lever',rows:[res('lun. 12 oct.','Résidence Test · Villeurbanne','« Joint du portail à reprendre côté gauche. »','Lever'),res('jeu. 8 oct.','Maison Démo · Bron','Sans détail écrit.','Lever')],opts:[]}),note:'Ouverte par « 1 réserve à lever ». « Lever » ouvre E20.'}));
+    after('E20',A({id:'E20b',name:'Réserve levée',covers:'S61',blocks:mainBlocks.slice(1,3),hasToast:true,toast:{t:'Réserve levée',hasA:true,a:'Annuler',b:'170px'},note:'10 s, touchable. « Annuler » : « Réserve remise à lever ».'}));
+    put('E21',{ov:EDOV(),note:'Début et Fin : deux boutons (07:32 affiché tel quel). Fermer = ✕ ou retour Android, sans confirmation, saisie perdue. OK dans le pied fixe.'});
+    put('E21b',{ov:EDOV()});
+    after('E21b',
+      A({id:'E30a',name:'Retirer · ligne envoyée',covers:'S28',blocks:mainBlocks.slice(1,3),hasOv:true,ov:ov({role:'alertdialog',accent:'#C62828',kicker:'MAISON DÉMO · 07:30 → 11:30',title:'Retirer ce chantier ?',body:'Il restera visible comme « Retiré » et la secrétaire en sera informée.',opts:[opt('Non','o'),opt('Oui, retirer','r')]}),note:'Résultat : « Chantier retiré — la secrétaire est prévenue ». Verrouillé : « Impossible de retirer : chantier verrouillé par le bureau ».'}),
+      A({id:'E30b',name:'Retirer · brouillon vide',covers:'S28',blocks:mainBlocks.slice(1,3),hasOv:true,ov:ov({role:'alertdialog',accent:'#C62828',kicker:'MAISON DÉMO',title:'Retirer ce chantier ?',body:'Il sera supprimé.',opts:[opt('Non','o'),opt('Oui, retirer','r')]}),note:'Phrases : celles du code (fragments cités ici).'}),
+      A({id:'E30c',name:'Retirer · autre cas',covers:'S28',blocks:mainBlocks.slice(1,3),hasOv:true,ov:ov({role:'alertdialog',accent:'#C62828',kicker:'MAISON DÉMO · 07:30 → 11:30',title:'Retirer ce chantier ?',body:'Les heures seront perdues.',opts:[opt('Non','o'),opt('Oui, retirer','r')]}),note:'data-guide-confirm sur la fenêtre ; confirmer.retirer sur « Oui, retirer ».'}),
+      A({id:'E38',name:'Éditeur · OK refusé',covers:'S26',blocks:mainBlocks.slice(0,3),hasOv:true,ov:EDOV({a:'11:00',b:'15:00',d:'4:00 net',hx:'Heure exacte gardée : 11:00.',err:'Ces heures chevauchent 11:00–11:30, déjà noté. Corrige le début ou la fin.'}),note:'Même place : « Indique l\'heure de début et de fin », « Le début et la fin sont identiques. », pause ≥ durée, « Choisis un chantier ». Verrouillé : « Ce chantier n\'a pas changé : il est verrouillé par le bureau. »'}),
+      A({id:'E39',name:'Éditeur · pause « Autre » + réserve',covers:'S22 · S24',blocks:mainBlocks.slice(0,3),hasOv:true,ov:EDOV({a:'08:00',b:'09:30',d:'0:15 net',hx:'Heure exacte gardée : 08:00.',pz:[chip('0'),chip('15'),chip('30'),chip('45'),chip('1 h'),chip('1 h 30',false,true),chip('2 h',false,true),chip('Autre',true)],st:[chip('En cours'),chip('Sans réserve'),chip('Avec réserve',true)],extra:[field('Total des pauses (h:mm)','1:15',{aside:'= 1 h 15'}),field('Détail des réserves','Joint du portail à reprendre',{mono:false})]}),note:'Puces plus longues que la ligne (1:30) : grisées par couleur. 4 messages d\'erreur de « Autre » : texte actuel, sous le champ.'}),
+      A({id:'E40',name:'Réglage de l\'heure',covers:'S20',blocks:mainBlocks.slice(0,3),hasOv:true,ov:ov({kicker:'DÉBUT · MAISON DÉMO',title:'Réglage de l\'heure',rows:[wheel(['06','07','08'],['15','30','45'],1,1),note('Non retouchée, l\'heure exacte reste 07:32. Retouchée, la valeur choisie est écrite telle quelle.')],opts:[opt('Valider les heures','y')]}),note:'Molette au quart d\'heure, 44 px par cran.'}));
+    put('E22',{ov:ov({kicker:'NOUVELLE INTERVENTION',title:'Sur quel chantier ?',rows:[field('Rechercher','vil',{mono:false,bd:'2px solid #15120F'}),pick('Villa Exemple','Fenêtres · Lyon','#1D5FA8',true),pick('Résidence Test','Portail · Villeurbanne','#B4471F'),pick('Autre chantier — travail non prévu','Toujours proposé, même sans résultat',INK)],opts:[opt('Continuer','y')]})});
+    after('E22',A({id:'E22b',name:'Choisir · aucun résultat',covers:'S18',blocks:[],hasOv:true,ov:ov({kicker:'NOUVELLE INTERVENTION',title:'Sur quel chantier ?',rows:[field('Rechercher','xyz',{mono:false,bd:'2px solid #15120F'}),note('Aucun chantier trouvé'),pick('Autre chantier — travail non prévu','Toujours proposé, même sans résultat',INK,true)],opts:[opt('Continuer','y')]})}),
+      A({id:'E22c',name:'Autre chantier · C\'était quoi ?',covers:'S19',blocks:[],hasOv:true,ov:ov({kicker:'AUTRE CHANTIER',title:'C\'était quoi ?',rows:[field('Nom (80 car.)','Pose volet roulant',{mono:false}),field('Ville (60 car.)','Caluire',{mono:false}),note('Réseau requis. En cas d\'échec : « Vos heures partiront sur « Autre » ».')],opts:[opt('Ajouter ce chantier','y')]})}));
+    put('E23',{ov:ov({kicker:'VOTRE POINTAGE',title:'Votre pointage est encore en cours',body:'Vous êtes pointé depuis 12:30 et le pointage n\'est pas terminé. Vos heures 13:00–16:00 le chevauchent : la journée serait bloquée à l\'envoi…',rows:[note('Si vous pointez à la borne, ne scannez plus en partant… sinon la borne ouvrira un nouveau pointage.','bureau')],opts:[opt('Corriger les heures','o'),opt('Terminer le pointage à 13:00, puis ajouter','y')]}),note:'Cas F1. Focus sur « Corriger les heures », Entrée sans effet. Texte testé (pointage-lot10.mjs) : « … » = suite inchangée du code. États après « Terminer… » : README §2.'});
+    after('E23',A({id:'E23b',name:'Pointage en cours · un seul bouton',covers:'S26 · S30',blocks:mainBlocks.slice(0,3),hasOv:true,ov:ov({kicker:'VOTRE POINTAGE',title:'Votre pointage est encore en cours',body:'Il est 15:12… (cas : intervention dans le futur).',opts:[opt('Corriger les heures','o')]}),note:'Cas F2 à F6 : seul « Corriger les heures », texte propre au cas (live-clash-why).'}));
+    put('E24',{ov:ov({kicker:'DUPLIQUER · JEU. 15',title:'Sur quels jours ?',rows:[cal([['ven','16','no'],['sam','17','off'],['dim','18','off'],['lun','19','on'],['mar','20','off'],['mer','21','off'],['jeu','22','off']]),note('Chantier, heures, pause et note copiés. Jamais le panier ni les lignes retirées. Jour déjà rempli : chevauchements permis. Congé (ven. 16) et jours clos : non sélectionnables.','bureau')],opts:[opt('Copier (1)','y')]}),note:'Entrée : « Dupliquer cette journée » (E05c). Messages : « Aucun chantier hier à copier », « Rien à copier : … », « Copie indisponible hors-ligne ».'});
+    put('E25',s=>({hasStrip:false,hasBack:true,blocks:[tiles('31:30','ok',false,{noStats:true,label:'SEMAINE 42 · HEURES',sub:'4 jours envoyés · mardi 13 à envoyer',code:'eoeTafv',week:[7.5,8,8.5,0,8,7.5,0],todayH:6.7}),...s.blocks]}));
+    put('E27',{hasBack:true});
+    put('E28',{blocks:[empty('Ce compte a été archivé par votre entreprise.','Vous allez être déconnecté. Pour toute question, contactez votre bureau.')],note:'Déconnexion automatique, sans bouton.'});
+    after('E29',A({id:'E42',name:'Réserve sur la carte',covers:'S38',blocks:[label('CHANTIERS DU JOUR'),card('Résidence Test','Villeurbanne','07:30','11:30','envoye',{dur:'4:00',extra:'Réserve à lever · « Joint du portail » · Lever ›',ex:'err'}),card('Maison Démo','Bron','12:30','15:00','envoye',{dur:'2:30',extra:'Réserve levée par le bureau',ex:'ok'}),card('Villa Exemple','Lyon','15:30','17:00','envoye',{dur:'1:30',extra:'Réserve levée le 12 octobre',ex:'info'})],note:'Trois états : à lever (card-reserve + card-lift, 44 px), levée par le bureau, levée le JJ mois.'}));
+    after('E05c',A({id:'E37',name:'Journées à envoyer (60 jours)',covers:'S47',blocks:mainBlocks.slice(0,3),hasOv:true,ov:ov({kicker:'RAPPELS · 60 DERNIERS JOURS',title:'Journées à envoyer',rows:[res('mar. 13 oct.','Maison Démo','prévu 08:00–16:00, rien d\'envoyé','Ouvrir'),res('ven. 9 oct.','Villa Exemple','2 lignes à envoyer','Ouvrir'),res('lun. 28 sept.','Résidence Test','1 ligne à envoyer','Ouvrir')],opts:[]}),note:'Ouverte par la note d\'en-tête. La bande montre 7 jours ; la liste relit les 60 derniers.'}));
+    put('AS1',s=>({covers:s.covers+' · S89 · S90',blocks:[...s.blocks,btns([['Me guider pas à pas','o']])]}));
+    put('AS4',{note:'Toucher une ligne la rouvre. ✕ : confirmation en place, Non / Oui.'});
+    put('AS6',{hasOv:false,blocks:[hist([['Heures de mardi','Aujourd\'hui · 09:12'],['Congé de novembre','Hier · 18:40'],['Comment lever une réserve','12 oct. · 07:55']]),msg('Tout effacer ?','Les 3 conversations seront supprimées.','err'),btns([['Non','o'],['Oui','r']])],note:'Confirmation en place, Oui / Non (pas de fenêtre modale).'});
+    put('AS7',s=>({ov:{...s.ov,opts:[opt('OK','y')]},note:'Même éditeur que E21 : ✕ seulement, pas d\'« Annuler ». L\'assistant réduit en pastille ne cache aucun champ.'}));
+    after('AS8',AS({id:'AS9',name:'Assistant · historique, autres états',covers:'S92',title:'Historique',kicker:'PRIVÉ · GARDÉ 30 JOURS',hasAsInput:false,blocks:[skel('60px','18px'),msg('Historique indisponible','','err','Réessayer'),msg('Une action est en cours…','','warn'),msg('Abandonner cette action ?','','dark'),btns([['Non','o'],['Oui','r']])],note:'Chargement, erreur, verrou, quota épuisé, abandon : un état à la fois (empilés). Textes actuels.'}),
+      AS({id:'AS10',name:'Assistant · heures, planning, collègues',covers:'S90',blocks:[chat([['me','Je travaille où lundi ?'],['bot','Lundi 19 : Villa Exemple, Lyon, 08:00 → 12:00 puis 13:30 → 17:00.'],['me','Qui est avec moi ?'],['bot','Alex et Bruno sont prévus sur Villa Exemple lundi.'],['me','Combien d\'heures cette semaine ?'],['bot','22:42 notées, dont 16:00 envoyées. Mardi 13 reste à envoyer.']])],note:'Collègues : seulement si l\'entreprise l\'autorise. Lecture seule.'}));
+    before('P01',P({id:'P00',name:'/pointer · vérification',covers:'S94',p:{kicker:'UN INSTANT',big:'…',title:'Vérification du QR…',sub:'Puis position, puis pointage.',btns:[]},note:'pointer-checking, -locating, -punching : même page.'}),
+      P({id:'P00b',name:'/pointer · connexion sur place',covers:'S94',p:{kicker:'CONNEXION',big:'',bigFs:'0px',title:'Connectez-vous pour pointer',sub:'Entreprise Test',hasField:true,fieldL:'Mot de passe',fieldV:'••••••••',btns:[pb('Se connecter','y')]},note:'#kx-pass sur le champ ; libellés et erreurs : ceux du code.'}),
+      P({id:'P04',name:'/pointer · QR fixe, information',covers:'S95',p:{kicker:'QR FIXE',big:'',bigFs:'0px',title:'Ce QR vérifie votre position',sub:'Texte actuel de fixed-info.',btns:[pb('Continuer','y'),pb('Je refuse','o')]},note:'Première utilisation d\'un QR fixe.'}));
+    put('P02',s=>({p:{...s.p,btns:[pb('Envoyer ma journée','y'),pb('Ajouter une intervention','o')]},note:'Deux raccourcis (after-send, after-add, plage jusqu\'à l\'heure du départ). Envoyer → E36.'}));
+    put('P03',s=>({name:'/pointer · refus du QR fixe',covers:'S95 · S99',p:{...s.p,big:'Hors zone',title:'Position hors du chantier',sub:'Raison : texte actuel (refusée, imprécise, hors zone, QR remplacé, point non posé).',btns:[pb('Ajouter mon intervention à la main','y'),pb('Réessayer','o')]},note:'« Réessayer » seulement si le ticket est connu.'}));
+    after('P03',P({id:'P03b',name:'/pointer · QR expiré',covers:'S99',p:{bg:'#3A1414',kc:'#FF6B6B',bigFs:'40px',kicker:'POINTAGE NON ENREGISTRÉ',big:'QR expiré',title:'Ce QR n\'est plus valable',sub:'Message du serveur.',btns:[pb('Ouvrir mon espace','y')]},note:'Pas de ticket, donc jamais « Réessayer ».'}),
+      P({id:'P03c',name:'/pointer · neutre',covers:'S98',p:{bg:'#F2EDE3',fg:INK,kc:'#5B534A',bigFs:'40px',kicker:'POINTAGE ANNULÉ',big:'Annulé',title:'Pointage annulé',sub:'Moins d\'une minute. Même page pour « Rien à enregistrer » et le double scan.',btns:[pb('Ouvrir mon espace','y')]},note:'punch-cancelled.'}));
+
+    after('E05',A({id:'E05a',name:'En cours · défilé (total, frise)',covers:'S16 · S32 · S104',hasHdrNote:true,hdrNote,blocks:[label('↑ DÉFILÉ · MA JOURNÉE'),mainBlocks[2],mainBlocks[3]],note:'Carte Total (grand chiffre + barres des 7 jours, aria-hidden), 4 compteurs dont Panier (bascule), mini-frise. Le total compte les minutes du pointage en cours.'}));
+    ['E06','E07','E12','E15','E19'].forEach(id=>put(id,x=>({blocks:x.blocks.filter(b=>!b.isTiles)})));
+    put('E12',{hasToast:false,note:'Une ligne retirée (déjà envoyée une fois) reste visible, barrée, hors total. « Endroit noté » : anciennes lignes seulement. Retour passager « Journée envoyée » : même place que E20b, au-dessus de la barre.'});
+    screens.forEach(s=>{s.hasOv=!!s.hasOv;s.ov={rows:[],opts:[],...s.ov};s.ov.hasOpts=s.ov.opts.length>0;
+      if(s.send){const live=(s.blocks||[]).some(b=>b.isTc||(b.isCard&&String(b.tag).indexOf('EN COURS')===0));let h=s.send.h;if(h==='LE POINTAGE EN COURS NE PART PAS'&&!live)h='';s.send={...s.send,h,hasH:!!h};}
+      if(s.hasStrip&&s.strip)(s.blocks||[]).forEach(b=>{if(b.isTiles&&!b.lockCode)b.bars=barsFor(s.strip.map(x=>x.k).join(''),b.H,b.tH);});});
+    const order=['T','e','o','f','a','v','c','r'];
+    const stripStates=order.map(k=>({l:k==='T'?'J':'M',n:k==='T'?15:13,...SS[k]}));
+    const friseDemos=[
+      {name:'Journée ordinaire',b:frise([['07:30','11:30','envoyer'],['11:30','12:30','trou'],['12:30','15:12','cours'],['15:12','17:00','prevu']],'15:12'),note:'Premier début 07:30 → 6h ; dernière fin 17:00 → 18h. Trait rouge : maintenant.'},
+      {name:'Poste de nuit',b:frise([['21:00','01:00','fait'],['01:30','05:30','cours']],'03:10',{range:'21:00 → 05:30'}),note:'La fin plus tôt que le début passe minuit : axe 20h → 7h, repère « minuit » au milieu. Comptée sur la journée du début.'},
+      {name:'Journée sans ligne',b:frise([],null,{base:[8,17]}),note:'Axe sur l\'horaire de base de l\'entreprise (ici 8h–17h), piste vide. Pas de trait « maintenant ».'},
+      {name:'Chevauchement',b:frise([['07:30','11:30','envoyer',0],['11:00','15:00','envoyer',1],['11:00','11:30','conflit',0],['11:00','11:30','conflit',1]],null,{warn:'Chevauchement 11:00–11:30 : envoi bloqué'}),note:'Deux pistes superposées dès qu\'un chevauchement existe, zone hachurée rouge, phrase d\'erreur sous la frise (12 px, gras).'}
+    ];
+    const sendStates=[['hors-ligne',SEND.off],['envoyer-ce-qui-reste',SEND.reste],['pret',SEND.pret],['envoi-en-cours',SEND.spin],['envoyee',SEND.envoye],['rien-a-envoyer',SEND.rien]].map(([k,v])=>({k,...v}));
+    return {screens,stripStates,friseDemos,sendStates};
+  }
+}
+</script>
+</body>
+</html>

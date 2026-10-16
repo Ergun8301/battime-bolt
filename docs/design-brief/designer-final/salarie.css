@@ -1,0 +1,207 @@
+/* BEMEXO · écran salarié · classes dz-*
+   À importer une fois (layout /poseur et /pointer). Aucun style en ligne dans les TSX.
+   Chaque classe dz-* se pose À CÔTÉ de la classe .bt-* existante (README §6) : on ajoute, on ne remplace pas.
+   Jetons : tokens.css. Les fenêtres Radix reçoivent className="dz-portail" (+ la classe du composant).
+   Règles transverses : texte >= 12px, actions 16px, cible tactile >= 44px (--dz-tap). */
+
+.dz-salarie { font-family: var(--dz-font-ui); color: var(--dz-encre); background: var(--dz-creme); }
+.dz-salarie :focus-visible, .dz-portail :focus-visible, .bt-skin :focus-visible { outline: none; box-shadow: var(--dz-focus); }
+.dz-mono { font-family: var(--dz-font-chiffres); }
+.dz-titre-section { font-family: var(--dz-font-chiffres); font-size: 12px; letter-spacing: .16em; color: var(--dz-titre-section); }
+
+/* En-tête (fixe, alimente --phdr-h) */
+.dz-entete { background: var(--dz-encre); color: var(--dz-creme); padding: 42px 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+.dz-entete__ligne { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dz-entete__kicker { font-family: var(--dz-font-chiffres); font-size: 12px; letter-spacing: .16em; color: var(--dz-jaune); }
+.dz-entete__titre { font-weight: 900; font-size: 22px; letter-spacing: -.02em; }
+.dz-entete__assistant { width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--dz-jaune); color: var(--dz-encre); font-size: 17px; font-weight: 900; }
+.dz-entete__avatar { width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(242,237,227,.35); font-weight: 900; font-size: 13px; }
+
+/* Bande des 7 jours */
+.dz-jours { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.dz-jour { height: 60px; min-width: 44px; border-radius: 14px; border: 1.5px solid transparent; background: var(--dz-encre-3); color: var(--dz-creme); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+.dz-jour__lettre { font-size: 12px; font-weight: 700; }
+.dz-jour__num { font-size: 16px; font-weight: 900; }
+.dz-jour__marque { height: 16px; min-width: 16px; padding: 0 3px; border-radius: 8px; font-size: 12px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+.dz-jour[data-etat="aujourdhui"] { background: var(--dz-jaune); color: var(--dz-encre); border: 2px solid var(--dz-creme); }
+.dz-jour[data-etat="envoye"] .dz-jour__marque { background: var(--dz-envoye-pastille); color: #fff; }
+.dz-jour[data-etat="a-envoyer"] { background: var(--dz-oubli-sombre); border: 2px solid var(--dz-oubli); }
+.dz-jour[data-etat="a-envoyer"] .dz-jour__marque { background: var(--dz-oubli); color: var(--dz-encre); }
+.dz-jour[data-etat="a-venir"] { background: transparent; border: 1.5px dashed rgba(242,237,227,.3); }
+.dz-jour[data-etat="a-venir"] > :not(.dz-jour__marque) { opacity: .6; }
+.dz-jour[data-etat="absence"] { background: repeating-linear-gradient(135deg, var(--dz-absence-sombre-a) 0 6px, var(--dz-absence-sombre-b) 6px 12px); }
+.dz-jour[data-etat="absence"] .dz-jour__marque { background: var(--dz-sable); color: var(--dz-encre); }
+.dz-jour[data-etat="vide"] > * { opacity: .6; }
+.dz-jour[data-etat="cloture"] { background: var(--dz-cloture-sombre); border-color: var(--dz-cloture); }
+.dz-jour[data-etat="renvoye"] { background: var(--dz-erreur-sombre); border: 2px solid var(--dz-erreur); }
+.dz-jour[data-etat="renvoye"] .dz-jour__marque { background: var(--dz-erreur); color: #fff; }
+
+/* Note d'en-tête */
+.dz-note-entete { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border-radius: 12px; font-size: 13px; font-weight: 700; line-height: 1.3; }
+.dz-note-entete[data-ton="oubli"] { background: var(--dz-oubli-sombre); }
+.dz-note-entete[data-ton="hors-ligne"] { background: var(--dz-absence-sombre-a); }
+.dz-note-entete[data-ton="echec"] { background: var(--dz-erreur-sombre); }
+.dz-note-entete__action { margin-left: auto; min-height: 44px; color: var(--dz-jaune); font-size: 16px; font-weight: 800; background: none; border: 0; }
+
+/* Contenu défilant : réserve sous la barre du pouce + onglets + safe-area */
+.dz-contenu { padding: 12px 14px calc(170px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+
+/* Rappels */
+.dz-rappels { display: flex; gap: 6px; }
+.dz-rappel { flex: 1; min-height: 44px; padding: 0 8px; border-radius: 14px; border: 1px solid var(--dz-trait); background: var(--dz-carte); font-size: 16px; font-weight: 800; }
+.dz-rappel[data-ton="rouge"] { background: var(--dz-erreur-fond); border: 0; color: var(--dz-erreur-texte); }
+
+/* Carte de pointage */
+.dz-pointage { background: var(--dz-encre-2); color: var(--dz-creme); border-radius: var(--dz-r-l); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.dz-pointage[data-variante="oublie"] { background: var(--dz-erreur-sombre); }
+.dz-pointage__kicker { font-family: var(--dz-font-chiffres); font-size: 12px; font-weight: 700; letter-spacing: .14em; color: var(--dz-en-cours-vif); }
+.dz-pointage[data-variante="oublie"] .dz-pointage__kicker { color: var(--dz-erreur-vif); }
+.dz-pointage__temps { font-family: var(--dz-font-chiffres); font-weight: 700; font-size: var(--dz-fs-total); line-height: 1; letter-spacing: -.04em; }
+.dz-pointage__lieu { font-size: 13px; color: rgba(242,237,227,.75); text-align: right; }
+.dz-pointage__bouton { height: 52px; border-radius: 999px; border: 0; background: var(--dz-creme); color: var(--dz-encre); font-size: 16px; font-weight: 800; }
+
+/* Total (.bt-total) : carte façon Statistiques — grand chiffre + barres des 7 jours (CSS, aria-hidden) */
+.dz-total { background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: 18px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.dz-total__cle { font-family: var(--dz-font-chiffres); font-size: 12px; letter-spacing: .12em; color: var(--dz-texte-2); }
+.dz-total__valeur { font-family: var(--dz-font-chiffres); font-weight: 700; font-size: 44px; line-height: 1; letter-spacing: -.04em; } /* .bt-total-big */
+.dz-total__unite { font-weight: 800; font-size: 16px; margin-left: 3px; }
+.dz-total__detail { font-size: 12.5px; font-weight: 600; color: var(--dz-texte-2); } /* data-testid="total-prevu" quand il y a du prévu */
+.dz-barres { flex: none; display: flex; gap: 4px; align-items: flex-end; }
+.dz-barre-jour { width: 14px; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; color: var(--dz-texte-2); }
+.dz-barre-jour__piste { width: 14px; height: 48px; display: flex; align-items: flex-end; }
+.dz-barre-jour__valeur { width: 14px; min-height: 6%; border-radius: 4px; } /* height = h / 10 h, posé en style calculé comme la frise */
+.dz-barre-jour[data-etat="envoye"] .dz-barre-jour__valeur { background: var(--dz-encre); }
+.dz-barre-jour[data-etat="a-envoyer"] .dz-barre-jour__valeur { background: var(--dz-a-envoyer-fond); border: 2px solid var(--dz-a-envoyer-trait); }
+.dz-barre-jour[data-etat="aujourdhui"] { color: var(--dz-encre); font-weight: 900; }
+.dz-barre-jour[data-etat="aujourdhui"] .dz-barre-jour__valeur { background: var(--dz-jaune); border: 1.5px solid var(--dz-encre); }
+.dz-barre-jour[data-etat="absence"] .dz-barre-jour__valeur { background: repeating-linear-gradient(135deg, var(--dz-test-absence) 0 3px, var(--dz-trait-fort) 3px 6px); }
+.dz-barre-jour[data-etat="a-venir"] .dz-barre-jour__valeur { border: 1.5px dashed var(--dz-prevu-trait); }
+.dz-barre-jour[data-etat="cloture"] .dz-barre-jour__valeur { background: var(--dz-trait-fort); }
+.dz-barre-jour[data-etat="renvoye"] .dz-barre-jour__valeur { background: var(--dz-erreur-fond); border: 2px solid var(--dz-erreur); }
+.dz-total[data-verrou] { background: var(--dz-verrou-fond); color: var(--dz-verrou-texte); }
+
+/* Compteurs (.bt-stats / .bt-stat / .bt-stat-n) : chantiers, pauses, route, panier */
+.dz-compteurs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.dz-compteur { min-height: 60px; min-width: 0; border-radius: 14px; border: 1px solid var(--dz-trait); background: var(--dz-carte); padding: 8px 9px; display: flex; flex-direction: column; justify-content: space-between; gap: 2px; text-align: left; }
+.dz-compteur__cle { font-family: var(--dz-font-chiffres); font-size: 12px; letter-spacing: .04em; }
+.dz-compteur__valeur { font-family: var(--dz-font-chiffres); font-weight: 900; font-size: 16px; line-height: 1.15; }
+.dz-compteur[data-ton="a-preciser"] { background: var(--dz-a-envoyer-fond); border: 2px solid var(--dz-a-envoyer-trait); color: var(--dz-a-envoyer-texte-2); }
+.dz-compteur[data-ton="a-preciser"] .dz-compteur__valeur { font-family: var(--dz-font-ui); font-size: 13px; }
+.dz-compteur[data-ton="pris"] { background: var(--dz-encre); border-color: var(--dz-encre); color: var(--dz-jaune); }
+.dz-compteur[data-verrou] { background: var(--dz-verrou-fond); border-color: var(--dz-trait-fort); color: var(--dz-verrou-texte); }
+
+/* Mini-frise (aria-hidden) : graduations placées à leur vraie position */
+.dz-frise { background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 6px; }
+.dz-frise__piste { position: relative; height: 18px; border-radius: 8px; background: var(--dz-trait-doux); }
+.dz-frise__segment { position: absolute; top: 0; bottom: 0; border-radius: 6px; }
+.dz-frise__segment[data-piste="0"] { bottom: 50%; } .dz-frise__segment[data-piste="1"] { top: 50%; }
+.dz-frise__maintenant { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--dz-maintenant); }
+.dz-frise__minuit { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--dz-encre); }
+.dz-frise__graduations { position: relative; height: 16px; font-family: var(--dz-font-chiffres); font-size: 12px; color: var(--dz-texte-2); }
+.dz-frise__graduation { position: absolute; top: 0; white-space: nowrap; transform: translateX(-50%); }
+.dz-frise__graduation:first-child { transform: none; } .dz-frise__graduation:last-child { transform: translateX(-100%); }
+.dz-frise__graduation[data-minuit] { color: var(--dz-encre); font-weight: 800; }
+
+/* Carte chantier : étiquette + heures / nom (2 lignes, 52 car.) / ville */
+.dz-carte { position: relative; border-radius: var(--dz-r-m); border: 1.5px solid var(--dz-encre); background: var(--dz-carte); padding: 10px 14px 12px 18px; display: flex; flex-direction: column; gap: 4px; overflow: hidden; text-align: left; min-height: 44px; }
+.dz-carte::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--dz-carte-lisere, var(--dz-journee-trait)); }
+.dz-carte[data-dz-creneau="matin"] { background: var(--dz-matin); --dz-carte-lisere: var(--dz-matin-trait); }
+.dz-carte[data-dz-creneau="apres-midi"] { background: var(--dz-apres-midi); --dz-carte-lisere: var(--dz-apres-midi-trait); }
+.dz-carte[data-dz-creneau="soir"] { background: var(--dz-soir); --dz-carte-lisere: var(--dz-soir-trait); }
+.dz-carte__haut { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
+.dz-etiquette { flex: none; font-family: var(--dz-font-chiffres); font-size: 12px; font-weight: 700; letter-spacing: .06em; padding: 4px 7px; border-radius: var(--dz-r-xs); }
+.dz-carte__heures { min-width: 0; font-family: var(--dz-font-chiffres); font-size: 12.5px; font-weight: 700; text-align: right; }
+.dz-carte__nom { font-weight: 900; font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dz-carte__ville { font-size: 13px; color: var(--dz-texte-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-carte__encadre { margin-top: 3px; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; line-height: 1.35; }
+.dz-carte[data-etat="envoye"] { background: var(--dz-encre); color: var(--dz-creme); }
+.dz-carte[data-etat="envoye"] .dz-carte__heures { color: var(--dz-jaune); }
+.dz-carte[data-etat="envoye"] .dz-carte__ville { color: rgba(242,237,227,.7); }
+.dz-carte[data-etat="envoye"] .dz-etiquette, .dz-carte[data-etat="en-cours"] .dz-etiquette { background: var(--dz-vert-plein); color: #fff; }
+.dz-carte[data-etat="a-envoyer"] .dz-etiquette { background: var(--dz-a-envoyer-fond); color: var(--dz-a-envoyer-texte); }
+.dz-carte[data-etat="prevu"] { background: transparent; border: 1.5px dashed var(--dz-prevu-trait); }
+.dz-carte[data-etat="en-cours"] { background: var(--dz-en-cours-fond); border-color: var(--dz-en-cours); --dz-carte-lisere: var(--dz-en-cours); }
+.dz-carte[data-etat="sur-le-telephone"] { border-style: dashed; }
+.dz-carte[data-etat="sur-le-telephone"] .dz-etiquette { background: var(--dz-telephone-fond); }
+.dz-carte[data-etat="chez-le-comptable"] { background: var(--dz-comptable-fond); border-color: var(--dz-trait-fort); }
+.dz-carte[data-etat="chez-le-comptable"] .dz-etiquette { background: var(--dz-encre); color: var(--dz-jaune); }
+.dz-carte[data-etat="retire"] { background: var(--dz-comptable-fond); border-color: var(--dz-trait-fort); color: var(--dz-texte-2); }
+.dz-carte[data-etat="retire"] .dz-carte__nom { text-decoration: line-through; }
+.dz-carte[data-etat="sortie-oubliee"] { background: var(--dz-erreur-fond); border-color: var(--dz-erreur); --dz-carte-lisere: var(--dz-erreur); }
+.dz-carte[data-etat="sortie-oubliee"] .dz-etiquette { background: var(--dz-erreur); color: #fff; }
+
+/* Trou Route / Pause */
+.dz-trou { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 14px; background: var(--dz-a-envoyer-fond); border: 2px solid var(--dz-a-envoyer-trait); }
+.dz-trou__choix { height: 44px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); font-size: 16px; font-weight: 800; }
+.dz-trou__choix[aria-pressed="true"] { background: var(--dz-encre); color: var(--dz-jaune); border-color: var(--dz-encre); }
+
+/* Réunion */
+.dz-reunion { position: relative; background: var(--dz-reunion); border: 1.5px solid var(--dz-reunion-trait); border-radius: var(--dz-r-m); padding: 12px 14px; display: flex; justify-content: space-between; gap: 8px; } /* pas de barre à gauche */
+.dz-reunion__heure { font-family: var(--dz-font-chiffres); font-size: 13px; font-weight: 700; color: var(--dz-reunion-trait); }
+
+/* Tâches : ligne 44px, case 26px dessinée dans la ligne */
+.dz-taches { background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); padding: 10px 14px; }
+.dz-tache { display: flex; align-items: center; gap: 12px; min-height: 44px; width: 100%; background: none; border: 0; text-align: left; font-size: 14px; font-weight: 700; }
+/* toute la ligne (44 px) est la cible ; la case de 26 px n'est que le dessin */
+.dz-tache__case { width: 26px; height: 26px; flex: none; border-radius: 8px; border: 2px solid var(--dz-encre); }
+.dz-tache[aria-checked="true"] .dz-tache__case { background: var(--dz-encre); color: var(--dz-jaune); }
+.dz-tache[aria-disabled="true"] .dz-tache__case { background: var(--dz-sable); }
+
+/* Barre du pouce + onglets */
+.dz-barre { position: fixed; left: 0; right: 0; bottom: 0; background: var(--dz-creme); border-top: 1px solid var(--dz-trait); padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; }
+.dz-barre__ligne { display: flex; gap: 8px; }
+.dz-barre__carre { width: 56px; height: 56px; flex: none; border-radius: 16px; border: 2px solid var(--dz-encre); background: var(--dz-carte); }
+.dz-envoyer { flex: 1; height: 56px; border-radius: 16px; border: 0; font-size: 16px; font-weight: 900; padding: 0 8px; }
+.dz-envoyer[data-etat="pret"], .dz-envoyer[data-etat="envoi-en-cours"] { background: var(--dz-jaune); color: var(--dz-encre); box-shadow: var(--dz-ombre-bouton); }
+.dz-envoyer[data-etat="envoyer-ce-qui-reste"] { background: var(--dz-encre); color: var(--dz-jaune); }
+.dz-envoyer[data-etat="envoyee"] { background: var(--dz-vert-plein); color: #fff; }
+.dz-envoyer[data-etat="hors-ligne"] { background: var(--dz-trait-fort); color: var(--dz-texte-2); }
+.dz-envoyer[data-etat="rien-a-envoyer"] { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); }
+.dz-barre__aide { text-align: center; font-family: var(--dz-font-chiffres); font-size: 12px; letter-spacing: .08em; color: var(--dz-texte-3); }
+.dz-onglets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.dz-onglet { height: 44px; border-radius: 12px; border: 0; background: transparent; color: var(--dz-texte-2); font-size: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.dz-onglet[aria-current="page"] { background: var(--dz-encre); color: var(--dz-jaune); }
+.dz-onglet__pastille { min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--dz-erreur); color: #fff; font-size: 12px; font-weight: 900; }
+
+/* Feuilles (Radix, rendues dans <body> : className="dz-portail dz-feuille") */
+.dz-voile { position: fixed; inset: 0; background: var(--dz-voile); }
+.dz-feuille { position: fixed; left: 0; right: 0; bottom: 0; max-height: calc(100dvh - 24px); background: var(--dz-carte); color: var(--dz-encre); font-family: var(--dz-font-ui); border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0; border-top: 4px solid var(--dz-jaune); display: flex; flex-direction: column; overflow: hidden; }
+.dz-feuille[role="alertdialog"] { border-top-color: var(--dz-erreur); }
+.dz-feuille__tete { flex: none; padding: 10px 20px 4px; display: flex; justify-content: space-between; gap: 12px; }
+.dz-feuille__titre { font-weight: 900; font-size: 24px; letter-spacing: -.03em; line-height: 1.05; }
+.dz-feuille__fermer { width: 44px; height: 44px; flex: none; border-radius: 50%; border: 1px solid var(--dz-trait-fort); background: none; }
+.dz-feuille__corps { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 10px 20px 14px; display: grid; gap: 12px; align-content: start; }
+.dz-feuille__pied { flex: none; border-top: 1px solid var(--dz-trait-doux); padding: 12px 20px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; }
+.dz-puce { min-height: 44px; min-width: 44px; padding: 0 13px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: #fff; font-size: 16px; font-weight: 800; }
+.dz-puce[aria-pressed="true"] { background: var(--dz-jaune); border-color: var(--dz-encre); }
+.dz-puce:disabled { background: var(--dz-verrou-fond); color: var(--dz-verrou-texte); border-color: var(--dz-trait); } /* couleur, pas d'opacité */
+.dz-bouton { min-height: 52px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: transparent; font-size: 16px; font-weight: 800; }
+.dz-bouton[data-ton="principal"] { background: var(--dz-jaune); border: 0; box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.dz-bouton[data-ton="destructif"] { color: var(--dz-erreur-texte); border-color: var(--dz-erreur); }
+.dz-bouton[data-ton="destructif-plein"] { background: var(--dz-erreur); color: #fff; border: 0; }
+.dz-champ--assistant { background: var(--dz-jaune-pale); border: 2px solid var(--dz-encre); }
+
+/* Éditeur : Début / Fin = deux boutons (.bt-timecard ×2, data-guide="editeur.horaires") */
+.dz-horaires { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; gap: 8px; align-items: end; }
+.dz-horaire { min-height: 50px; border-radius: 12px; border: 1px solid var(--dz-trait-fort); background: #fff; padding: 0 14px; font-family: var(--dz-font-chiffres); font-weight: 700; font-size: 16px; text-align: left; }
+.dz-molette { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 8px; }
+.dz-molette__cran { min-height: 44px; border-radius: 12px; font-family: var(--dz-font-chiffres); font-size: 16px; color: var(--dz-texte-2); }
+.dz-molette__cran[aria-selected="true"] { background: var(--dz-jaune-pale); color: var(--dz-encre); font-size: 24px; font-weight: 700; }
+/* Calendrier de duplication */
+.dz-calendrier { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 4px; }
+.dz-calendrier__jour { min-height: 52px; border-radius: 10px; border: 1px solid var(--dz-trait-fort); background: #fff; font-size: 12px; font-weight: 700; }
+.dz-calendrier__jour[aria-pressed="true"] { background: var(--dz-jaune); border: 2px solid var(--dz-encre); }
+.dz-calendrier__jour:disabled { background: var(--dz-verrou-fond); color: var(--dz-verrou-texte); border-style: dashed; }
+/* Ligne d'une liste (réserves, journées à envoyer) */
+.dz-ligne-liste { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--dz-trait); background: #fff; }
+/* Bouton retour des vues (.bt-phdr-back, aria-label « Retour à ma journée ») */
+.dz-retour-jour { width: 44px; height: 44px; flex: none; border-radius: 50%; border: 1px solid rgba(242,237,227,.3); background: none; color: inherit; font-size: 22px; font-weight: 800; }
+
+/* Assistant réduit (pastille) : texte sur 2 lignes, jamais tronqué au milieu d'une heure */
+.dz-pastille { position: fixed; left: 14px; right: 14px; top: calc(env(safe-area-inset-top) + 12px); display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 8px; border-radius: 999px; background: var(--dz-encre); color: var(--dz-creme); box-shadow: var(--dz-ombre-flottant); }
+.dz-pastille__texte { font-size: 13px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.dz-pastille__reprendre { flex: none; height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(242,237,227,.3); background: none; color: inherit; font-size: 16px; font-weight: 800; }
+
+/* Retour passager (au-dessus de la barre) */
+.dz-retour { bottom: calc(170px + env(safe-area-inset-bottom)); border-radius: 16px; background: var(--dz-encre); color: var(--dz-creme); font-size: 13.5px; }
+.dz-retour__action { height: 44px; padding: 0 14px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font-weight: 800; }
