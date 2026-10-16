@@ -12,7 +12,7 @@ import { format, startOfMonth, endOfMonth, addMonths, subMonths, parseISO } from
 import { fr } from 'date-fns/locale';
 import { termineLe } from '@/supabase/functions/_shared/chantier-statut'; // lot 23 : « Terminé le … »
 import { useUi2 } from '@/components/design/salarie/shell-v2'; // coque v2 (?ui=2) : le Mois en cartes, comme la Semaine (E25)
-import { hm } from '@/supabase/functions/_shared/salarie-vue';
+import { hm, resumeMois } from '@/supabase/functions/_shared/salarie-vue';
 
 interface EntryW extends TimeEntry { worksite: Worksite | null }
 interface PlanW extends Planning { worksite: Worksite | null }
@@ -61,7 +61,8 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
   }
 
   if (ui2) {
-    const envoyes = new Set(entries.filter((e) => isCounted(e.status)).map((e) => e.work_date)).size;
+    const resume = resumeMois(entries, planning);
+    const envoyes = resume.joursTravailles;
     return (
       <div className="dz-semaine dz-mois" data-testid="dz-mois">
         <div className="dz-sem-nav">
@@ -69,12 +70,21 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
           <div className="dz-sem-nav-t capitalize">{format(monthStart, 'MMMM yyyy', { locale: fr })}</div>
           <button type="button" onClick={() => setMonthStart(addMonths(monthStart, 1))} aria-label="Mois suivant"><ChevronRight className="h-5 w-5" /></button>
         </div>
-        <div className="bt-total dz-total dz-sem-carte" data-testid="dz-mois-total">
-          <div className="dz-total-gauche">
-            <div className="bt-total-k">Mois · heures</div>
-            <div className="dz-total-valeur"><span className="bt-total-big">{hm(totalSent)}</span><span className="dz-total-unite">h</span></div>
-            <div className="dz-total-detail">{totalSent > 0 ? `${fmt(totalSent)} envoyées · ` : ''}{envoyes} jour{envoyes > 1 ? 's' : ''} envoyé{envoyes > 1 ? 's' : ''}</div>
+        {/* Le résumé du mois (rien de relu : les lignes et les affectations de la page). Même grammaire que la Journée : carte sombre, petit mot jaune, tuiles crème. */}
+        <div className="dz-mois-resume" data-testid="dz-mois-total">
+          <div className="bt-total-k capitalize">{format(monthStart, 'MMMM', { locale: fr })} · heures</div>
+          <div className="dz-total-valeur"><span className="bt-total-big">{hm(resume.minutes)}</span><span className="dz-total-unite">h</span></div>
+          <div className="dz-total-detail">
+            {resume.minutes > 0 ? `${fmt(resume.minutes)} envoyées · ` : ''}{envoyes} jour{envoyes > 1 ? 's' : ''} envoyé{envoyes > 1 ? 's' : ''}
+            {resume.aEnvoyerMinutes > 0 && <span className="dz-mois-reste"> · + {fmt(resume.aEnvoyerMinutes)} à envoyer</span>}
           </div>
+        </div>
+        <div className="bt-stats dz-compteurs" data-testid="dz-mois-stats">
+          <div className="bt-stat dz-compteur" data-testid="mois-jours"><span className="dz-compteur-cle">Jours</span><span className="bt-stat-n">{resume.joursTravailles}</span></div>
+          {resume.paniers > 0 && <div className="bt-stat dz-compteur" data-testid="mois-paniers"><span className="dz-compteur-cle">Paniers</span><span className="bt-stat-n">{resume.paniers}</span></div>}
+          {resume.conges > 0 && <div className="bt-stat dz-compteur" data-testid="mois-conges"><span className="dz-compteur-cle">Congés</span><span className="bt-stat-n">{resume.conges}</span></div>}
+          {resume.absences > 0 && <div className="bt-stat dz-compteur" data-testid="mois-absences"><span className="dz-compteur-cle">Absences</span><span className="bt-stat-n">{resume.absences}</span></div>}
+          <div className="bt-stat dz-compteur" data-testid="mois-a-envoyer" data-ton={resume.aEnvoyerJours > 0 ? 'a-preciser' : undefined}><span className="dz-compteur-cle">À envoyer</span><span className="bt-stat-n">{resume.aEnvoyerJours}</span></div>
         </div>
         {dayKeys.length === 0 ? (
           <p className="dz-vide">Aucune affectation ce mois-ci.</p>
@@ -85,8 +95,10 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
           const declared = dEnt.some((e) => isCounted(e.status));
           const hasDraft = dEnt.some((e) => e.status === 'draft');
           const isToday = d === todayStr;
+          const absence = dPlan.find((p) => p.absence_type)?.absence_type;
           const pastille = dayTotal > 0
             ? { t: `${fmt(dayTotal)}${declared ? ' ✓' : ''}${hasDraft ? ' · À envoyer' : ''}`, e: hasDraft ? 'a-envoyer' : 'envoye' }
+            : absence && dEnt.length === 0 ? { t: (ABS[absence] || absence).toUpperCase(), e: 'absence' } // un congé n'est pas « À déclarer » : la même pastille que la Semaine
             : { t: hasDraft ? 'À envoyer' : 'À déclarer', e: hasDraft ? 'a-envoyer' : 'prevu' };
           return (
             <button key={d} type="button" onClick={() => onSelectDay?.(d)} className={`dz-sem-jour${isToday ? ' is-today' : ''}`}>
