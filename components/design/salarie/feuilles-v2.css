@@ -1,0 +1,183 @@
+/* Design salarié · étape 5 · feuilles du bas, fidèles à la planche (E08 à E24, E30, E40).
+   Deux endroits : les fenêtres Radix (rendues dans <body>, portée `.dz-portail.dz-feuille`, posée par `<DialogContent feuille>` de components/ui/dialog.tsx)
+   et l'éditeur d'intervention (un <div> fixe de « Ma journée », portée `.bt-ui2 .bt-ed`). Sans `?ui=2` aucune de ces classes n'existe : l'ancienne interface ne change pas d'un octet.
+   Spécificité : chaque règle passe devant les utilitaires Tailwind du Button / Dialog (0,1,0) sans `!important`.
+   Couches (contrat z-index, dz-jetons.css) : éditeur 40 · fenêtres Radix 50 (voile et feuille) · informations 95.
+   Clavier : `--dz-kb-h` (components/design/salarie/clavier.tsx) lève la feuille au-dessus du clavier et réduit sa hauteur maximale. */
+
+/* ── Voile et feuille (fenêtres Radix) ── */
+.dz-voile { position: fixed; inset: 0; z-index: var(--dz-z-fenetre); background: var(--dz-voile); }
+.dz-portail.dz-feuille {
+  position: fixed; left: 0; right: 0; bottom: var(--dz-kb-h, 0px); z-index: var(--dz-z-fenetre);
+  width: 100%; max-width: 480px; margin: 0 auto; padding: 0;
+  max-height: calc(100dvh - 24px - var(--dz-kb-h, 0px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--dz-carte); color: var(--dz-encre); font-family: var(--dz-font-ui);
+  border: 0; border-top: 4px solid var(--dz-jaune); border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0; box-shadow: none;
+  animation: dz-feuille-entree var(--dz-t-feuille) ease-out;
+}
+.dz-portail.dz-feuille[data-ton="alerte"] { border-top-color: var(--dz-erreur); }
+.dz-portail.dz-feuille::before, .bt-ui2 .bt-ed-inner::before, .bt-ui2 .bt-sheet .bt-grip {
+  content: ""; display: block; flex: none; width: 44px; height: 5px; border-radius: 3px; background: var(--dz-trait-fort); margin: 8px auto 0;
+}
+@keyframes dz-feuille-entree { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ── En-tête, corps qui défile, pied fixe ── */
+.dz-portail.dz-feuille .dz-feuille__tete { flex: none; position: relative; padding: 10px 76px 4px 20px; }
+.dz-portail.dz-feuille .dz-feuille__tete + .dz-feuille__corps { padding-top: 6px; }
+.dz-feuille__titres { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dz-feuille__kicker { font: 700 var(--dz-fs-12)/1.25 var(--dz-font-chiffres); letter-spacing: .14em; color: var(--dz-texte-2); overflow-wrap: anywhere; }
+.dz-feuille__titres h2, .dz-feuille__titre { margin: 0; font: 900 var(--dz-fs-24)/1.05 var(--dz-font-ui); letter-spacing: -.03em; color: var(--dz-encre); overflow-wrap: anywhere; }
+.dz-portail.dz-feuille > .dz-feuille__fermer { position: absolute; top: 23px; right: 20px; }
+.dz-feuille__fermer {
+  width: 44px; height: 44px; min-width: 44px; flex: none; padding: 0; border-radius: 50%; border: 1px solid var(--dz-trait-fort); background: none; color: var(--dz-encre);
+  display: inline-flex; align-items: center; justify-content: center; font: 400 15px/1 var(--dz-font-ui); cursor: pointer; opacity: 1;
+}
+.dz-portail.dz-feuille .dz-feuille__corps {
+  flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 10px 20px 14px;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start;
+}
+.dz-portail.dz-feuille .dz-feuille__corps p { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--dz-texte-note); }
+.dz-portail.dz-feuille .dz-feuille__pied {
+  flex: none; border-top: 1px solid var(--dz-trait-doux); background: var(--dz-carte);
+  padding: 12px 20px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px;
+}
+
+/* Textes propres à certaines questions */
+.dz-portail.dz-feuille .dz-feuille__bloc { display: grid; gap: 10px; }
+.dz-portail.dz-feuille .dz-feuille__corps p.dz-feuille__alerte { padding: 9px 12px; border-radius: 10px; background: var(--dz-a-envoyer-fond); color: var(--dz-a-envoyer-texte-2); font-size: 14px; font-weight: 600; }
+.dz-portail.dz-feuille .dz-feuille__liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.dz-portail.dz-feuille .dz-feuille__liste li { min-height: 52px; padding: 8px 14px; border-radius: 14px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-blanc); display: flex; align-items: center; font: 800 16px/1.25 var(--dz-font-ui); color: var(--dz-encre); overflow-wrap: anywhere; }
+
+/* ── Boutons de feuille : plein jaune, contour, rouge ── */
+.dz-portail.dz-feuille .dz-bouton {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: auto; min-height: 52px; padding: 8px 16px;
+  border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: transparent; color: var(--dz-encre); box-shadow: none;
+  font: 800 16px/1.2 var(--dz-font-ui); text-align: center; white-space: normal; cursor: pointer;
+}
+.dz-portail.dz-feuille .dz-bouton[data-ton="principal"] { background: var(--dz-jaune); border: 0; box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.dz-portail.dz-feuille .dz-bouton[data-ton="destructif"] { background: var(--dz-erreur); color: var(--dz-blanc); border: 0; }
+.dz-portail.dz-feuille .dz-bouton:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); border: 0; box-shadow: none; cursor: default; opacity: 1; }
+
+/* ── Calendrier de « Dupliquer cette journée » : 7 jours de 44 px dans la largeur de la feuille ── */
+.dz-portail.dz-feuille .dz-calendrier { overflow-x: auto; }
+
+/* ── Choix de la pause (components/pause-picker.tsx, fiche et question d'envoi) : puces de 44 px, rien de présélectionné, grisé par couleur ── */
+.dz-portail .bt-pp--phone .bt-pp-chips, .bt-ui2 .bt-pp--phone .bt-pp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dz-portail .bt-pp--phone .bt-pp-b, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-b {
+  min-height: 44px; min-width: 44px; padding: 0 13px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-blanc); color: var(--dz-encre); font: 800 16px/1 var(--dz-font-ui);
+}
+.dz-portail .bt-pp--phone .bt-pp-b.on, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-b.on { background: var(--dz-jaune); border-color: var(--dz-encre); color: var(--dz-encre); }
+.dz-portail .bt-pp--phone .bt-pp-b:disabled, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-b:disabled { opacity: 1; background: var(--dz-verrou-fond); color: var(--dz-verrou-texte); border-color: var(--dz-trait); }
+.dz-portail .bt-pp--phone .bt-pp-in, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-in { min-height: 50px; width: 110px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--dz-trait-fort); font: 700 16px/1 var(--dz-font-chiffres); }
+.dz-portail .bt-pp--phone .bt-pp-ok, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-ok { min-height: 44px; min-width: 64px; border-radius: 999px; background: var(--dz-encre); color: var(--dz-jaune); font: 800 16px/1 var(--dz-font-ui); }
+.dz-portail .bt-pp--phone .bt-pp-ok:disabled, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-ok:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); border-color: var(--dz-inactif-fond); }
+.dz-portail .bt-pp--phone .bt-pp-preview, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-preview { font-size: 13px; color: var(--dz-encre); }
+.dz-portail .bt-pp--phone .bt-pp-hint, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-hint { font-size: 12.5px; color: var(--dz-texte-2); }
+.dz-portail .bt-pp--phone .bt-pp-label, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-label { font-size: 13.5px; }
+.dz-portail .bt-pp--phone .bt-pp-err, .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-err { font-size: 12.5px; color: var(--dz-erreur-texte); }
+.dz-portail .bt-pp--phone .bt-pp-in[aria-invalid=true], .bt-ui2 .bt-ed .bt-pp--phone .bt-pp-in[aria-invalid=true] { border-color: var(--dz-erreur); }
+
+/* ── Liste des réserves (E20a) et « Lever la réserve » (E20) ── */
+.dz-portail .bt-wr-list { gap: 10px; }
+.dz-portail .bt-wr-item { background: var(--dz-blanc); border: 1px solid var(--dz-trait); border-left: 3px solid var(--dz-erreur); border-radius: 14px; padding: 10px 12px; }
+.dz-portail .bt-wr-meta { font-size: 13px; color: var(--dz-encre); }
+.dz-portail .bt-wr-date { font-size: 12px; color: var(--dz-texte-2); }
+.dz-portail .bt-wr-obs { font-size: 13px; color: var(--dz-texte-note); }
+.dz-portail .bt-wr-noobs { font-size: 13px; color: var(--dz-texte-2); }
+.dz-portail .bt-wr-go { min-height: 44px; padding: 0 14px; margin-top: 8px; border: 0; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 800 16px/1 var(--dz-font-ui); box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.dz-portail .bt-rlf { background: var(--dz-jaune-pale); border: 1px solid var(--dz-trait-fort); border-radius: 12px; }
+.dz-portail .bt-rlf-l { font-size: 13px; color: var(--dz-texte-note); }
+.dz-portail .bt-rlf-ta { min-height: 72px; border-radius: 12px; border: 1px solid var(--dz-trait-fort); }
+.dz-portail .bt-rlf-pbtn, .dz-portail .bt-rlf-go, .dz-portail .bt-rlf-no { min-height: 44px; border-radius: 999px; font-size: 16px; }
+.dz-portail .bt-rlf-go { background: var(--dz-jaune); color: var(--dz-encre); box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.dz-portail .bt-rlf-no { border-color: var(--dz-trait-fort); }
+.dz-portail .bt-rlf-x { width: 44px; height: 44px; top: 0; right: 0; background: transparent; }
+.dz-portail .bt-rlf-bad { font-size: 12.5px; color: var(--dz-erreur-texte); }
+.dz-portail .bt-rlf button:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
+
+/* Documents du chantier : actions de 44 px (le reste de cette fenêtre est de la prochaine vague) */
+.dz-portail .bt-doc-act { width: 44px; height: 44px; }
+.dz-portail .bt-doc-addbtn, .dz-portail .bt-doc-tab { min-height: 44px; }
+
+/* ═══ Éditeur d'intervention : feuille du bas (E21, E22, E38, E39) ═══ */
+.bt-ui2 .bt-ed { align-items: flex-end; background: var(--dz-voile); }
+.bt-ui2 .bt-ed-inner {
+  height: min(calc(100dvh - 24px - var(--dz-kb-h, 0px)), 760px); max-width: 480px; margin-bottom: var(--dz-kb-h, 0px);
+  background: var(--dz-carte); color: var(--dz-encre); border-top: 4px solid var(--dz-jaune); border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0;
+}
+.bt-ui2 .bt-ed-hdr.dz-feuille__tete { background: transparent; color: var(--dz-encre); padding: 10px 20px 4px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.bt-ui2 .bt-ed-cancel.dz-feuille__fermer { min-width: 44px; padding: 0; text-align: center; color: var(--dz-encre); }
+.bt-ui2 .bt-ed-title.dz-feuille__titre { flex: none; text-align: left; overflow: visible; white-space: normal; text-overflow: clip; font-size: var(--dz-fs-24); }
+.bt-ui2 .bt-ed-scroll { padding: 6px 20px 14px; }
+.bt-ui2 .bt-ed-scroll > .bt-sec { margin: 14px 0 8px; font-weight: 700; }
+.bt-ui2 .bt-ed .dz-facultatif { text-transform: none; letter-spacing: 0; color: var(--dz-texte-2); }
+.bt-ui2 .bt-ed-dock { padding: 12px 20px calc(20px + env(safe-area-inset-bottom)); background: var(--dz-carte); border-top: 1px solid var(--dz-trait-doux); box-shadow: none; }
+
+/* 1 · Chantier : recherche, lignes de choix, « Autre chantier » (toujours proposé), « C'était quoi ? » */
+.bt-ui2 .bt-ed .bt-site-search { min-height: 50px; padding: 0 14px; border: 2px solid var(--dz-encre); border-radius: 12px; font: 600 16px/1.2 var(--dz-font-ui); margin-bottom: 8px; }
+.bt-ui2 .bt-ed .bt-site-search::placeholder, .bt-ui2 .bt-ed .bt-nommer-in::placeholder, .bt-ui2 .bt-ed .bt-note::placeholder { color: var(--dz-texte-2); font-weight: 500; }
+.bt-ui2 .bt-ed .bt-site-empty { padding: 10px 12px; margin-bottom: 8px; border-radius: 10px; background: var(--dz-trait-doux); color: var(--dz-texte-note); font-size: 12.5px; text-align: left; }
+.bt-ui2 .bt-ed .bt-site { min-height: 52px; padding: 6px 14px; margin-bottom: 8px; border: 1.5px solid var(--dz-trait-fort); border-radius: 14px; background: var(--dz-blanc); color: var(--dz-encre); }
+.bt-ui2 .bt-ed .bt-site.other { border-style: dashed; }
+.bt-ui2 .bt-ed .bt-site.on { background: var(--dz-jaune); border: 2px solid var(--dz-encre); color: var(--dz-encre); }
+.bt-ui2 .bt-ed .bt-site-name { font-size: 16px; font-weight: 800; letter-spacing: 0; }
+.bt-ui2 .bt-ed .bt-site-city, .bt-ui2 .bt-ed .bt-site.on .bt-site-city { font-size: 12.5px; font-weight: 600; color: var(--dz-texte-note); }
+.bt-ui2 .bt-ed .bt-site.on .bt-rdo { background: var(--dz-encre); color: var(--dz-jaune); }
+.bt-ui2 .bt-ed .bt-nommer { padding: 12px 14px; border: 1.5px dashed var(--dz-trait-fort); border-radius: 14px; background: var(--dz-carte); }
+.bt-ui2 .bt-ed .bt-nommer-t { font-size: 13.5px; letter-spacing: 0; text-transform: none; color: var(--dz-encre); font-family: var(--dz-font-ui); font-weight: 800; }
+.bt-ui2 .bt-ed .bt-nommer-in { min-height: 50px; padding: 0 14px; border: 1px solid var(--dz-trait-fort); border-radius: 12px; font: 700 16px/1.2 var(--dz-font-ui); }
+.bt-ui2 .bt-ed .bt-nommer-go { min-height: 52px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font-size: 16px; font-weight: 800; box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.bt-ui2 .bt-ed .bt-nommer-go:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
+.bt-ui2 .bt-ed .bt-nommer-s { font-size: 12.5px; color: var(--dz-texte-2); }
+
+/* 2 · Horaires : Début et Fin = deux boutons, durée nette */
+.bt-ui2 .bt-ed .bt-times { gap: 8px; }
+.bt-ui2 .bt-ed .bt-timecard { min-height: 50px; padding: 8px 14px; border: 1px solid var(--dz-trait-fort); border-radius: 12px; background: var(--dz-blanc); }
+.bt-ui2 .bt-ed .bt-timecard .k, .bt-ui2 .bt-ed .bt-dur .k { font-size: 12px; letter-spacing: .08em; color: var(--dz-texte-2); }
+.bt-ui2 .bt-ed .bt-timecard .v { font-size: 22px; }
+.bt-ui2 .bt-ed .bt-dur { background: var(--dz-encre); border-radius: 12px; }
+.bt-ui2 .bt-ed .bt-dur .k { color: var(--dz-creme-75); }
+.bt-ui2 .bt-ed .bt-times-hint { margin-top: 6px; font-size: 12.5px; color: var(--dz-texte-2); text-align: left; }
+
+/* 3 · Statut du chantier, 4 · Note */
+.bt-ui2 .bt-ed .bt-recep { gap: 6px; }
+.bt-ui2 .bt-ed .bt-recep-b { min-height: 52px; border: 1.5px solid var(--dz-trait-fort); border-radius: 14px; color: var(--dz-encre); font-size: 14px; }
+.bt-ui2 .bt-ed .bt-recep-b svg { opacity: 1; }
+.bt-ui2 .bt-ed .bt-recep-b.encours.on { background: var(--dz-a-envoyer-fond); border-color: var(--dz-a-envoyer-trait); color: var(--dz-a-envoyer-texte-2); }
+.bt-ui2 .bt-ed .bt-recep-b.sans.on { background: var(--dz-en-cours-fond); border-color: var(--dz-en-cours); color: var(--dz-en-cours-texte); }
+.bt-ui2 .bt-ed .bt-recep-b.avec.on { background: var(--dz-erreur-fond); border-color: var(--dz-erreur); color: var(--dz-erreur-texte); }
+.bt-ui2 .bt-ed .bt-note { min-height: 72px; padding: 12px 14px; border: 1px solid var(--dz-trait-fort); border-radius: 12px; font: 600 16px/1.35 var(--dz-font-ui); }
+
+/* Documents et Retirer ce chantier : dans le corps de la feuille */
+.bt-ui2 .bt-ed-scroll .bt-ed-dock-row { flex-direction: column; margin: 14px 0 0; gap: 8px; }
+.bt-ui2 .bt-ed-scroll .bt-ed-doc { min-height: 48px; padding: 0 16px; border: 1.5px solid var(--dz-trait-fort); border-radius: 999px; font-size: 16px; }
+.bt-ui2 .bt-ed-scroll .bt-ed-trash { width: 100%; min-height: 48px; gap: 8px; border: 1.5px solid var(--dz-erreur); border-radius: 999px; color: var(--dz-erreur-texte); font: 800 16px/1 var(--dz-font-ui); }
+.bt-ui2 .bt-ed-scroll .bt-ed-trash:hover { background: var(--dz-erreur-fond); }
+.bt-ui2 .bt-ed-scroll .bt-ed-trash:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); border-color: var(--dz-inactif-fond); }
+
+/* OK (pied fixe) et « Valider les heures » */
+.bt-ui2 .bt-ed .bt-save { min-height: 52px; padding: 0 16px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font-size: 16px; font-weight: 800; box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
+.bt-ui2 .bt-ed .bt-save:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
+
+/* Réglage de l'heure (E40) : le tiroir reste sombre (la molette TimeCylinder est inchangée, ses chiffres sont clairs) */
+.bt-ui2 .bt-ed .bt-sheet { border-top: 4px solid var(--dz-jaune); border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0; padding: 4px 20px calc(env(safe-area-inset-bottom) + 20px); }
+.bt-ui2 .bt-ed .bt-sheet .bt-grip { background: var(--dz-creme-30); }
+.bt-ui2 .bt-ed .bt-sheet .dz-feuille__tete { padding: 10px 0 8px; }
+.bt-ui2 .bt-ed .bt-sheet .dz-feuille__kicker { color: var(--dz-creme-75); }
+.bt-ui2 .bt-ed .bt-sheet .dz-feuille__titre { color: var(--dz-creme); }
+.bt-ui2 .bt-ed .bt-segb { min-height: 52px; color: var(--dz-creme-75); font-size: 14px; }
+.bt-ui2 .bt-ed .bt-segb .v { color: var(--dz-creme-75); font-size: 17px; }
+.bt-ui2 .bt-ed .bt-segb.on .v { color: var(--dz-creme); }
+.bt-ui2 .bt-ed .bt-sheet-dur .k { font-size: 12px; color: var(--dz-creme-75); }
+.bt-ui2 .bt-ed .bt-molette-exact { font-size: 12.5px; color: var(--dz-creme-75); }
+.bt-ui2 .bt-ed .bt-molette-exact b { color: var(--dz-jaune); }
+
+/* ── Focus au clavier : anneau double (clair ET sombre) sur tout ; anneau + relief sur les boutons jaunes. Placé en dernier, plus spécifique que les `box-shadow` des boutons ci-dessus. ── */
+.dz-portail.dz-feuille :focus-visible, .bt-ui2 .bt-ed :focus-visible { outline: 2px solid transparent; box-shadow: var(--dz-focus); }
+.dz-portail.dz-feuille .dz-bouton[data-ton="principal"]:focus-visible, .dz-portail.dz-feuille .bt-wr-go:focus-visible, .dz-portail.dz-feuille .bt-rlf-go:focus-visible,
+.bt-ui2 .bt-ed .bt-save:focus-visible, .bt-ui2 .bt-ed .bt-nommer-go:focus-visible { box-shadow: var(--dz-focus-bouton); }
+.bt-ui2 .bt-ed .bt-sheet :focus-visible { box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme); }
+.bt-ui2 .bt-ed .bt-sheet .bt-save:focus-visible { box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme), inset 0 -3px 0 var(--dz-jaune-ombre); }
+
+@media (prefers-reduced-motion: reduce) { .dz-portail.dz-feuille { animation: none; } }

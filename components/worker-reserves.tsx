@@ -10,7 +10,11 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { useUi2 } from '@/components/design/salarie/shell-v2';
+import { FeuilleCorps, FeuilleTete } from '@/components/design/salarie/feuille';
+import { useRetourFerme } from '@/components/design/salarie/retour';
+import { useClavier } from '@/components/design/salarie/clavier';
 import { ReserveLiftForm } from '@/components/reserve-lift-lazy';
 import { AlertTriangle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -29,8 +33,12 @@ export interface WorkerReserve {
 
 export default function WorkerReserves({ items, onChanged, openAsk, onAskDone }: { items: WorkerReserve[]; onChanged: () => void; /** ?ui=2 : demande d'ouverture de la liste (entrée « Réserves à lever » du menu Plus) ; `onAskDone` la consomme. */ openAsk?: boolean; onAskDone?: () => void }) {
   const { user } = useAuth();
+  const ui2 = useUi2();
   const [open, setOpen] = useState(false);
   const [liftingId, setLiftingId] = useState<string | null>(null);
+  // ?ui=2 : le retour du téléphone referme la liste (comme les autres feuilles de « Ma journée »).
+  useRetourFerme(ui2 && open, () => { setOpen(false); setLiftingId(null); });
+  useClavier(ui2 && open); // la feuille se lève au-dessus du clavier (champ « Commentaire »)
 
   useEffect(() => { if (openAsk) { setOpen(true); onAskDone?.(); } }, [openAsk, onAskDone]);
 
@@ -86,8 +94,9 @@ export default function WorkerReserves({ items, onChanged, openAsk, onAskDone }:
         </button>
       )}
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setLiftingId(null); }}>
-        <DialogContent className="bt-skin max-w-md max-h-[86vh] overflow-y-auto" data-testid="reserves-dialog">
-          <DialogHeader><DialogTitle>Réserves à lever</DialogTitle></DialogHeader>
+        <DialogContent feuille={ui2} className={ui2 ? undefined : 'bt-skin max-w-md max-h-[86vh] overflow-y-auto'} data-testid="reserves-dialog">
+          <FeuilleTete ui2={ui2} kicker="RÉSERVES" titre={<DialogTitle>Réserves à lever</DialogTitle>} />
+          <FeuilleCorps ui2={ui2}>
           <div className="bt-wr-list">
             {items.map((r) => (
               <div key={r.id} className="bt-wr-item" data-testid="wr-item">
@@ -108,6 +117,7 @@ export default function WorkerReserves({ items, onChanged, openAsk, onAskDone }:
               </div>
             ))}
           </div>
+          </FeuilleCorps>
         </DialogContent>
       </Dialog>
     </>

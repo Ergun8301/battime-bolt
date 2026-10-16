@@ -29,10 +29,34 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+type DialogContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  /** Design salarié (?ui=2) : feuille du bas. Retire les classes de centrage et de forme de Tailwind, un seul voile (`dz-voile`) et un seul ✕ (`dz-feuille__fermer`) ; jetons par `.dz-portail` (le contenu est rendu dans <body>). Sans cette propriété : exactement l'ancienne fenêtre. */
+  feuille?: boolean;
+  /** Feuille seulement : liseré rouge (retrait, confirmation qui détruit) au lieu du jaune. */
+  alerte?: boolean;
+};
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  DialogContentProps
+>(({ className, children, feuille, alerte, ...props }, ref) =>
+  feuille ? (
+    <DialogPortal>
+      <DialogPrimitive.Overlay className="dz-voile" />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn('bt-skin dz-portail dz-feuille', className)}
+        data-ton={alerte ? 'alerte' : undefined}
+        {...props}
+      >
+        {children}
+        <DialogPrimitive.Close className="dz-feuille__fermer">
+          <X className="h-4 w-4" aria-hidden />
+          <span className="sr-only">Fermer</span>
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  ) : (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -50,7 +74,7 @@ const DialogContent = React.forwardRef<
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
-));
+  ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({
