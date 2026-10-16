@@ -94,3 +94,46 @@ Build de production de la branche, mêmes 31 scripts, mêmes conditions (3 voies
 | `test:creneaux`, `test:missions`, `test:salarie-vue`, `test:guides` | 5/5, 19/19, 14/14, 10/11 (ancres en double) | 5/5, 20/20, 14/14, 11/11 |
 
 Preuve de fidélité (planche | implémentation) : `node scripts/tests/fidelite-salarie.mjs out docs/design-brief/integration/captures-fidelite 4392` : 99 ✅ / 0 ❌ ; 12 images de moins de 150 ko dans `captures-fidelite/` (E05 ×2, E04 ×2, E03, E25, E05b, E05c, E12, E42, E14, E29).
+
+## Après l'étape 5 (feuilles du bas : éditeur, questions d'envoi, conflit de pointage, réserves… : `?ui=2` seulement)
+
+Build de production de la branche, mêmes 31 scripts, mêmes conditions (3 voies, captures hors dépôt, copie du build à part) : **tous identiques à l'état d'avant**, aucun script v1 modifié.
+
+| Mesure | Avant | Après |
+|---|---|---|
+| 31 scripts navigateur en v1 (✅ / ❌) | 3 567 / 1 | **3 567 / 1** (`documents-lot24` 141 / 1 : E1, inchangé ; `guides-lot7` 682 / 0) : chaque script donne le nombre d'avant |
+| 12 captures de référence v1 | identiques | **12 / 12 identiques octet pour octet** (même `07-copier-journee.png`) |
+| `/poseur` (First Load JS, max 280) | 275 kB | **276 kB** |
+| `/admin` | 359 kB | **359 kB** (la variante « feuille » de `ui/dialog.tsx` est tirée dans `/admin` ; le clavier et le retour Android restent côté salarié, `ChantierDocuments` reçoit `feuille` en propriété et n'importe plus la coque) |
+| CSS `/poseur` gzip (max 32 kB) | 28,2 | **30,4** : `feuilles-v2.css` ≈ 2,2 kB, relevé dans `scripts/bundle-budgets.json` avec sa justification (le plafond n'est pas touché) |
+| `npm run test:registre` | 142 / 0 | 142 / 0 ; `clics.snapshot.json` : `poseur-day.tsx` 49 → 50 (le ✕ de la feuille de l'éditeur, commande officielle du README du registre) ; `dettes.json` et `ids.snapshot.json` inchangés, aucun plafond de dettes monté |
+| `test:creneaux`, `test:missions`, `test:salarie-vue`, `test:guides` | 5/5, 20/20, 14/14, 11/11 | 5/5, 20/20, 14/14, 11/11 |
+| `npm run typecheck` | vert | vert |
+
+### Rejeu en `/poseur?ui=2` (copies générées, jamais les originaux)
+
+`node scripts/tests/ui2-copies.mjs` écrit `scripts/tests/ui2-<nom>.mjs` (ignorés par git) : l'original mot pour mot, l'adresse `/poseur` devenue `/poseur?ui=2`, plus la table `ADAPTATIONS` du générateur (chaque ligne dit ce qui change à l'écran et pourquoi : un libellé ou un repère qui change de forme, jamais une fonction qui disparaît). Les 11 copies, contre le même build :
+
+| Script (copie `ui2-…`) | ✅ / ❌ en v1 | ✅ / ❌ en `?ui=2` | Adaptations |
+|---|---|---|---|
+| `pointage-lot10` (les 6 cas du conflit, après le scan, retour Android) | 110 / 0 | **110 / 0** | aucune |
+| `pause-lot3bis` (puces, question de pause, éditeur) | 79 / 0 | **79 / 0** | 2 : puces de 44 px de largeur naturelle au lieu de 4 cellules égales de 60 px ; la Semaine v2 ne liste plus « pause 1 h 15 » ligne par ligne |
+| `heures-lot1` | 37 / 0 | **37 / 0** | aucune |
+| `heures-sures` | 66 / 0 | **66 / 0** | aucune |
+| `brouillons-lot2` | 49 / 0 | **49 / 0** | aucune |
+| `documents-lot24` | 141 / 1 | **141 / 1** | aucune ; le ❌ est E1 (compare `git diff` à une branche d'intégration), le même qu'en v1 |
+| `salarie-lot12` (éditeur) | 28 / 0 | **28 / 0** | aucune |
+| `chantier-termine-lot23` | 111 / 0 | **111 / 0** | 5 : « Autre chantier » reste proposé sans résultat ; « POINTAGE EN COURS · DEPUIS » ; Semaine v2 en 7 lignes (flèche « Semaine précédente », ligne repérée par son `aria-label`) |
+| `fenetres-lot11` (40 fenêtres × 3 tailles, dont celles du salarié) | 120 / 0 | **120 / 0** | aucune |
+| `reserves-lot11` (liste et « Lever la réserve ») | 68 / 0 | **68 / 0** | aucune |
+| `formations-lot6` | 115 / 0 | **115 / 0** | 4 (celles de l'étape 4 : pastille chiffrée non dite, « Formations à voir », adresse en `?ui=2`) |
+
+Preuve de fidélité (planche | implémentation) : `node scripts/tests/fidelite-salarie.mjs out docs/design-brief/integration/captures-fidelite 4392` : **339 ✅ / 0 ❌** ; 35 images de moins de 180 ko dans `captures-fidelite/` (les 12 de l'étape 4, puis 13 à 35 : éditeur E21 à 390 × 844 et 360 × 640, clavier ouvert, E22, E22b, E22c, E39, E40, E08, E09, E09b, E10, E13, E16, E24, E23 ×3, E30c, E20a, E20, E35, E33). Chaque feuille est mesurée sur elle-même (cibles ≥ 44 px, texte ≥ 12 px, contrastes ≥ 4,5:1, dans l'écran, bouton principal visible, un seul voile et un seul ✕, angles de 28 px, focus au clavier visible) ; le retour Android ferme six couches (éditeur, horaires prévus, pause, vérification, journée déjà envoyée, réserves) ; hors-ligne, « + » → chantier → « OK » garde la saisie sur le téléphone (R1).
+
+### Écarts à la planche, décidés et écrits
+- **Libellés et repères du code** : titre « Horaires prévus par le bureau », « Chantier Maison Démo » / « Nouveau chantier » (titres de l'éditeur), « Annuler » comme nom accessible du ✕ de l'éditeur (`.bt-ed-cancel` gardé), « Fermer » pour le ✕ des fenêtres Radix (l'ancien « Close » était en anglais), « Documents » sans nombre, durée « 3h58 » (formatage du code). Les phrases de la planche absentes du code ne sont pas ajoutées.
+- **Ordre des boutons** : celui du code (le principal en premier dans « Terminer le pointage… » et « Oui, envoyer ma journée »), pas celui de la planche.
+- **Molette** : le tiroir « Réglage de l'heure » reste sombre (la molette `TimeCylinder` est inchangée et ses chiffres sont clairs) ; il reçoit le petit mot, le titre et les angles de la planche.
+- **Kickers** : « AVANT L'ENVOI » sans compteur ni « PLAGE 1 SUR 2 » (le code ne connaît pas le nombre de plages au moment de la question).
+- **Retour passager** : Sonner reste en haut de l'écran (la place « au-dessus de la barre » de la planche relève de l'étape 6).
+- **E22 « Sur quel chantier ? »** n'est pas une feuille à part : le choix du chantier est la première section de la feuille de l'éditeur, comme dans le code ; pas de bouton « Continuer ».
