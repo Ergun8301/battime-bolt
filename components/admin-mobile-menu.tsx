@@ -40,7 +40,7 @@ const MM_CSS = `
 .bt-mm-badge{min-width:19px;height:19px;padding:0 6px;border-radius:99px;background:#B5472E;color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;line-height:1}
 `;
 
-interface AdminMobileMenuProps {
+export interface AdminMobileMenuProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user: User | null;
