@@ -71,6 +71,11 @@ const DUAL: Record<string, number> = {
   'bureau-stat.relance': 2,         // compteur « à relancer » : barre OU en-tête mobile
   'bureau-stat.liste': 2,           // la liste « À relancer » : panneau du cockpit OU fenêtre mobile
   'bureau-reglages.support': 2,     // ligne « durée + Autoriser » OU « Retirer l’accès » : exclusives
+  // Lot 2 « Heures et paie » du bureau (components/design/bureau/*-v2.tsx, ?ui=2) : chaque écran habillé repose le repère de l'écran d'avant, qui n'est
+  // jamais monté en même temps que sa v2 (le drapeau choisit l'un OU l'autre) ; les textes des guides ne changent pas (tableau dans guides-bureau-heures-v2.md).
+  'bureau-fiche.exporter': 2, 'bureau-fiche.corriger': 2, 'bureau-fiche.corriger-valider': 2,
+  'bureau-export.menu': 2, 'bureau-export.comptable': 2, 'bureau-export.mois': 2, 'bureau-export.un-salarie': 2,
+  'bureau-conges.liste': 2,
 };
 // Gestes qui AGISSENT sur UNE ligne précise d'une liste : jamais entourés (le guide mène au premier élément visible,
 // le patron pourrait accepter le congé de Dupont ou renvoyer l'invitation de la mauvaise personne parce que l'anneau l'y a mené).

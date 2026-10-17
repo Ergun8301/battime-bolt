@@ -50,3 +50,6 @@ scripts/tests/ui1-*.mjs
 # Design du bureau (lot 1) : copies de rejeu en /admin?ui=2 (ui2b-) et références /admin?ui=1 (ui1b-), régénérées par scripts/tests/ui2-bureau-copies.mjs
 scripts/tests/ui2b-*.mjs
 scripts/tests/ui1b-*.mjs
+
+# Design bureau, lot 2 : copies de rejeu en /admin?ui=2, régénérées par scripts/tests/copies-ui2-bureau.mjs
+scripts/tests/ui2b-*.mjs

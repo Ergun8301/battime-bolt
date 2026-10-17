@@ -10,7 +10,7 @@
 // d'autre dans l'app (grille, export paie, feuilles d'heures) n'a besoin de
 // changer, et aucune logique existante n'est modifiée.
 
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { approveLeave, rejectLeave } from '@/lib/admin-writes';
 import { LeaveRequest, LeaveType, User } from '@/lib/types';
@@ -21,6 +21,10 @@ import { Loader2, Check, X as XIcon, CalendarRange } from 'lucide-react';
 import { format, parseISO, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau (v2, ?ui=2 sur aperçu) : habillage de la liste, chargé en différé seulement quand le drapeau est actif.
+const CongesV2 = lazy(() => import('@/components/design/bureau/conges-v2'));
 
 interface Props {
   open: boolean;
@@ -116,6 +120,15 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
     ? format(parseISO(r.start_date), 'EEEE d MMMM yyyy', { locale: fr })
     : `${format(parseISO(r.start_date), 'd MMM', { locale: fr })} → ${format(parseISO(r.end_date), 'd MMM yyyy', { locale: fr })}`;
 
+  const ui2 = useBureauUi2();
+  if (ui2) {
+    return (
+      <Suspense fallback={null}>
+        <CongesV2 open={open} onOpenChange={onOpenChange} rows={rows} nom={nameOf} periode={period} typeLabel={TYPE_LABEL} busyId={busyId}
+          rejectingId={rejectingId} setRejectingId={setRejectingId} rejectNote={rejectNote} setRejectNote={setRejectNote} approve={approve} reject={reject} />
+      </Suspense>
+    );
+  }
   const pending = rows.filter((r) => r.status === 'pending');
   const decided = rows.filter((r) => r.status !== 'pending');
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Fragment, type ReactNode } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Fragment, lazy, Suspense, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
@@ -54,7 +54,7 @@ import { isPreviewHost } from '@/lib/hosting';
 import { TimeField, TIME_HINT } from '@/components/time-field';
 import { TIME_PRESETS } from '@/lib/time-input';
 import { InfoTip } from '@/components/ui/info-tip';
-import { ExportMenu, ExportPreload } from '@/components/export-menu';
+import { ExportMenu, ExportPreload } from '@/components/export-menu'; import { useBureauUi2 } from '@/lib/use-bureau-ui2';
 import { ActionDone, type UndoResult } from '@/components/action-done';
 import { erasePlanning, isDisposableDraft, prepareMove, undoErase, undoMovePrep, type EraseResult, type MovePrep } from '@/lib/erase';
 import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
@@ -64,7 +64,7 @@ import { tourIdOf } from '@/supabase/functions/_shared/worker-tours';
 import PendingInvitations from '@/components/pending-invitations';
 import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
-import { useAiEnabled } from '@/lib/real-cost'; import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+import { useAiEnabled } from '@/lib/real-cost';
 import { reloadCompanySettings, useCompanySettings } from '@/lib/company-settings';
 import { useVisiblePoll } from '@/lib/use-visible-poll';
 import { useStaffEmailVisible } from '@/lib/staff-email-flag';
@@ -957,6 +957,11 @@ interface AdminPlanningProps {
   /** Lot 29 : nombre de salariés actifs (forfait), fourni par fetchData — plus de requête à part. */
   onWorkerCount?: (n: number) => void;
 }
+// Design bureau, lot 2 (?ui=2 sur aperçu seulement) : « Exporter l'équipe », clôture du mois et « Exporter un salarié » habillés v2, chargés en différé seulement quand le drapeau est actif.
+const ExporterV2 = lazy(() => import('@/components/design/bureau/exporter-v2'));
+const ClotureV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.ClotureV2 })));
+const ExportSalarieV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.ExportSalarieV2 })));
+
 export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
   // Design du bureau (v2) : `?ui=2` sur un aperçu seulement (lib/use-bureau-ui2.ts). Le morceau v2 n'est chargé qu'alors (import différé :
@@ -1134,6 +1139,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   const [closureBusy, setClosureBusy] = useState(false);
   const [closureTarget, setClosureTarget] = useState<{ month: string; drafts: number } | null>(null);
   const [exportWorkerOpen, setExportWorkerOpen] = useState(false);
+  const ui2b = useBureauUi2(); // design bureau v2 (lot 2)
   const [exportRange, setExportRange] = useState<{ from: Date; to: Date } | null>(null);
   const [attributeTarget, setAttributeTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; label: string } | null>(null);
   // Intervention ajoutée par le salarié (hors-planning) : popup avec Documents + attribution
@@ -4272,6 +4278,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         mode={ficheMode}
         onOpenChange={(open) => { if (!open) setFicheWorker(null); }}
         onChanged={() => { fetchData(); refresh(); }}
+        onRelancer={(w) => sendReminder(w)}
       />
 
       <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen}
@@ -4647,6 +4654,20 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       {/* Team export — lot 11 : « Exporter » de la barre ouvre directement cette fenêtre ;
           un seul menu « Exporter ▾ » (PDF, Excel, CSV), le même que dans la fiche. */}
+      {ui2b && (
+        <Suspense fallback={null}>
+          <ExporterV2
+            open={exportOpen} onOpenChange={(o) => { setExportOpen(o); if (o) setExportRange(null); }}
+            periode={exportRange} setPeriode={setExportRange} semaine={currentWeekStart}
+            exporting={exporting} onPick={(k) => demanderExport(k, k === 'comptable' ? 'send-accountant' : `team-export-menu-${k}`)}
+            comptableEmail={accountantEmail || null}
+            mois={closableMonths.map((m) => ({ mois: m, clos: closedMonths.has(m), courant: m === format(new Date(), 'yyyy-MM') }))}
+            clotureBusy={closureBusy} onCloturer={(m) => askClosure(m)} onRouvrir={(m) => reopenMonth(m)}
+            onUnSalarie={() => { setExportOpen(false); setExportWorkerOpen(true); }}
+          />
+        </Suspense>
+      )}
+      {!ui2b && ( // interface actuelle, inchangée
       <Dialog open={exportOpen} onOpenChange={(o) => { setExportOpen(o); if (o) setExportRange(null); }}>
         <DialogContent className="bt-skin max-w-sm" data-testid="team-export">
           <DialogHeader><DialogTitle>Exporter l&apos;équipe</DialogTitle></DialogHeader>
@@ -4729,11 +4750,19 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Lot 18 : « Cet export va verrouiller N lignes d'heures de M salariés » — avant tout fichier. */}
       <ExportVerrou ask={verrouAsk} busy={verrouBusy} onChoose={choisirVerrou} onCancel={() => setVerrouAsk(null)} />
 
       {/* Confirmation de clôture : on annonce ce qui restera bloqué. */}
+      {ui2b && (
+        <Suspense fallback={null}>
+          <ClotureV2 mois={closureTarget?.month ?? null} brouillons={closureTarget?.drafts ?? 0} busy={closureBusy} onCancel={() => setClosureTarget(null)}
+            onConfirm={() => closureTarget && Date.now() >= garde3.current && closeMonth(closureTarget.month)} />
+        </Suspense>
+      )}
+      {!ui2b && ( // interface actuelle, inchangée
       <Dialog open={!!closureTarget} onOpenChange={(o) => { if (!o) setClosureTarget(null); }}>
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader>
@@ -4760,8 +4789,18 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Export one worker — pick a worker, then their fiche (calendar + Excel/PDF, no lock) */}
+      {ui2b && (
+        <Suspense fallback={null}>
+          <ExportSalarieV2 open={exportWorkerOpen} onOpenChange={setExportWorkerOpen}
+            salaries={workers.map((w) => ({ id: w.id, nom: `${w.first_name} ${w.last_name}`, initiales: `${(w.first_name || '?')[0]}${(w.last_name || '')[0] || ''}`.toUpperCase(), sous: w.role === 'lead' ? 'Chef d’équipe' : undefined }))}
+            onChoisir={(id) => { const w = workers.find((x) => x.id === id); if (w) { setExportWorkerOpen(false); setFicheMode('hours'); setFicheWorker(w); } }}
+            onAjouter={() => { setExportWorkerOpen(false); setWorkerOpen(true); }} />
+        </Suspense>
+      )}
+      {!ui2b && ( // interface actuelle, inchangée
       <Dialog open={exportWorkerOpen} onOpenChange={setExportWorkerOpen}>
         <DialogContent className="bt-skin max-w-sm max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Exporter un salarié</DialogTitle></DialogHeader>
@@ -4791,6 +4830,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Cell add — a client on a specific day. Lot 4 : la même fenêtre pose aussi une
           tâche ou une réunion (pastilles en tête) ; le titre suit ce qui est choisi. */}
