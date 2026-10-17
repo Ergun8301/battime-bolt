@@ -42,7 +42,7 @@ import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import { nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
-  actionPrompt, addDays, avertirSecours, buildActionContext, fromFunctionCall, handleActionLocally, mondayOf, questionFor,
+  actionPromptParts, addDays, avertirSecours, buildActionContext, fromFunctionCall, handleActionLocally, mondayOf, questionFor,
   resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, guideLinks, type EntryChoice, type LocalReply, type ActionContext,
 } from '../_shared/assistant-actions-core.ts';
 import { functionsFor, type OptionsOutils } from '../_shared/assistant-outils.ts';
@@ -201,8 +201,10 @@ Deno.serve(async (req) => {
     // 3. L'IA choisit UNE fonction de la liste blanche.
     const snapshot = buildSnapshot(raw);
     // Lot 6 : seulement les outils du domaine de la demande ; UN appel (rapide, ou documents si fichier).
+    // Cache d'invites : `stable` (consigne + guide, sans aucune donnée) précède `variable` (calendrier, salariés, chantiers, snapshot, historique, demande).
+    const pp = actionPromptParts(ctx, JSON.stringify(snapshot), ouvrirOn ? guideForPrompt('etape3', ctx.guideLiens) : guideForPrompt(), question);
     const requete = {
-      prompt: actionPrompt(ctx, JSON.stringify(snapshot), ouvrirOn ? guideForPrompt('etape3', ctx.guideLiens) : guideForPrompt(), question),
+      prompt: pp.stable + pp.variable, stable: pp.stable,
       functions: optsOutils ? functionsFor(!!att.file, question, ctx.historique, optsOutils) : functionsFor(!!att.file, question, ctx.historique), file: att.file, tier,
     };
     // 3c : lectures à la demande, seulement si `boucle` est allumé pour cette entreprise, que l'écran annonce `boucle1` et qu'AUCUN fichier n'est joint.

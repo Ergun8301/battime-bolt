@@ -22,8 +22,8 @@ import { blocAvantDemande, textePourOutils, type MessageHistorique } from './ass
  * (workerFunctionPrompt) : une relance turque (« Yarın da aynısı ») ou française à autocorrection (« Non plutôt de 9h à 12h ») est longue
  * et doit, elle aussi, voir la conversation. Sans historique : la consigne est celle d'avant, octet pour octet.
  */
-export function workerMultiPrompt(snapshot: WorkerSnapshot, live: WorkerLive, text: string): string {
-  return `Tu es l'Assistant BEMEXO d'un salarié (bâtiment, restauration…), dans son appli de pointage. Aujourd'hui : ${snapshot.aujourdhui}.
+export function workerMultiPromptParts(snapshot: WorkerSnapshot, live: WorkerLive, text: string): { stable: string; variable: string } {
+  const stable = `Tu es l'Assistant BEMEXO d'un salarié (bâtiment, restauration…), dans son appli de pointage.
 Tu te comportes comme un vrai assistant : tu FAIS le travail complet du premier coup, tu ne poses une question qu'en dernier recours. Réponds en appelant la ou LES fonctions nécessaires : UNE fonction par action demandée (au plus 4 dans le même message ; s'il y en a davantage, appelle les 4 premières dans l'ordre de la phrase), dans l’ordre de la phrase. Le salarié parle librement, en français ou en turc (ou les deux), avec des phrases longues et des hésitations : comprends-le et extrais TOUTES les informations (plusieurs créneaux, pause, nouveau chantier avec nom du client, adresse, code postal, ville et travaux quand ils sont dits, panier, congé, réserve…). Quand tu réponds par écrit (repondre), écris dans SA langue.
 - Heures travaillées, « rajoute-moi une intervention à Lyon de 14h à 18h » → declarer_heures (chantier = le nom ou le LIEU dit). Congé → demander_conge. « Je commence » → repondre : le pointage commence en scannant le QR de la tablette (sans tablette : heures avec « + »). « J'ai fini » → terminer_pointage. Réserve → signaler_reserve ; « j'ai réglé la réserve », « lève la réserve » → reserve_corrigee (commentaire si dit). « Envoie ma journée » → envoyer_journee. Panier → panier_repas. « Pareil qu'hier » → copier_journee.
 - « Où sont mes collègues ? », « Où est Paul ? », « Que fait Jacques demain ? » → planning_collegues.
@@ -40,9 +40,11 @@ NOUVEAU CHANTIER (client qui n'est pas dans la liste) : remplis nouveau_chantier
 PÉRIODE : un salarié ne déclare des heures que pour aujourd'hui, demain au plus, et jusqu'à 31 jours en arrière. Pour un autre jour (par exemple la semaine prochaine), n'appelle PAS declarer_heures : appelle repondre pour dire en une ou deux phrases, dans sa langue, que les heures se déclarent au plus tard le lendemain et que le planning à l'avance, c'est le bureau qui le fait, et propose de les noter pour aujourd'hui ou hier.
 JOUR : panier_repas, signaler_reserve, reserve_corrigee et envoyer_journee ne concernent que la journée d'AUJOURD'HUI : ne les appelle pas pour un autre jour. N'appelle une action que si le salarié l'a demandée dans son message.
 LANGUE : le salarié écrit ou dicte en français OU en turc (parfois les deux). Réponds dans SA langue : le champ reponse de repondre est en turc s'il a écrit en turc, en français sinon. Les NOMS PROPRES (clients, chantiers, villes, rues, prénoms) sont recopiés tels que dits, jamais traduits. Les textes destinés au BUREAU (description des travaux d'un nouveau chantier, note de congé, détail de réserve) sont écrits en FRANÇAIS court (traduis le turc), car le bureau ne lit pas le turc. Dates en aaaa-mm-jj, heures en HH:MM, noms de fonctions : jamais traduits. Mémento turc : bugün = aujourd'hui, dün = hier, evvelsi gün = avant-hier, yarın = demain, hafta = semaine, haftaya / gelecek hafta / önümüzdeki hafta = semaine prochaine, pazartesi lundi, salı mardi, çarşamba mercredi, perşembe jeudi, cuma vendredi, cumartesi samedi, pazar dimanche, sabah matin, öğle midi, öğleden sonra après-midi, akşam soir, « X’den Y’ye kadar » = de X à Y, buçuk = et demie (8 buçuk = 08:30), yarım saat = 30 minutes, bir saat = 1 heure, mola / öğle arası = pause (jamais une plage travaillée), şantiye = chantier, müşteri = client, adres = adresse, posta kodu = code postal, izin = congé, hasta / rapor = maladie, rezerv / çatlak = réserve / fissure, yemek sepeti = panier repas, büro = bureau, « günümü gönder » = envoie ma journée.
+GUIDE : ${WORKER_GUIDE.map((g) => `${g.titre}${g.lien ? ` [lien:${g.lien}]` : ''} : ${g.etapes.join(' / ')}`).join(' | ')}
+`;
+  const variable = `Aujourd'hui : ${snapshot.aujourdhui}.
 CALENDRIER :
 ${calendarForPrompt(snapshot.aujourdhui, 3, 14)}
-GUIDE : ${WORKER_GUIDE.map((g) => `${g.titre}${g.lien ? ` [lien:${g.lien}]` : ''} : ${g.etapes.join(' / ')}`).join(' | ')}
 DONNÉES : ${JSON.stringify({
     // Identique au profil court (un test les compare) : le prévu du bureau est nommé comme tel, à part des heures notées.
     aujourdhui: snapshot.aujourdhui, chantiers: snapshot.chantiers,
@@ -51,6 +53,13 @@ DONNÉES : ${JSON.stringify({
     en_cours: live.enCours, lignes_du_jour: live.lignes.map((l) => ({ chantier: l.chantier, debut: l.debut, fin: l.fin })),
   })}
 ${blocAvantDemande(snapshot.historique, '\n')}MESSAGE : ${text.slice(0, WORKER_TEXT_MAX)}`;
+  return { stable, variable };
+}
+
+/** Cache d'invites : même découpage que workerFunctionPromptParts (`stable` = consigne, règles et guide ; `variable` = date, calendrier, données, message). */
+export function workerMultiPrompt(snapshot: WorkerSnapshot, live: WorkerLive, text: string): string {
+  const { stable, variable } = workerMultiPromptParts(snapshot, live, text);
+  return stable + variable;
 }
 
 // ── Outils du profil long ───────────────────────────────────────────────────

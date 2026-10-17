@@ -42,7 +42,7 @@
 //
 // CONFIDENTIALITÉ : ce module ne journalise JAMAIS le contenu envoyé ni la
 // réponse. En cas d'erreur, seul le code HTTP sort dans les logs.
-import { appelClaude, corpsJson, corpsOutils, effortDe, lireReponseClaude, refusModeleAnthropic, type Fournisseur } from './ai-anthropic.ts';
+import { appelClaude, corpsJson, corpsOutils, effortDe, lireReponseClaude, refusModeleAnthropic, usageDe, type Fournisseur, type UsageClaude } from './ai-anthropic.ts';
 export type { Fournisseur } from './ai-anthropic.ts';
 
 type Env = { get(key: string): string | undefined };
@@ -224,6 +224,11 @@ export type AiResult =
 export interface FunctionDecl { name: string; description: string; parameters: Record<string, unknown> }
 export interface ToolsRequest {
   prompt: string; functions: FunctionDecl[]; file?: AiFile;
+  /**
+   * Cache d'invites (Claude seulement) : début EXACT de `prompt` qui ne varie jamais d'un appel à l'autre (consigne + guide : ni date, ni nom, ni donnée).
+   * Les autres fournisseurs ignorent ce champ (le prompt est le même texte). Pas un début de `prompt` → ignoré (requête d'avant).
+   */
+  stable?: string;
   /** Modèle à utiliser ; par défaut « documents » s'il y a un fichier, « rapide » sinon. */
   tier?: Tier;
   /** Appels de fonction acceptés pour cette demande (défaut 1 ; plafond MAX_APPELS). */
@@ -301,6 +306,10 @@ const servis = new WeakMap<object, string>();
 /** « fournisseur:modèle » du modèle qui a produit ce résultat (undefined si échec) : on ne confond jamais Claude et son secours. */
 export const modeleServi = (r: object): string | undefined => servis.get(r);
 const marquer = <T extends object>(r: T, m: Modele): T => { servis.set(r, libelleModele(m)); return r; };
+// Usage de jetons rendu par Claude (dont le cache : écrit / relu), noté à part du résultat comme `servis` : nombres seulement. Lu par l'évaluation.
+const usages = new WeakMap<object, UsageClaude>();
+export const usageServi = (r: object): UsageClaude | undefined => usages.get(r);
+const avecUsage = <T extends object>(r: T, body: unknown): T => { const u = usageDe(body); if (u) usages.set(r, u); return r; };
 
 /**
  * Le modèle du niveau demandé, puis — seulement s'il a échoué (erreur du
@@ -338,7 +347,7 @@ async function avecSecours<T extends { ok: boolean; reason?: string }>(
     console.error(`[ai] modèle ${tier} indisponible : modèle de secours`);
   }
   const s = await run(opts?.reflexionSecours ? { ...cfg.secours, reflexion: opts.reflexionSecours } : cfg.secours, left());
-  if (s.ok) return marquer({ ...s, secours: true }, cfg.secours);
+  if (s.ok) { const c = { ...s, secours: true }; const u = usages.get(s); if (u) usages.set(c, u); return marquer(c, cfg.secours); }
   // Mis de côté, et le secours échoue aussi : on retente le modèle de côté avec le temps qui reste.
   if (deCote && s.reason === 'provider_error' && left() >= 1500) {
     const r = await run(m, left());
@@ -397,7 +406,7 @@ export async function callFunction(req: ToolsRequest, env: Env, fetchImpl: Fetch
     const key = cleDe(env, m.fournisseur);
     if (!key) return sansConfig;
     if (m.fournisseur === 'anthropic') {
-      const corps = corpsOutils({ model: m.model, effort: effortDe(m.reflexion), prompt: req.prompt, functions: req.functions, file: req.file, maxCalls: max });
+      const corps = corpsOutils({ model: m.model, effort: effortDe(m.reflexion), prompt: req.prompt, stable: req.stable, functions: req.functions, file: req.file, maxCalls: max });
       // Format que Claude ne lit pas (HEIC, HEIF, image trop lourde) : rien n'est envoyé, le niveau échoue vers le secours.
       if (!corps) { console.error('[ai] fichier non lisible par ce modèle : secours'); return { ok: false, reason: 'provider_error' }; }
       const r = await claudeCall(m, key, corps, ms, fetchImpl);
@@ -405,7 +414,7 @@ export async function callFunction(req: ToolsRequest, env: Env, fetchImpl: Fetch
       const l = lireReponseClaude(r.body);
       if (l.kind === 'refus') { console.error('[ai] réponse refusée par le modèle'); return { ok: false, reason: 'provider_error' }; }
       if (l.kind !== 'ok') return { ok: false, reason: 'bad_response' };
-      return choisirAppels(l.appels, allowed, max);
+      return avecUsage(choisirAppels(l.appels, allowed, max), r.body);
     }
     const r = await geminiCall(m, key, payload, ms, fetchImpl);
     if (!r.ok) return r;
