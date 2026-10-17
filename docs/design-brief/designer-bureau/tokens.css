@@ -1,0 +1,123 @@
+/* BEMEXO · jetons de design · écran bureau (/admin)
+   Même identité que le salarié : les valeurs communes sont IDENTIQUES à design_handoff_salarie/tokens.css.
+   Portée : .dz-bureau (racine de /admin), .bt-skin, .dz-portail (fenêtres Radix rendues dans <body>).
+   .dz-sombre : barre noire, cartes sombres, bandeau de sélection : --ring passe au jaune.
+   Noms shadcn sur :root touchés seulement à la dernière étape (integration-technique §2.4).
+   Polices : Archivo + JetBrains Mono (déjà auto-hébergées). Aucune dépendance ajoutée. */
+
+.dz-bureau, .dz-portail, .bt-skin {
+  /* --- shadcn (triplets HSL) --- */
+  --background: 40 36.6% 92%;          /* #F2EDE3 */
+  --foreground: 30 16.7% 7.1%;         /* #15120F */
+  --card: 42.9 100% 98.6%;             /* #FFFDF8 */
+  --card-foreground: 30 17% 7%;
+  --popover: 42.9 100% 98.6%;
+  --popover-foreground: 30 17% 7%;
+  --primary: 44 100% 55.1%;            /* #FFC21A */
+  --primary-foreground: 30 17% 7%;
+  --secondary: 38.4 33.3% 85.3%;       /* #E6DDCD */
+  --secondary-foreground: 30 17% 7%;
+  --muted: 38.4 33.3% 85.3%;
+  --muted-foreground: 31.8 10.3% 32.4%;/* #5B534A */
+  --accent: 45.9 100% 90%;             /* #FFF3CC */
+  --accent-foreground: 30 17% 7%;
+  --destructive: 0 66.4% 46.7%;        /* #C62828 · une seule valeur (remplace 14 72% 44% et 0 72% 51%) */
+  --destructive-foreground: 0 0% 100%;
+  --border: 37.5 30% 84.3%;            /* #E3DACB */
+  --input: 38.7 27.4% 77.8%;           /* #D6CBB7 */
+  --ring: 30 17% 7%;
+  --radius: 16px;
+
+  /* --- base (communes au salarié) --- */
+  --dz-encre: #15120F; --dz-encre-2: #1B1713; --dz-encre-3: #25201B;
+  --dz-creme: #F2EDE3; --dz-carte: #FFFDF8; --dz-sable: #E6DDCD;
+  --dz-trait: #E3DACB; --dz-trait-fort: #D6CBB7; --dz-trait-doux: #EFE7D9;
+  --dz-texte-2: #5B534A; --dz-texte-3: #655B50; --dz-texte-note: #3A332B;
+  --dz-titre-section: #755800;
+  --dz-jaune: #FFC21A; --dz-jaune-ombre: #D9A200; --dz-jaune-pale: #FFF3CC; --dz-jaune-texte: #5C4300;
+  --dz-inactif-fond: #E6DDCD; --dz-inactif-texte: #655B50;
+  --dz-verrou-fond: #EFE9DE;  --dz-verrou-texte: #5B534A;
+  --dz-squelette-a: #E6DDCD; --dz-squelette-b: #F3ECE0;
+
+  /* --- états des heures (bulles) --- */
+  --dz-prevu-trait: #9C907E;                          /* pointillé 1.5px */
+  --dz-a-envoyer-fond: #FFE4A8; --dz-a-envoyer-texte: #7A3A00; --dz-a-envoyer-trait: #C98500;
+  --dz-envoye-fond: #15120F; --dz-envoye-heure: #FFC21A; --dz-vert-plein: #1F7A4D; /* ENVOYÉ, EN COURS : blanc dessus 5,32:1 */
+  --dz-en-cours-fond: #E7F6EE; --dz-en-cours: #2FA36B; --dz-en-cours-texte: #17663F;
+  --dz-retire-fond: #EFE9DE; --dz-retire-trait: #D6CBB7; /* + barré */
+  --dz-ajoute-trait: #15120F;                          /* « ajoutée par le salarié » : trait plein encre + étiquette encre/jaune */
+  --dz-erreur-fond: #FCE4E1; --dz-erreur: #C62828; --dz-erreur-texte: #8E1B14; --dz-erreur-bord-doux: #F0B8AE; --dz-erreur-vif: #FF6B6B;
+
+  /* --- créneaux, réunion, jour courant (constantes TS, valeurs reprises du salarié) --- */
+  --dz-matin: #DDEBFA;      --dz-matin-trait: #4A8FE0;
+  --dz-apres-midi: #FCE3CF; --dz-apres-midi-trait: #EE8A43;
+  --dz-soir: #EAD6F4;       --dz-soir-trait: #9A6FD6;
+  --dz-journee: #FFFFFF;    --dz-journee-trait: #15120F;
+  --dz-reunion: #FFE2EC;    --dz-reunion-trait: #B7366A;
+  --dz-jour-courant-entete: #FFF3CC; --dz-jour-courant-case: #FFF6DB;
+
+  /* --- absences (motif rayé 135°, même angle et mêmes valeurs que le salarié) ---
+     Validé : bureau = salarié. Borne et imprimé à aligner ensuite. */
+  --dz-conge-a: #EFE6D2;      --dz-conge-b: #E4D6B8;
+  --dz-maladie-a: #F1E2E2;    --dz-maladie-b: #E7D2D2;
+  --dz-intemperie-a: #DCE6EE; --dz-intemperie-b: #CBD9E4;
+  --dz-repos-a: #E7E5DD;      --dz-repos-b: #D8D5CA;
+
+  /* --- 7 couleurs de chantier (CHANTIER_PALETTES) : pastille seulement --- */
+  --dz-chantier-1: #1D5FA8; --dz-chantier-2: #1F7A4D; --dz-chantier-3: #B4471F; --dz-chantier-4: #6B4FB8;
+  --dz-chantier-5: #8A6A00; --dz-chantier-6: #2E6E78; --dz-chantier-7: #7A3E1D; --dz-chantier-autre: #15120F;
+
+  /* --- propres au bureau --- */
+  --dz-cloture-fond: #EFE9DE;        /* case et en-tête d'un jour de mois clôturé (NOUVEAU) */
+  --dz-cloture-etiquette: #655B50;   /* étiquette « CLOS », blanc dessus 6,4:1 */
+  --dz-cible-fond: #FFF3CC;          /* case survolée pendant un glisser */
+  --dz-cible-anneau: inset 0 0 0 3px #FFC21A;
+  --dz-cible-refus: inset 0 0 0 2px #C62828;
+  --dz-source-glisser: .45;          /* opacité de la bulle en cours de déplacement */
+  --dz-selection-anneau: 2.5px solid #15120F;
+  --dz-chef-fond: #FFE9A8; --dz-chef-texte: #5C4300;
+  --dz-voile-panneau: rgba(21,18,15,.32);  /* derrière un panneau latéral */
+  --dz-voile: rgba(21,18,15,.5);           /* derrière une fenêtre centrée */
+
+  /* --- typographie --- */
+  --dz-font-ui: 'Archivo', system-ui, sans-serif;
+  --dz-font-chiffres: 'JetBrains Mono', ui-monospace, monospace;
+  --dz-fs-11: 11px; --dz-fs-12: 12px; --dz-fs-125: 12.5px; --dz-fs-13: 13px; --dz-fs-14: 14px; --dz-fs-15: 15px;
+  --dz-fs-22: 22px; --dz-fs-24: 24px; --dz-fs-34: 34px; --dz-fs-38: 38px; --dz-fs-40: 40px;
+  --dz-fw-titre: 900; --dz-tracking-titre: -.02em; --dz-tracking-etiquette: .14em;
+
+  /* --- rayons --- */
+  --dz-r-xs: 6px; --dz-r-bulle: 11px; --dz-r-s: 12px; --dz-r-m: 16px; --dz-r-l: 18px; --dz-r-dialog: 20px; --dz-r-sheet: 28px; --dz-r-pill: 999px;
+
+  /* --- espacements --- */
+  --dz-sp-1: 4px; --dz-sp-2: 6px; --dz-sp-3: 8px; --dz-sp-4: 10px; --dz-sp-5: 12px; --dz-sp-6: 14px; --dz-sp-7: 18px; --dz-sp-8: 24px;
+  --dz-barre-h: 60px; --dz-panneau-w: 480px; --dz-panneau-large-w: 760px; --dz-tiroir-w: 380px; --dz-assistant-w: 440px;
+  --dz-col-salarie: 220px; --dz-case-min-h: 104px;
+
+  /* --- cibles --- */
+  --dz-tap: 44px; --dz-tap-main: 48px; --dz-clic: 40px; /* ordinateur au pointeur ; 44 dès que l'écran est tactile */
+
+  /* --- ombres --- */
+  --dz-ombre-fenetre: 0 30px 80px rgba(21,18,15,.28);
+  --dz-ombre-menu: 0 20px 50px rgba(21,18,15,.2);
+  --dz-ombre-flottant: 0 20px 50px rgba(21,18,15,.35);
+
+  /* --- focus : contour, pas d'ombre (les boutons ont des bordures, pas d'ombre interne) --- */
+  --dz-focus-contour: 2px solid #15120F; --dz-focus-decalage: 2px;
+
+  /* --- durées --- */
+  --dz-t-rapide: 120ms; --dz-t-normal: 200ms; --dz-t-feuille: 260ms; --dz-t-message-verrou: 12s; --dz-t-annuler-categorie: 20s;
+}
+.dz-sombre { --ring: 44 100% 55%; --dz-focus-contour: 2px solid #FFC21A; }
+.dz-bureau :focus-visible, .dz-portail :focus-visible { outline: var(--dz-focus-contour); outline-offset: var(--dz-focus-decalage); }
+@media (forced-colors: active) { .dz-bureau :focus-visible, .dz-portail :focus-visible { outline: 2px solid CanvasText; } }
+@media (prefers-reduced-motion: reduce) {
+  .dz-bureau *, .dz-portail *, .bt-skin * { animation-duration: 0s !important; transition-duration: 0s !important; }
+}
+
+/* Superposition (z-index, ordre du dépôt conservé) :
+   20 page Statistiques · 30 barre de semaine collante, pastille plein écran, bandeau de sélection
+   40-45 bandeau de chiffres, menus (Plus ⋯, compte, statut, À relancer, Pièces), tiroir Clients
+   50 fenêtres et panneaux Radix (55-56 pour une fenêtre au-dessus d'un panneau)
+   60 guide (anneau + bulle) et bouton ✦ · 70 panneau assistant
+   90 bandeau support · 95 fenêtre Informations · 96 lecteur de QR · messages Sonner au-dessus de tout */
