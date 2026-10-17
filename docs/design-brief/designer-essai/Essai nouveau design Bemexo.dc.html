@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#E9E2D4}
+a{color:#15120F}a:hover{color:#B88A00}
+button{font-family:inherit}
+@keyframes bxPulse{0%{box-shadow:0 0 0 0 rgba(47,163,107,.55)}100%{box-shadow:0 0 0 8px rgba(47,163,107,0)}}
+</style>
+</helmet>
+
+<section style="padding:64px 64px 40px;font-family:'Archivo',system-ui,sans-serif;color:#15120F;display:flex;flex-direction:column;gap:32px;border-bottom:2px dashed #C9B998">
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:1100px">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">TOUR 4 · DÉCISIONS : BUREAU 1a · SALARIÉ 1c + BANDE DES JOURS</span>
+    <span style="font-weight:900;font-size:56px;line-height:.95;letter-spacing:-.04em">Ma journée, version retenue</span>
+    <span style="font-size:17px;line-height:1.5;color:#3A332B;text-wrap:pretty">Bureau : le bandeau de chiffres de <a href="#1a">1a</a> se replie d'un clic (« Replier les chiffres ▴ ») en une ligne de 40 px, et le choix est gardé par utilisateur (dans la maquette : stockage local ; en production : préférence du compte). Salarié : <a href="#1c">1c</a> reçoit la bande des 7 jours de <a href="#1d">1d</a>, l'assistant ✦ en haut à droite, et une rangée Pause / Panier en grand.</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:48px;align-items:flex-start">
+
+    <div id="4a" style="display:flex;flex-direction:column;gap:14px;width:420px">
+      <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">4a</span><span style="font-weight:900;font-size:24px;letter-spacing:-.02em">Ma journée</span></div>
+      <div style="width:390px;height:844px;border-radius:48px;background:#15120F;padding:10px;box-shadow:0 30px 80px rgba(21,18,15,.25)">
+        <div style="width:100%;height:100%;border-radius:40px;overflow:hidden;background:#F2EDE3;display:flex;flex-direction:column;position:relative">
+          <div style="background:#15120F;color:#F2EDE3;padding:42px 14px 12px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <div style="display:flex;flex-direction:column"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;color:#FFC21A">AUJOURD'HUI</span><span style="font-weight:900;font-size:22px;letter-spacing:-.02em">Jeudi 15 octobre</span></div>
+              <div style="display:flex;gap:8px">
+                <button aria-label="Assistant BEMEXO" style="width:44px;height:44px;border-radius:50%;border:0;background:#FFC21A;color:#15120F;font-size:17px;font-weight:900">✦</button>
+                <span style="width:44px;height:44px;border-radius:50%;border:2px solid rgba(242,237,227,.35);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px">SG</span>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+              <sc-for list="{{ strip }}" as="d" hint-placeholder-count="7">
+                <button aria-label="{{ d.aria }}" style="position:relative;height:60px;border-radius:14px;border:{{ d.bd }};background:{{ d.bg }};color:{{ d.fg }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0">
+                  <span style="font-size:10.5px;font-weight:700;opacity:{{ d.op }}">{{ d.l }}</span>
+                  <span style="font-weight:900;font-size:16px;opacity:{{ d.op }}">{{ d.n }}</span>
+                  <span style="height:14px;min-width:14px;padding:0 3px;border-radius:7px;background:{{ d.dot }};color:{{ d.dotFg }};font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ d.mark }}</span>
+                </button>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;border-radius:12px;background:#3A1A14;font-size:13px;font-weight:700"><span style="width:8px;height:8px;border-radius:50%;background:#FF6B3D"></span>Mardi 13 à envoyer<span style="margin-left:auto;color:#FFC21A;font-weight:800">Ouvrir ›</span></div>
+          </div>
+          <div style="flex:1;overflow:auto;padding:12px 14px 160px;display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:max-content;gap:10px">
+            <div style="display:flex;gap:6px">
+              <span style="flex:1;height:44px;border-radius:14px;background:#FCE4E1;color:#8E1B14;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px">1 réserve à lever ›</span>
+              <span style="flex:1;height:44px;border-radius:14px;background:#FFFDF8;border:1px solid #E3DACB;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px">2 formations à voir ›</span>
+            </div>
+            <div style="background:#1B1713;color:#F2EDE3;border-radius:22px;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+              <span style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#2ED3A0"><span style="width:8px;height:8px;border-radius:50%;background:#2ED3A0;animation:bxPulse 1.4s ease-out infinite"></span>POINTAGE EN COURS · DEPUIS 07:45</span>
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:52px;line-height:1;letter-spacing:-.04em">3:12</span><span style="font-size:13px;color:rgba(242,237,227,.7);text-align:right">Villa Exemple<br>Lyon</span></div>
+              <button style="height:52px;border-radius:999px;border:0;background:#F2EDE3;color:#15120F;font-size:15px;font-weight:800">Terminer ma journée</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1.2fr 1.2fr;gap:6px">
+              <div style="height:64px;border-radius:16px;background:#FFFDF8;border:1px solid #E3DACB;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;color:#5B534A">TOTAL</span><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px">7:12</span></div>
+              <button aria-label="1 pause à préciser, aller au trou" style="height:64px;border-radius:16px;border:2px solid #EE8A43;background:#FFE1CC;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;text-align:left"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;color:#9A3412">PAUSES</span><span style="font-weight:900;font-size:14px;color:#9A3412">1 à préciser ↓</span></button>
+              <button onClick="{{ togglePanier }}" aria-pressed="{{ panierPressed }}" style="height:64px;border-radius:16px;border:{{ panierBd }};background:{{ panierBg }};color:{{ panierFg }};padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;text-align:left;cursor:pointer"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;opacity:.75">PANIER</span><span style="font-weight:900;font-size:14px">{{ panierTxt }}</span></button>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:#8A6A00;margin-top:2px">CHANTIERS DU JOUR</span>
+            <div style="position:relative;background:#FFFFFF;border-radius:16px;padding:13px 14px 13px 18px;display:flex;flex-direction:column;gap:5px;overflow:hidden;border:1.5px solid #15120F">
+              <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#4A8FE0"></span>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-weight:900;font-size:16px">Maison Démo</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;padding:4px 7px;border-radius:6px;background:#FFE1CC;color:#9A3412">À ENVOYER</span></div>
+              <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700"><span style="color:#5B534A;font-weight:500">Bron</span><span>07:30 → 11:30 · 4:00</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:14px;background:#FFE1CC;border:2px solid #EE8A43">
+              <span style="flex:1;font-size:13px;line-height:1.3"><b style="font-family:'JetBrains Mono',monospace">1:00</b> entre 11:30 et 12:30 — <b style="color:#9A3412">c'était quoi ?</b></span>
+              <button onClick="{{ pickRoute }}" style="height:44px;padding:0 14px;border-radius:12px;border:1.5px solid {{ routeBd }};background:{{ routeBg }};color:{{ routeFg }};font-weight:800;font-size:13px;cursor:pointer">Route</button>
+              <button onClick="{{ pickPause }}" style="height:44px;padding:0 14px;border-radius:12px;border:1.5px solid {{ pauseBd }};background:{{ pauseBg }};color:{{ pauseFg }};font-weight:800;font-size:13px;cursor:pointer">Pause</button>
+            </div>
+            <div style="position:relative;background:#E7F6EE;border-radius:16px;padding:13px 14px 13px 18px;display:flex;flex-direction:column;gap:5px;overflow:hidden;border:1.5px solid #2FA36B">
+              <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#2FA36B"></span>
+              <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:900;font-size:16px">Villa Exemple</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#5B534A">⧉ 2</span></div>
+              <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700"><span style="color:#5B534A;font-weight:500">Lyon</span><span style="color:#17663F">en cours depuis 07:45</span></div>
+            </div>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#F2EDE3;border-top:1px solid #E3DACB;padding:10px 14px 10px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;gap:8px">
+              <button aria-label="Ajouter une intervention" style="width:56px;height:56px;flex:none;border-radius:16px;border:2px solid #15120F;background:#FFFDF8;font-size:26px;font-weight:700">+</button>
+              <button aria-label="Scanner le QR de la borne" style="width:56px;height:56px;flex:none;border-radius:16px;border:2px solid #15120F;background:#FFFDF8;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700">QR</button>
+              <button style="flex:1;height:56px;border-radius:16px;border:0;background:#FFC21A;font-size:16px;font-weight:900;box-shadow:inset 0 -4px 0 #D9A200">Envoyer ma journée →</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">
+              <span style="height:44px;border-radius:12px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800">Journée</span>
+              <span style="height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5B534A">Semaine</span>
+              <span style="height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5B534A">Mois</span>
+              <span style="position:relative;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5B534A">Plus<span style="position:absolute;top:6px;right:18px;width:8px;height:8px;border-radius:50%;background:#E53935"></span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <span style="font-size:13.5px;color:#5B534A;line-height:1.45">✦ en haut à droite, un toucher, sur tous les onglets (en-tête commun). Pauses et Panier : boutons de 64 px sous le pointage. « 1 à préciser » fait défiler jusqu'au trou, surligné en orange.</span>
+    </div>
+
+    <div id="4b" style="display:flex;flex-direction:column;gap:14px;width:420px">
+      <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">4b</span><span style="font-weight:900;font-size:24px;letter-spacing:-.02em">Onglet « Plus »</span></div>
+      <div style="width:390px;height:844px;border-radius:48px;background:#15120F;padding:10px;box-shadow:0 30px 80px rgba(21,18,15,.25)">
+        <div style="position:relative;width:100%;height:100%;border-radius:40px;overflow:hidden;background:#F2EDE3;display:flex;flex-direction:column">
+          <div style="background:#15120F;color:#F2EDE3;padding:42px 16px 18px;display:flex;align-items:center;gap:14px">
+            <span style="width:60px;height:60px;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:20px">SG</span>
+            <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-weight:900;font-size:21px">Sam Exemple</span><span style="font-size:13px;color:rgba(242,237,227,.65)">Entreprise Test · poseur</span></div>
+            <button aria-label="Assistant BEMEXO" style="width:44px;height:44px;border-radius:50%;border:0;background:#FFC21A;color:#15120F;font-size:17px;font-weight:900">✦</button>
+          </div>
+          <div style="flex:1;overflow:auto;padding:14px 14px 120px;display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:max-content;gap:8px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:#8A7F70;padding:4px 4px 0">MES HEURES</span>
+            <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;overflow:hidden">
+              <sc-for list="{{ plusA }}" as="x" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:12px;min-height:56px;padding:0 16px;border-top:{{ x.bt }}"><span style="flex:1;font-weight:800;font-size:15px;color:{{ x.c }}">{{ x.l }}</span><sc-if value="{{ x.hasB }}"><span style="height:24px;padding:0 9px;border-radius:999px;background:{{ x.bBg }};color:{{ x.bFg }};font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;display:flex;align-items:center">{{ x.b }}</span></sc-if><span style="color:#B5A994">›</span></div>
+              </sc-for>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:#8A7F70;padding:8px 4px 0">MON COMPTE</span>
+            <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;overflow:hidden">
+              <sc-for list="{{ plusB }}" as="x" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:12px;min-height:56px;padding:0 16px;border-top:{{ x.bt }}"><span style="flex:1;font-weight:800;font-size:15px;color:{{ x.c }}">{{ x.l }}</span><sc-if value="{{ x.hasB }}"><span style="height:24px;padding:0 9px;border-radius:999px;background:{{ x.bBg }};color:{{ x.bFg }};font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;display:flex;align-items:center">{{ x.b }}</span></sc-if><span style="color:#B5A994">›</span></div>
+              </sc-for>
+            </div>
+            <button style="height:56px;border-radius:18px;border:1.5px solid #F0B8AE;background:#FCE4E1;color:#8E1B14;font-size:15px;font-weight:800;margin-top:4px">Déconnexion</button>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#F2EDE3;border-top:1px solid #E3DACB;padding:10px 14px 14px;display:grid;grid-template-columns:repeat(4,1fr);gap:4px">
+            <span style="height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5B534A">Journée</span>
+            <span style="height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5B534A">Semaine</span>
+            <span style="height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5B534A">Mois</span>
+            <span style="height:44px;border-radius:12px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800">Plus</span>
+          </div>
+        </div>
+      </div>
+      <span style="font-size:13.5px;color:#5B534A;line-height:1.45">Une page, pas un menu flottant : rien ne recouvre les retours passagers. « Mon équipe » n'apparaît que pour un chef d'équipe ; « Notifications » disparaît si l'appareil ne les gère pas. Pastille rouge sur « Plus » tant qu'une formation n'est pas vue.</span>
+    </div>
+
+    <div id="4c" style="display:flex;flex-direction:column;gap:14px;width:520px">
+      <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">4c</span><span style="font-weight:900;font-size:24px;letter-spacing:-.02em">États de la bande des jours</span></div>
+      <div style="background:#15120F;border-radius:22px;padding:22px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px">
+        <sc-for list="{{ stripStates }}" as="s" hint-placeholder-count="6">
+          <div style="display:flex;align-items:center;gap:16px">
+            <span style="position:relative;width:52px;height:60px;flex:none;border-radius:14px;border:{{ s.bd }};background:{{ s.bg }};color:{{ s.fg }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+              <span style="font-size:10.5px;font-weight:700;opacity:{{ s.op }}">{{ s.l }}</span>
+              <span style="font-weight:900;font-size:16px;opacity:{{ s.op }}">{{ s.n }}</span>
+              <span style="height:14px;min-width:14px;padding:0 3px;border-radius:7px;background:{{ s.dot }};color:{{ s.dotFg }};font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ s.mark }}</span>
+            </span>
+            <div style="display:flex;flex-direction:column;gap:3px;color:#F2EDE3"><span style="font-weight:900;font-size:16px">{{ s.t }}</span><span style="font-size:13px;color:rgba(242,237,227,.7);line-height:1.4">{{ s.d }}</span></div>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size:13.5px;color:#5B534A;line-height:1.45">Chaque état a sa forme (anneau, coche, rayures, pastille) en plus de sa couleur : lisible au soleil et pour un daltonien. Le jour affiché est cerclé de crème. Toucher un jour l'ouvre (S54). Le rappel « N journées à envoyer » reste sous la bande quand des jours oubliés sont hors de la semaine affichée.</span>
+    </div>
+  </div>
+</section>
+
+<section style="padding:64px 64px 40px;font-family:'Archivo',system-ui,sans-serif;color:#15120F;display:flex;flex-direction:column;gap:32px;border-bottom:2px dashed #C9B998">
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:1100px">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">TOUR 3 · ASSISTANT ET PANNEAUX</span>
+    <span style="font-weight:900;font-size:56px;line-height:.95;letter-spacing:-.04em">L'assistant se réduit, il ne disparaît pas</span>
+    <span style="font-size:17px;line-height:1.5;color:#3A332B;text-wrap:pretty">Règle : un seul panneau à droite. Quand l'assistant ouvre un formulaire, il se réduit en pastille au-dessus du fond grisé ; après « Enregistrer » ou ✕, il se rouvre seul avec le résultat. Si un formulaire contient des changements non enregistrés, on demande avant de le fermer. Le plein écran est réservé à l'ordinateur (≥ 1024 px) : pas de pastille téléphone.</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:48px;align-items:flex-start">
+
+    <div id="3a" style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">3a</span><span style="font-weight:900;font-size:24px;letter-spacing:-.02em">Assistant réduit, formulaire pré-rempli</span></div>
+      <div style="position:relative;width:1000px;height:720px;border-radius:22px;overflow:hidden;background:#F2EDE3;box-shadow:0 30px 80px rgba(21,18,15,.18)">
+        <div style="height:60px;background:#15120F;display:flex;align-items:center;padding:0 22px"><span style="font-weight:800;font-size:20px;color:#F2EDE3">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</span></div>
+        <div style="padding:20px 22px;display:grid;grid-template-columns:180px repeat(5,1fr);gap:8px">
+          <div style="height:90px;border-radius:12px;background:#FFFDF8"></div><div style="height:90px;border-radius:12px;background:#15120F"></div><div style="height:90px;border-radius:12px;background:#DDEBFA"></div><div style="height:90px;border-radius:12px;background:#FCE3CF"></div><div style="height:90px;border-radius:12px;background:#FFF6DB"></div><div style="height:90px;border-radius:12px;background:#FFFDF8"></div>
+          <div style="height:90px;border-radius:12px;background:#FFFDF8"></div><div style="height:90px;border-radius:12px;background:#FCE3CF"></div><div style="height:90px;border-radius:12px;background:#15120F"></div><div style="height:90px;border-radius:12px;background:#FFFDF8"></div><div style="height:90px;border-radius:12px;background:#FFF6DB"></div><div style="height:90px;border-radius:12px;background:#DDEBFA"></div>
+        </div>
+        <div style="position:absolute;left:0;right:0;top:0;bottom:0;background:rgba(21,18,15,.32)"></div>
+
+        <div role="dialog" aria-label="Ajouter une intervention" style="position:absolute;right:0;top:60px;bottom:0;width:440px;background:#FFFDF8;display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(21,18,15,.16)">
+          <div style="height:4px;background:#FFC21A"></div>
+          <div style="padding:18px 22px 14px;display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #EFE7D9">
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <span style="align-self:flex-start;display:flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em">✦ PRÉ-REMPLI PAR L'ASSISTANT</span>
+              <span style="font-weight:900;font-size:28px;letter-spacing:-.03em;line-height:1">Ajouter</span>
+              <span style="font-size:13.5px;color:#5B534A">Pour Alex Test · jeudi 15 octobre</span>
+            </div>
+            <button aria-label="Fermer" style="width:40px;height:40px;flex:none;border-radius:50%;border:1px solid #D6CBB7;background:transparent;font-size:15px">✕</button>
+          </div>
+          <div style="flex:1;padding:18px 22px;display:flex;flex-direction:column;gap:14px">
+            <span style="font-weight:800;font-size:14px">Client</span>
+            <div style="display:flex;align-items:center;gap:12px;height:52px;padding:0 14px;border-radius:14px;border:2px solid #15120F;background:#FFF3CC"><span style="width:12px;height:12px;border-radius:50%;background:#2FA36B"></span><span style="font-weight:800;font-size:14px">Maison Démo</span><span style="font-size:12.5px;color:#5B534A">Volets · Bron</span><span style="margin-left:auto;font-size:13px;color:#8A6A00">✦</span></div>
+            <span style="font-weight:800;font-size:14px">Horaire prévu</span>
+            <div style="display:flex;gap:8px"><span style="flex:1;height:48px;border-radius:12px;border:2px solid #15120F;background:#FFF3CC;display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;font-weight:700">08:00</span><span style="flex:1;height:48px;border-radius:12px;border:2px solid #15120F;background:#FFF3CC;display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;font-weight:700">12:00</span></div>
+            <span style="font-size:12.5px;color:#5B534A;line-height:1.4">Les champs en jaune viennent de l'assistant. Vérifiez puis enregistrez : rien n'est écrit avant.</span>
+            <div style="min-height:60px;border-radius:12px;border:1px solid #D6CBB7;background:#fff;padding:12px 14px;font-size:14px;color:#8A7F70">Note pour le poseur</div>
+          </div>
+          <div style="padding:14px 22px 20px;border-top:1px solid #EFE7D9"><button style="width:100%;height:52px;border-radius:999px;border:0;background:#FFC21A;font-size:15px;font-weight:800;box-shadow:inset 0 -3px 0 #D9A200">Ajouter au planning</button></div>
+        </div>
+
+        <div style="position:absolute;right:460px;bottom:22px;z-index:5;display:flex;align-items:center;gap:10px;max-width:440px;padding:6px 6px 6px 8px;border-radius:999px;background:#15120F;color:#F2EDE3;box-shadow:0 14px 40px rgba(21,18,15,.4)">
+          <span style="width:36px;height:36px;flex:none;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900">✦</span>
+          <div style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:#FFC21A">ASSISTANT · EN ATTENTE</span><span style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">« mets Alex jeudi chez Maison Démo »</span></div>
+          <button style="flex:none;height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(242,237,227,.25);background:transparent;color:#F2EDE3;font-size:12.5px;font-weight:800">Reprendre</button>
+        </div>
+      </div>
+      <span style="font-size:13.5px;color:#5B534A;max-width:1000px;line-height:1.45">La pastille est au-dessus du fond grisé (couche 60, sous les fenêtres de confirmation) et à gauche du panneau, donc elle ne cache aucun champ. « Reprendre » rouvre l'assistant et passe par la règle 3c si le formulaire a été modifié.</span>
+    </div>
+
+    <div id="3b" style="display:flex;flex-direction:column;gap:14px;width:420px">
+      <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">3b</span><span style="font-weight:900;font-size:24px;letter-spacing:-.02em">Après « Ajouter »</span></div>
+      <div style="width:420px;height:720px;border-radius:22px;overflow:hidden;background:#FAF6EE;box-shadow:0 30px 80px rgba(21,18,15,.18);display:flex;flex-direction:column">
+        <div style="padding:18px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #EFE7D9"><span style="display:flex;align-items:center;gap:10px;font-weight:900;font-size:18px"><span style="width:34px;height:34px;border-radius:10px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center">✦</span>Assistant BEMEXO</span><span style="font-size:15px">✕</span></div>
+        <div style="flex:1;padding:18px 20px;display:flex;flex-direction:column;gap:12px">
+          <span style="align-self:flex-end;max-width:80%;padding:10px 14px;border-radius:16px 16px 4px 16px;background:#15120F;color:#F2EDE3;font-size:14px">mets Alex jeudi chez Maison Démo</span>
+          <span style="align-self:flex-start;max-width:85%;padding:10px 14px;border-radius:16px 16px 16px 4px;background:#FFFDF8;border:1px solid #E3DACB;font-size:14px;line-height:1.4">J'ai ouvert le formulaire pré-rempli. Vérifiez puis enregistrez.</span>
+          <div style="align-self:stretch;background:#E7F6EE;border:1.5px solid #2FA36B;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px">
+            <span style="font-weight:900;font-size:15px;color:#17663F">Fait — Alex · jeudi 15 · Maison Démo 08:00–12:00</span>
+            <div style="display:flex;gap:6px"><button style="height:40px;padding:0 14px;border-radius:999px;border:1.5px solid #15120F;background:transparent;font-size:13px;font-weight:800">Annuler</button><button style="height:40px;padding:0 14px;border-radius:999px;border:1px solid #D6CBB7;background:#FFFDF8;font-size:13px;font-weight:700">Modifier</button></div>
+          </div>
+          <span style="align-self:flex-start;font-size:12.5px;color:#5B534A">Si le panneau est fermé par ✕ sans enregistrer : « Formulaire fermé, rien n'a été ajouté. »</span>
+        </div>
+        <div style="padding:14px 20px 20px"><div style="height:52px;border-radius:999px;border:1px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;padding:0 18px;color:#8A7F70;font-size:14px">Votre question…</div></div>
+      </div>
+      <span style="font-size:13.5px;color:#5B534A;line-height:1.45">L'assistant se rouvre seul, au même endroit de la conversation, avec la carte « Fait » habituelle.</span>
+    </div>
+
+    <div id="3c" style="display:flex;flex-direction:column;gap:14px;width:560px">
+      <div style="display:flex;align-items:center;gap:14px"><span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">3c</span><span style="font-weight:900;font-size:24px;letter-spacing:-.02em">Changements non enregistrés</span></div>
+      <div style="position:relative;width:560px;height:720px;border-radius:22px;overflow:hidden;background:rgba(21,18,15,.5);box-shadow:0 30px 80px rgba(21,18,15,.18);display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;right:0;top:0;bottom:0;width:300px;background:#E9E2D4;opacity:.7"></div>
+        <div role="alertdialog" aria-label="Abandonner la modification ?" style="position:relative;width:440px;background:#FFFDF8;border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(21,18,15,.4)">
+          <div style="height:4px;background:#FFC21A"></div>
+          <div style="padding:24px 26px 22px;display:flex;flex-direction:column;gap:12px">
+            <span style="font-weight:900;font-size:26px;letter-spacing:-.03em;line-height:1.05">Abandonner la modification ?</span>
+            <span style="font-size:14.5px;color:#3A332B;line-height:1.45">Vous avez changé l'horaire de <b>Villa Exemple</b> (Alex, jeudi 15) sans l'enregistrer. Si vous ouvrez l'assistant, ces changements seront perdus.</span>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+              <button style="height:52px;border-radius:999px;border:0;background:#FFC21A;font-size:15px;font-weight:800;box-shadow:inset 0 -3px 0 #D9A200;outline:3px solid #15120F;outline-offset:2px">Continuer la modification</button>
+              <button style="height:48px;border-radius:999px;border:1.5px solid #E53935;background:transparent;color:#8E1B14;font-size:14.5px;font-weight:800">Abandonner et ouvrir l'assistant</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <span style="font-size:13.5px;color:#5B534A;line-height:1.45">Le focus part sur « Continuer la modification » (choix sans conséquence, Entrée ne jette rien). Échap = continuer. Même fenêtre pour ✕, clic sur le fond grisé ou changement de semaine. Formulaire intact : on ferme sans demander.</span>
+    </div>
+  </div>
+</section>
+
+<section style="padding:64px 64px 40px;font-family:'Archivo',system-ui,sans-serif;color:#15120F;display:flex;flex-direction:column;gap:32px;border-bottom:2px dashed #C9B998">
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:1100px">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">TOUR 2 · LE PLANNING D'ABORD</span>
+    <span style="font-weight:900;font-size:56px;line-height:.95;letter-spacing:-.04em">Une seule ligne au-dessus du planning</span>
+    <span style="font-size:17px;line-height:1.5;color:#3A332B;text-wrap:pretty">Mon avis : vous avez raison, deux barres + le bandeau de chiffres font descendre le planning de ~260 px. La secrétaire ouvre la page pour lire le planning, pas pour les compteurs. Je propose de tout fondre dans une seule barre noire de 64 px (semaine, compteurs, 4 actions, Plus), de retirer le bandeau (la charge par jour passe dans l'en-tête de chaque jour) et d'ajouter un mode plein écran. Le menu hamburger seul sur ordinateur cacherait trop : on chercherait « Exporter » chaque vendredi.</span>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:56px;align-items:flex-start">
+    <div id="2a" style="display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">2a</span>
+        <span style="font-weight:900;font-size:26px;letter-spacing:-.02em">Bureau · barre unique + plein écran</span>
+        <div style="display:flex;background:#E6DDCD;border-radius:999px;padding:4px">
+          <button onClick="{{ setBar }}" style="border:0;cursor:pointer;height:38px;padding:0 16px;border-radius:999px;font-size:13.5px;font-weight:800;background:{{ barBg }};color:{{ barFg }}">Barre unique</button>
+          <button onClick="{{ setFocus }}" style="border:0;cursor:pointer;height:38px;padding:0 16px;border-radius:999px;font-size:13.5px;font-weight:800;background:{{ focBg }};color:{{ focFg }}">Plein écran</button>
+        </div>
+      </div>
+
+      <div style="position:relative;width:1440px;height:900px;background:#F2EDE3;border-radius:22px;overflow:hidden;box-shadow:0 30px 80px rgba(21,18,15,.18);display:flex;flex-direction:column">
+        <sc-if value="{{ notFocus }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:none;height:64px;background:#15120F;color:#F2EDE3;display:flex;align-items:center;gap:14px;padding:0 16px 0 22px">
+            <div style="font-weight:800;font-size:21px;letter-spacing:-.01em;flex:none">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</div>
+            <span style="width:1px;height:28px;background:rgba(242,237,227,.18)"></span>
+            <div style="display:flex;align-items:center;gap:6px;flex:none">
+              <button aria-label="Semaine précédente" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(242,237,227,.2);background:transparent;color:#F2EDE3;cursor:pointer">←</button>
+              <span style="font-weight:900;font-size:22px;letter-spacing:-.03em">S-42</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(242,237,227,.7)">12–18 oct.</span>
+              <button aria-label="Semaine suivante" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(242,237,227,.2);background:transparent;color:#F2EDE3;cursor:pointer">→</button>
+              <span style="height:26px;padding:0 8px;border-radius:6px;background:#2FA36B;color:#FFFFFF;display:flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em">ACTUELLE</span>
+            </div>
+            <span style="width:1px;height:28px;background:rgba(242,237,227,.18)"></span>
+            <div style="display:flex;align-items:center;gap:4px;flex:none">
+              <span style="display:flex;align-items:center;gap:6px;height:34px;padding:0 10px;border-radius:999px;background:#3A1A14;font-size:12.5px;font-weight:700"><span style="width:7px;height:7px;border-radius:50%;background:#FF6B3D"></span><b style="font-family:'JetBrains Mono',monospace;color:#FFC21A">5 j</b>à relancer</span>
+              <span style="display:flex;align-items:center;gap:6px;height:34px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:700;color:rgba(242,237,227,.85)"><b style="font-family:'JetBrains Mono',monospace;color:#FFC21A">1</b>congé</span>
+              <span style="display:flex;align-items:center;gap:6px;height:34px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:700;color:rgba(242,237,227,.85)"><b style="font-family:'JetBrains Mono',monospace;color:#FFC21A">3</b>pièces</span>
+              <span style="display:flex;align-items:center;gap:6px;height:34px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:700;color:rgba(242,237,227,.85)"><b style="font-family:'JetBrains Mono',monospace;color:#FFC21A">1</b>réserve</span>
+            </div>
+            <div style="flex:1"></div>
+            <div style="display:flex;align-items:center;gap:6px;flex:none">
+              <button style="height:38px;padding:0 13px;border-radius:999px;border:1px solid rgba(242,237,227,.2);background:transparent;color:#F2EDE3;font-size:13px;font-weight:700;cursor:pointer">Clients</button>
+              <button style="height:38px;padding:0 13px;border-radius:999px;border:1px solid rgba(242,237,227,.2);background:transparent;color:#F2EDE3;font-size:13px;font-weight:700;cursor:pointer">Salariés</button>
+              <button style="height:38px;padding:0 13px;border-radius:999px;border:1px solid rgba(242,237,227,.2);background:transparent;color:#F2EDE3;font-size:13px;font-weight:700;cursor:pointer">Sélectionner</button>
+              <button style="height:38px;padding:0 13px;border-radius:999px;border:1px solid rgba(242,237,227,.2);background:transparent;color:#F2EDE3;font-size:13px;font-weight:700;cursor:pointer">Plus ⋯</button>
+              <button style="height:38px;padding:0 16px;border-radius:999px;border:0;background:#FFC21A;color:#15120F;font-size:13px;font-weight:800;cursor:pointer">↓ Exporter</button>
+              <button aria-label="Assistant" style="width:38px;height:38px;border-radius:50%;border:1px solid #FFC21A;background:transparent;color:#FFC21A;font-size:15px;cursor:pointer">✦</button>
+              <button onClick="{{ setFocus }}" aria-label="Plein écran" style="width:38px;height:38px;border-radius:50%;border:1px solid rgba(242,237,227,.2);background:transparent;color:#F2EDE3;font-size:15px;cursor:pointer">⤢</button>
+              <span style="width:38px;height:38px;border-radius:50%;background:#F2EDE3;color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px">ET</span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ focus }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:12px;right:14px;z-index:20;display:flex;align-items:center;gap:6px;padding:5px 5px 5px 14px;border-radius:999px;background:#15120F;color:#F2EDE3;box-shadow:0 10px 30px rgba(21,18,15,.3)">
+            <span style="font-weight:900;font-size:15px">S-42</span>
+            <button aria-label="Semaine précédente" style="width:32px;height:32px;border-radius:50%;border:0;background:#25201B;color:#F2EDE3;cursor:pointer">←</button>
+            <button aria-label="Semaine suivante" style="width:32px;height:32px;border-radius:50%;border:0;background:#25201B;color:#F2EDE3;cursor:pointer">→</button>
+            <button onClick="{{ setBar }}" style="height:32px;padding:0 12px;border-radius:999px;border:0;background:#FFC21A;color:#15120F;font-size:12.5px;font-weight:800;cursor:pointer">⤡ Quitter · Échap</button>
+          </div>
+        </sc-if>
+
+        <div style="flex:1;overflow:hidden;padding:{{ gridPad }}">
+          <table style="width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;background:#FFFDF8;border:1px solid #E3DACB;border-radius:16px;overflow:hidden">
+            <colgroup><col style="width:220px"><col><col><col><col><col><col><col></colgroup>
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:10px 14px;border-bottom:2px solid #15120F;vertical-align:bottom">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;color:#5B534A;font-weight:700">SALARIÉ</span>
+                  <div style="display:flex;align-items:baseline;gap:6px;margin-top:2px"><span style="font-weight:900;font-size:20px;letter-spacing:-.03em">{{ weekSent }} h</span><span style="font-size:11.5px;color:#5B534A">envoyées</span></div>
+                </th>
+                <sc-for list="{{ days2 }}" as="d" hint-placeholder-count="7">
+                  <th style="padding:8px 10px;border-bottom:2px solid #15120F;border-left:1px solid #EFE7D9;background:{{ d.bg }};box-shadow:{{ d.top }};text-align:left;vertical-align:bottom">
+                    <div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:12.5px;font-weight:700;color:#5B534A">{{ d.l }}</span><span style="font-weight:900;font-size:21px;letter-spacing:-.03em">{{ d.n }}</span><span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#5B534A">{{ d.h }}</span></div>
+                    <div style="margin-top:5px;height:4px;border-radius:2px;background:#EFE7D9;overflow:hidden"><div style="height:100%;width:{{ d.w }};background:{{ d.g }};border-radius:2px"></div></div>
+                  </th>
+                </sc-for>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+                <tr>
+                  <td style="vertical-align:top;padding:10px 14px;border-bottom:1px solid #EFE7D9">
+                    <div style="display:flex;align-items:center;gap:9px">
+                      <span style="width:32px;height:32px;flex:none;border-radius:50%;background:{{ r.av }};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px">{{ r.ini }}</span>
+                      <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                        <span style="font-weight:800;font-size:13.5px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span>
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;color:{{ r.stC }}">● {{ r.st }}</span>
+                      </div>
+                    </div>
+                    <div style="margin-top:8px;height:5px;border-radius:3px;background:#EFE7D9;overflow:hidden"><div style="height:100%;width:{{ r.pct }};background:linear-gradient(90deg,#FFC21A,#FF8A3D)"></div></div>
+                  </td>
+                  <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="7">
+                    <td style="vertical-align:top;padding:5px;border-bottom:1px solid #EFE7D9;border-left:1px solid #EFE7D9;background:{{ c.bg }}">
+                      <div style="display:flex;flex-direction:column;gap:5px">
+                        <sc-for list="{{ c.items }}" as="it" hint-placeholder-count="1">
+                          <sc-if value="{{ it.isAbs }}">
+                            <div style="min-height:62px;border-radius:10px;background:repeating-linear-gradient(135deg,{{ it.absA }} 0 9px,{{ it.absB }} 9px 18px);display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.14em;font-size:10px;color:#3A332B">{{ it.title }}</div>
+                          </sc-if>
+                          <sc-if value="{{ it.isCard }}">
+                            <div style="position:relative;display:flex;flex-direction:column;gap:2px;padding:6px 8px 7px 12px;border-radius:10px;background:{{ it.bg }};border:{{ it.bd }};color:{{ it.fg }};overflow:hidden">
+                              <span style="position:absolute;left:0;top:0;bottom:0;width:4px;background:{{ it.stripe }}"></span>
+                              <span style="font-weight:800;font-size:12.5px;line-height:1.15;text-decoration:{{ it.deco }}">{{ it.title }}</span>
+                              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:{{ it.timeFg }}">{{ it.time }}</span>
+                              <sc-if value="{{ it.hasTag }}"><span style="align-self:flex-start;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 5px;border-radius:4px;background:{{ it.tagBg }};color:{{ it.tagFg }}">{{ it.tag }}</span></sc-if>
+                            </div>
+                          </sc-if>
+                        </sc-for>
+                        <sc-if value="{{ c.empty }}">
+                          <div style="min-height:62px;border-radius:10px;border:1.5px dashed #E0D6C4;display:flex;align-items:center;justify-content:center;color:#B5A994;font-size:18px" style-hover="background:#F7F1E6;color:#15120F;border-color:#15120F">+</div>
+                        </sc-if>
+                      </div>
+                    </td>
+                  </sc-for>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <span style="font-size:14px;color:#5B534A;line-height:1.45;max-width:1100px">Gain : le planning commence à 64 px au lieu de ~330 (8 salariés visibles sans défiler sur un écran 900 px). « Statistiques » et les autres fonctions passent dans « Plus ». Plein écran : touche ⤢ ou F, sortie par Échap ; seule une pastille S-42 reste. Les compteurs cliquables gardent leur détail en menu déroulant.</span>
+    </div>
+
+    <div id="2b" style="display:flex;flex-direction:column;gap:16px;width:420px">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">2b</span>
+        <span style="font-weight:900;font-size:26px;letter-spacing:-.02em">Bureau · téléphone</span>
+      </div>
+      <span style="font-size:14px;color:#5B534A;line-height:1.45">☰ en haut à droite. Bascule Jour / Semaine : la semaine se lit en mosaïque (une pastille par intervention), toucher une colonne ouvre ce jour.</span>
+      <div style="width:390px;height:844px;border-radius:48px;background:#15120F;padding:10px;box-shadow:0 30px 80px rgba(21,18,15,.25)">
+        <div style="width:100%;height:100%;border-radius:40px;overflow:hidden;background:#F2EDE3;display:flex;flex-direction:column">
+          <div style="background:#15120F;color:#F2EDE3;padding:44px 16px 14px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div style="font-weight:800;font-size:20px">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</div>
+              <div style="display:flex;gap:8px">
+                <button aria-label="Assistant" style="width:44px;height:44px;border-radius:50%;border:0;background:#FFC21A;color:#15120F;font-size:16px;font-weight:900">✦</button>
+                <button aria-label="menu" style="width:44px;height:44px;border-radius:50%;border:1px solid rgba(242,237,227,.25);background:transparent;color:#F2EDE3;font-size:18px">☰</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;align-items:baseline;gap:8px"><span style="font-weight:900;font-size:28px;letter-spacing:-.03em">S-42</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(242,237,227,.65)">12–18 oct.</span></div>
+              <div style="display:flex;background:#25201B;border-radius:999px;padding:3px">
+                <button onClick="{{ mvDay }}" style="border:0;height:38px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:800;background:{{ mvDayBg }};color:{{ mvDayFg }};cursor:pointer">Jour</button>
+                <button onClick="{{ mvWeek }}" style="border:0;height:38px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:800;background:{{ mvWeekBg }};color:{{ mvWeekFg }};cursor:pointer">Semaine</button>
+              </div>
+            </div>
+            <sc-if value="{{ isMvDay }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+                <sc-for list="{{ mDays }}" as="d" hint-placeholder-count="7">
+                  <button onClick="{{ d.onClick }}" style="height:52px;border-radius:14px;border:0;background:{{ d.bg }};color:{{ d.fg }};cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><span style="font-size:10.5px;font-weight:700;opacity:.8">{{ d.l }}</span><span style="font-weight:900;font-size:16px">{{ d.n }}</span></button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{ isMvDay }}" hint-placeholder-val="{{ true }}">
+            <div style="flex:1;overflow:auto;padding:12px 16px 20px;display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:max-content;gap:10px">
+              <sc-for list="{{ mRows }}" as="r" hint-placeholder-count="5">
+                <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:center;gap:10px;min-height:40px">
+                    <span style="width:34px;height:34px;border-radius:50%;background:{{ r.av }};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;flex:none">{{ r.ini }}</span>
+                    <span style="flex:1;font-weight:800;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;color:{{ r.stC }}">{{ r.st }}</span>
+                  </div>
+                  <sc-for list="{{ r.items }}" as="it" hint-placeholder-count="1">
+                    <sc-if value="{{ it.isAbs }}"><div style="height:48px;border-radius:12px;background:repeating-linear-gradient(135deg,{{ it.absA }} 0 9px,{{ it.absB }} 9px 18px);display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.14em;font-size:11px;color:#3A332B">{{ it.title }}</div></sc-if>
+                    <sc-if value="{{ it.isCard }}">
+                      <div style="position:relative;display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:50px;padding:8px 12px 8px 16px;border-radius:12px;background:{{ it.bg }};border:{{ it.bd }};color:{{ it.fg }};overflow:hidden">
+                        <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:{{ it.stripe }}"></span>
+                        <span style="font-weight:800;font-size:14px;text-decoration:{{ it.deco }}">{{ it.title }}</span>
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:{{ it.timeFg }};text-align:right;max-width:130px">{{ it.time }}</span>
+                      </div>
+                    </sc-if>
+                  </sc-for>
+                  <button style="height:44px;border-radius:12px;border:1.5px dashed #D6CBB7;background:transparent;font-size:13px;font-weight:800;color:#5B534A">+ Ajouter un chantier</button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isMvWeek }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;overflow:auto;padding:12px 12px 20px">
+              <div style="display:grid;grid-template-columns:92px repeat(7,1fr);gap:4px;align-items:stretch">
+                <span></span>
+                <sc-for list="{{ wkHead }}" as="d" hint-placeholder-count="7">
+                  <button onClick="{{ d.onClick }}" style="height:44px;border-radius:10px;border:0;background:{{ d.bg }};color:{{ d.fg }};display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer"><span style="font-size:10px;font-weight:700">{{ d.l }}</span><span style="font-weight:900;font-size:14px">{{ d.n }}</span></button>
+                </sc-for>
+                <sc-for list="{{ wkRows }}" as="r" hint-placeholder-count="8">
+                  <div style="display:flex;flex-direction:column;justify-content:center;min-height:64px;padding-right:4px;min-width:0">
+                    <span style="font-weight:800;font-size:12.5px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.first }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;color:{{ r.stC }}">{{ r.st }}</span>
+                  </div>
+                  <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="7">
+                    <div onClick="{{ c.onClick }}" style="min-height:64px;border-radius:10px;background:{{ c.bg }};border:1px solid #E3DACB;padding:4px;display:flex;flex-direction:column;gap:3px;cursor:pointer">
+                      <sc-for list="{{ c.blocks }}" as="b" hint-placeholder-count="1">
+                        <span style="flex:1;min-height:12px;border-radius:5px;background:{{ b.bg }};border:{{ b.bd }}"></span>
+                      </sc-for>
+                    </div>
+                  </sc-for>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:14px;font-size:11.5px;color:#5B534A">
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#15120F"></span>envoyée</span>
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#DDEBFA;border:1px dashed #9C907E"></span>prévue matin</span>
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#FCE3CF;border:1px dashed #9C907E"></span>après-midi</span>
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#2FA36B"></span>en direct</span>
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:repeating-linear-gradient(135deg,#EFE6D2 0 3px,#D9C9A6 3px 6px)"></span>absent</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+    <div id="2c" style="display:flex;flex-direction:column;gap:16px;width:420px">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">2c</span>
+        <span style="font-weight:900;font-size:26px;letter-spacing:-.02em">Panneau sous 1024 px</span>
+      </div>
+      <span style="font-size:14px;color:#5B534A;line-height:1.45">Le panneau de droite devient une feuille qui monte du bas (92 % de la hauteur), modale : fond grisé, poignée, titre, ✕. Le bouton principal reste collé en bas, sous le pouce.</span>
+      <div style="width:390px;height:844px;border-radius:48px;background:#15120F;padding:10px;box-shadow:0 30px 80px rgba(21,18,15,.25)">
+        <div style="position:relative;width:100%;height:100%;border-radius:40px;overflow:hidden;background:#F2EDE3">
+          <div style="background:#15120F;height:150px"></div>
+          <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+            <div style="height:120px;border-radius:18px;background:#FFFDF8;border:1px solid #E3DACB"></div>
+            <div style="height:120px;border-radius:18px;background:#FFFDF8;border:1px solid #E3DACB"></div>
+          </div>
+          <div style="position:absolute;left:0;right:0;top:0;bottom:0;background:rgba(21,18,15,.45)"></div>
+          <div role="dialog" aria-label="Intervention Villa Exemple" style="position:absolute;left:0;right:0;bottom:0;height:88%;background:#FFFDF8;border-radius:28px 28px 0 0;display:flex;flex-direction:column;overflow:hidden">
+            <div style="height:4px;background:#FFC21A"></div>
+            <div style="display:flex;justify-content:center;padding-top:8px"><span style="width:44px;height:5px;border-radius:3px;background:#D6CBB7"></span></div>
+            <div style="padding:10px 20px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid #EFE7D9">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;color:#5B534A">INTERVENTION · JEU 15 · ALEX TEST</span>
+                <span style="font-weight:900;font-size:26px;letter-spacing:-.03em;line-height:1">Villa Exemple</span>
+                <span style="font-size:13.5px;color:#5B534A">Fenêtres · Lyon</span>
+              </div>
+              <button aria-label="Fermer" style="width:44px;height:44px;flex:none;border-radius:50%;border:1px solid #D6CBB7;background:transparent;font-size:15px">✕</button>
+            </div>
+            <div style="flex:1;overflow:auto;padding:16px 20px;display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:max-content;gap:14px">
+              <div style="display:flex;gap:8px"><span style="flex:1;height:44px;border-radius:999px;border:1px solid #D6CBB7;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">✎ Fiche</span><span style="flex:1;height:44px;border-radius:999px;border:1px solid #D6CBB7;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">⧉ Documents</span></div>
+              <div style="background:#E7F6EE;color:#17663F;border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:4px"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.14em">HEURES DÉCLARÉES</span><span style="font-weight:900;font-size:22px">En cours depuis 07:45</span><span style="font-size:12.5px">Pointage en direct</span></div>
+              <span style="font-weight:800;font-size:14px">Horaire prévu <span style="font-weight:500;color:#8A7F70">facultatif</span></span>
+              <div style="display:flex;gap:8px"><span style="flex:1;height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#fff;display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;font-weight:700">07:45</span><span style="flex:1;height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#fff;display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;color:#8A7F70">fin</span></div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px"><span style="height:44px;padding:0 14px;border-radius:999px;border:1.5px solid #D6CBB7;display:flex;align-items:center;font-weight:800;font-size:13px">Matin</span><span style="height:44px;padding:0 14px;border-radius:999px;border:1.5px solid #D6CBB7;display:flex;align-items:center;font-weight:800;font-size:13px">Après-midi</span><span style="height:44px;padding:0 14px;border-radius:999px;border:1.5px solid #D6CBB7;display:flex;align-items:center;font-weight:800;font-size:13px">Journée</span></div>
+              <div style="min-height:64px;border-radius:12px;border:1px solid #D6CBB7;background:#fff;padding:12px 14px;font-size:14px;color:#8A7F70">Note pour le poseur</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><span style="height:48px;border-radius:14px;border:1px solid #D6CBB7;display:flex;align-items:center;padding:0 12px;font-size:12.5px;font-weight:700">Copier vers un autre jour…</span><span style="height:48px;border-radius:14px;border:1px solid #D6CBB7;display:flex;align-items:center;padding:0 12px;font-size:12.5px;font-weight:700">Dupliquer au lendemain</span></div>
+            </div>
+            <div style="padding:12px 20px 22px;border-top:1px solid #EFE7D9"><button style="width:100%;height:52px;border-radius:999px;border:0;background:#FFC21A;font-size:15px;font-weight:800;box-shadow:inset 0 -3px 0 #D9A200">Enregistrer</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="padding:64px 64px 96px;font-family:'Archivo',system-ui,sans-serif;color:#15120F;display:flex;flex-direction:column;gap:40px">
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:980px">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">ESSAI · NOUVEAU DESIGN BEMEXO · TOUR 1</span>
+    <span style="font-weight:900;font-size:64px;line-height:.95;letter-spacing:-.04em">Planning bureau &amp; journée salarié</span>
+    <span style="font-size:17px;line-height:1.5;color:#3A332B;text-wrap:pretty">Même identité (noir, crème, jaune #FFC21A, Archivo + JetBrains Mono), même langage que la page Statistiques : grands chiffres, pilules, cartes sombres pour ce qui est acquis. Les fenêtres empilées deviennent un panneau latéral, la barre de 14 boutons devient 5 actions + « Plus ». Toutes les données sont fictives.</span>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:56px;align-items:flex-start">
+
+    <!-- ============ 1a BUREAU ORDINATEUR ============ -->
+    <div id="1a" style="display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">1a</span>
+        <span style="font-weight:900;font-size:26px;letter-spacing:-.02em">Bureau · ordinateur 1440</span>
+        <span style="font-size:14px;color:#5B534A">Cliquez une intervention, une case vide, « Clients », « Sélectionner » ou « Plus ».</span>
+      </div>
+
+      <div style="position:relative;width:1440px;min-height:900px;background:#F2EDE3;border-radius:22px;overflow:hidden;box-shadow:0 30px 80px rgba(21,18,15,.18)">
+
+        <sc-if value="{{ focus1 }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;bottom:20px;right:20px;z-index:46;display:flex;align-items:center;gap:6px;padding:5px 5px 5px 14px;border-radius:999px;background:#15120F;color:#F2EDE3;box-shadow:0 10px 30px rgba(21,18,15,.3)">
+            <span style="font-weight:900;font-size:15px">S-42</span>
+            <button aria-label="Semaine précédente" style="width:32px;height:32px;border-radius:50%;border:0;background:#25201B;color:#F2EDE3;cursor:pointer">←</button>
+            <button aria-label="Semaine suivante" style="width:32px;height:32px;border-radius:50%;border:0;background:#25201B;color:#F2EDE3;cursor:pointer">→</button>
+            <button onClick="{{ toggleFocus1 }}" style="height:32px;padding:0 12px;border-radius:999px;border:0;background:#FFC21A;color:#15120F;font-size:12.5px;font-weight:800;cursor:pointer">⤡ Quitter · Échap</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ notFocus1 }}" hint-placeholder-val="{{ true }}">
+        <!-- header -->
+        <div style="height:60px;background:#15120F;color:#F2EDE3;display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:24px">
+          <div style="display:flex;align-items:center;gap:28px">
+            <div style="font-weight:800;font-size:22px;letter-spacing:-.01em">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</div>
+            <div style="display:flex;gap:4px;font-size:14px">
+              <span style="padding:8px 12px;font-weight:800;color:#FFC21A;box-shadow:inset 0 -2px 0 #FFC21A">Planning</span>
+              <span style="padding:8px 12px;color:rgba(242,237,227,.72)">Statistiques</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onClick="{{ openRelance }}" style="display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(242,237,227,.18);background:transparent;color:#F2EDE3;cursor:pointer;font-size:13px;font-weight:600"><span style="width:8px;height:8px;border-radius:50%;background:#FF6B3D"></span><span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:#FFC21A">5 j</span>à relancer</button>
+            <button style="display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(242,237,227,.18);background:transparent;color:#F2EDE3;cursor:pointer;font-size:13px;font-weight:600"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:#FFC21A">1</span>congé en attente</button>
+            <button style="display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(242,237,227,.18);background:transparent;color:#F2EDE3;cursor:pointer;font-size:13px;font-weight:600"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:#FFC21A">3</span>pièces</button>
+            <button style="display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(242,237,227,.18);background:transparent;color:#F2EDE3;cursor:pointer;font-size:13px;font-weight:600"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:#FFC21A">1</span>Réserves</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button style="display:flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:999px;border:0;background:#FFC21A;color:#15120F;cursor:pointer;font-size:13.5px;font-weight:800">✦ Assistant</button>
+            <span style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px 0 4px;border-radius:999px;background:#25201B;font-size:13.5px;font-weight:700"><span style="width:30px;height:30px;border-radius:50%;background:#F2EDE3;color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px">ET</span>Entreprise Test ▾</span>
+          </div>
+        </div>
+
+        <!-- toolbar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 24px 14px">
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.18em;color:#5B534A">SEMAINE ACTUELLE</span>
+              <div style="display:flex;align-items:baseline;gap:12px">
+                <span style="font-weight:900;font-size:40px;line-height:1;letter-spacing:-.04em">S-42</span>
+                <span style="font-weight:700;font-size:17px;color:#3A332B">12 – 18 octobre 2026</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;margin-left:8px">
+              <button aria-label="Semaine précédente" style="width:44px;height:44px;border-radius:50%;border:1px solid #D6CBB7;background:#FFFDF8;cursor:pointer;font-size:17px;font-weight:700">←</button>
+              <button aria-label="Semaine suivante" style="width:44px;height:44px;border-radius:50%;border:1px solid #D6CBB7;background:#FFFDF8;cursor:pointer;font-size:17px;font-weight:700">→</button>
+              <button style="height:44px;padding:0 16px;border-radius:999px;border:1.5px solid #15120F;background:transparent;cursor:pointer;font-size:13.5px;font-weight:800;opacity:.4">Aujourd'hui</button>
+            </div>
+          </div>
+          <div style="flex:1;max-width:340px;display:flex;align-items:center;gap:10px;height:44px;padding:0 16px;border-radius:999px;background:#FFFDF8;border:1px solid #E3DACB;color:#8A7F70;font-size:14px"><span style="font-size:15px">⌕</span>Chercher un salarié, un client…</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onClick="{{ toggleClients }}" style="height:44px;padding:0 16px;border-radius:999px;border:1px solid #D6CBB7;background:{{ clientsBg }};cursor:pointer;font-size:14px;font-weight:700;color:#15120F">Clients</button>
+            <button style="height:44px;padding:0 16px;border-radius:999px;border:1px solid #D6CBB7;background:#FFFDF8;cursor:pointer;font-size:14px;font-weight:700;color:#15120F;display:flex;align-items:center;gap:8px">Salariés<span aria-label="1 congé en attente" style="min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#FFC21A;color:#15120F;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center">1</span></button>
+            <button onClick="{{ toggleSel }}" style="height:44px;padding:0 16px;border-radius:999px;border:1px solid #D6CBB7;background:{{ selBtnBg }};cursor:pointer;font-size:14px;font-weight:700;color:#15120F">Sélectionner</button>
+            <span style="width:1px;height:28px;background:#D6CBB7;margin:0 4px"></span>
+            <div style="position:relative">
+              <button onClick="{{ toggleMenu }}" style="height:44px;padding:0 16px;border-radius:999px;border:1px solid #D6CBB7;background:{{ menuBg }};cursor:pointer;font-size:14px;font-weight:700;color:#15120F;position:relative">Plus ⋯<span aria-label="1 réserve à traiter" style="position:absolute;top:-5px;right:-5px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#E53935;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #F2EDE3">1</span></button>
+              <sc-if value="{{ menu }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;right:0;top:52px;z-index:40;width:300px;background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;box-shadow:0 20px 50px rgba(21,18,15,.18);padding:8px;display:flex;flex-direction:column">
+                  <sc-for list="{{ menuGroups }}" as="g" hint-placeholder-count="3">
+                    <span style="padding:12px 12px 6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:#8A7F70">{{ g.title }}</span>
+                    <sc-for list="{{ g.items }}" as="m" hint-placeholder-count="3">
+                      <button style="display:flex;justify-content:space-between;align-items:center;height:42px;padding:0 12px;border:0;border-radius:10px;background:transparent;cursor:pointer;font-size:14px;font-weight:700;color:#15120F;text-align:left" style-hover="background:#F2EDE3">{{ m.l }}<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8A7F70">{{ m.r }}</span></button>
+                    </sc-for>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+            <button style="display:flex;align-items:center;gap:8px;height:44px;padding:0 20px;border-radius:999px;border:0;background:#FFC21A;cursor:pointer;font-size:14px;font-weight:800;color:#15120F;box-shadow:inset 0 -3px 0 #D9A200">↓ Exporter</button>
+            <button onClick="{{ toggleFocus1 }}" aria-label="Planning en plein écran" title="Plein écran (F)" style="width:44px;height:44px;border-radius:50%;border:1px solid #D6CBB7;background:#FFFDF8;cursor:pointer;font-size:17px;color:#15120F">⤢</button>
+          </div>
+        </div>
+
+        <!-- cockpit -->
+        <sc-if value="{{ kpiClosed }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:0 24px 12px">
+            <button onClick="{{ toggleKpi }}" aria-expanded="false" aria-label="Afficher les chiffres de la semaine" style="width:100%;height:40px;display:flex;align-items:center;gap:18px;padding:0 8px 0 16px;border-radius:999px;border:1px solid #E3DACB;background:#FFFDF8;cursor:pointer;font-size:13px;color:#15120F">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;font-weight:700;color:#5B534A">CHIFFRES S-42</span>
+              <span><b style="font-family:'JetBrains Mono',monospace">{{ weekSent }} h</b> envoyées</span>
+              <span style="color:#8E1B14"><b style="font-family:'JetBrains Mono',monospace">5 j</b> à relancer</span>
+              <span style="display:flex;align-items:center;gap:6px;color:#17663F"><span style="width:8px;height:8px;border-radius:50%;background:#2FA36B"></span><b style="font-family:'JetBrains Mono',monospace">1</b> en direct</span>
+              <span><b style="font-family:'JetBrains Mono',monospace">1</b> absent</span>
+              <span style="margin-left:auto;height:28px;padding:0 12px;border-radius:999px;background:#15120F;color:#FFC21A;display:flex;align-items:center;font-weight:800;font-size:12px">Déplier ▾</span>
+            </button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ showKpi }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;justify-content:flex-end;padding:0 24px 6px;margin-top:-6px"><button onClick="{{ toggleKpi }}" aria-expanded="true" style="height:28px;padding:0 12px;border-radius:999px;border:1px solid #D6CBB7;background:transparent;cursor:pointer;font-size:12px;font-weight:800;color:#5B534A">Replier les chiffres ▴</button></div>
+        <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:12px;padding:0 24px 18px">
+          <div style="background:#1B1713;color:#F2EDE3;border-radius:18px;padding:16px 20px;display:flex;gap:20px;align-items:stretch">
+            <div style="display:flex;flex-direction:column;justify-content:space-between;min-width:150px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em;color:rgba(242,237,227,.6)">HEURES ENVOYÉES · S-42</span>
+              <div style="display:flex;align-items:baseline;gap:6px"><span style="font-weight:900;font-size:40px;line-height:1;letter-spacing:-.04em">{{ weekSent }}</span><span style="font-weight:700;color:rgba(242,237,227,.6)">h</span></div>
+              <span style="font-size:12.5px;color:rgba(242,237,227,.65)">+ {{ weekPlanned }} h prévues à venir</span>
+            </div>
+            <div style="flex:1;display:flex;align-items:flex-end;gap:10px;padding-top:6px">
+              <sc-for list="{{ loadBars }}" as="b" hint-placeholder-count="7">
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(242,237,227,.7)">{{ b.v }}</span>
+                  <div style="width:100%;height:{{ b.h }};min-height:4px;border-radius:8px 8px 3px 3px;background:{{ b.g }};outline:{{ b.ol }};outline-offset:2px"></div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:{{ b.lc }}">{{ b.l }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="background:#FCE4E1;border:1.5px solid #E53935;border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#8E1B14">À RELANCER</span>
+            <div style="display:flex;align-items:baseline;gap:6px"><span style="font-weight:900;font-size:36px;line-height:1;letter-spacing:-.04em;color:#8E1B14">5</span><span style="font-weight:700;color:#8E1B14">journées</span></div>
+            <span style="font-size:12.5px;color:#7A2A22;line-height:1.35">Bruno ×2, Dina, Eli, Fanny. Planifiées sans heures envoyées.</span>
+          </div>
+          <div style="background:#E7F6EE;border:1.5px solid #2FA36B;border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#17663F">EN DIRECT</span>
+            <div style="display:flex;align-items:center;gap:10px"><span style="width:12px;height:12px;border-radius:50%;background:#2FA36B;animation:bxPulse 1.4s ease-out infinite"></span><span style="font-weight:900;font-size:36px;line-height:1;letter-spacing:-.04em;color:#17663F">1</span><span style="font-weight:700;color:#17663F">pointe</span></div>
+            <span style="font-size:12.5px;color:#1F5A3B;line-height:1.35">Alex · Villa Exemple depuis 07:45</span>
+          </div>
+          <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#5B534A">ABSENTS AUJOURD'HUI</span>
+            <div style="display:flex;align-items:baseline;gap:6px"><span style="font-weight:900;font-size:36px;line-height:1;letter-spacing:-.04em">1</span><span style="font-weight:700;color:#5B534A">sur 8</span></div>
+            <span style="font-size:12.5px;color:#5B534A;line-height:1.35">Dina · arrêt maladie jusqu'au 16</span>
+          </div>
+        </div>
+        </sc-if>
+
+        </sc-if>
+        <!-- grid -->
+        <div style="padding:0 24px 24px">
+          <table style="width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;overflow:hidden">
+            <colgroup><col style="width:236px"><col><col><col><col><col><col><col></colgroup>
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:14px 16px;border-bottom:2px solid #15120F;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:#5B534A;font-weight:700">SALARIÉ · HEURES S-42</th>
+                <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+                  <th style="padding:12px 10px;border-bottom:2px solid #15120F;border-left:1px solid #EFE7D9;background:{{ d.bg }};box-shadow:{{ d.top }};text-align:left">
+                    <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:13px;font-weight:700;color:#5B534A">{{ d.l }}</span><span style="font-weight:900;font-size:24px;letter-spacing:-.03em;color:#15120F">{{ d.n }}</span><sc-if value="{{ d.isToday }}"><span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.12em;background:#15120F;color:#FFC21A;padding:3px 6px;border-radius:5px">AUJ.</span></sc-if></div>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#8A7F70;font-weight:500">{{ d.sub }}</span>
+                  </th>
+                </sc-for>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+                <tr>
+                  <td style="vertical-align:top;padding:14px 16px;border-bottom:1px solid #EFE7D9">
+                    <div style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                      <span style="width:38px;height:38px;flex:none;border-radius:50%;background:{{ r.av }};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px">{{ r.ini }}</span>
+                      <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                        <span style="font-weight:800;font-size:14.5px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ r.name }}</span>
+                        <div style="display:flex;align-items:center;gap:6px">
+                          <sc-if value="{{ r.chef }}"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.1em;background:#FFE9A8;color:#6B4E00;padding:2px 5px;border-radius:4px">CHEF</span></sc-if>
+                          <span style="display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:{{ r.stC }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.stC }}"></span>{{ r.st }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="margin-top:12px;display:flex;flex-direction:column;gap:5px">
+                      <div style="height:6px;border-radius:3px;background:#EFE7D9;overflow:hidden"><div style="height:100%;width:{{ r.pct }};border-radius:3px;background:linear-gradient(90deg,#FFC21A,#FF8A3D)"></div></div>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#5B534A">{{ r.hrs }} / 35 h envoyées</span>
+                    </div>
+                  </td>
+                  <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="7">
+                    <td onClick="{{ c.onAdd }}" style="vertical-align:top;padding:6px;border-bottom:1px solid #EFE7D9;border-left:1px solid #EFE7D9;background:{{ c.bg }};cursor:pointer;height:112px">
+                      <div style="display:flex;flex-direction:column;gap:6px;height:100%">
+                        <sc-for list="{{ c.items }}" as="it" hint-placeholder-count="1">
+                          <sc-if value="{{ it.isAbs }}">
+                            <div onClick="{{ it.onClick }}" style="flex:1;min-height:96px;border-radius:12px;background:repeating-linear-gradient(135deg,{{ it.absA }} 0 9px,{{ it.absB }} 9px 18px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+                              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.14em;font-size:10.5px;color:#3A332B">{{ it.title }}</span>
+                              <span style="font-size:11px;color:#5B534A">{{ it.sub }}</span>
+                            </div>
+                          </sc-if>
+                          <sc-if value="{{ it.isCard }}">
+                            <div onClick="{{ it.onClick }}" style="position:relative;display:flex;flex-direction:column;gap:3px;padding:8px 9px 9px 13px;border-radius:12px;background:{{ it.bg }};border:{{ it.bd }};color:{{ it.fg }};box-shadow:{{ it.sh }};overflow:hidden;cursor:pointer">
+                              <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:{{ it.stripe }}"></span>
+                              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+                                <span style="font-weight:800;font-size:13px;line-height:1.15;text-decoration:{{ it.deco }}">{{ it.title }}</span>
+                                <sc-if value="{{ it.hasDocs }}"><span style="flex:none;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:{{ it.subFg }}">⧉{{ it.docs }}</span></sc-if>
+                                <sc-if value="{{ it.selOn }}"><span style="flex:none;width:20px;height:20px;border-radius:6px;border:2px solid {{ it.fg }};background:{{ it.chkBg }};color:#15120F;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ it.chk }}</span></sc-if>
+                              </div>
+                              <span style="font-size:11.5px;line-height:1.2;color:{{ it.subFg }}">{{ it.sub }}</span>
+                              <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:{{ it.timeFg }}">{{ it.time }}</span>
+                              <sc-if value="{{ it.hasTag }}"><span style="align-self:flex-start;margin-top:2px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.08em;padding:3px 6px;border-radius:5px;background:{{ it.tagBg }};color:{{ it.tagFg }}">{{ it.tag }}</span></sc-if>
+                              <sc-if value="{{ it.hasTag2 }}"><span style="align-self:flex-start;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.08em;padding:3px 6px;border-radius:5px;background:{{ it.tag2Bg }};color:{{ it.tag2Fg }}">{{ it.tag2 }}</span></sc-if>
+                            </div>
+                          </sc-if>
+                        </sc-for>
+                        <sc-if value="{{ c.empty }}">
+                          <div style="flex:1;min-height:96px;border-radius:12px;border:1.5px dashed #E0D6C4;display:flex;align-items:center;justify-content:center;color:#B5A994;font-size:20px;font-weight:600" style-hover="background:#F7F1E6;color:#15120F;border-color:#15120F">+</div>
+                        </sc-if>
+                        <sc-if value="{{ c.canMore }}">
+                          <span style="align-self:flex-end;margin-top:auto;font-size:11.5px;font-weight:700;color:#8A7F70;padding:2px 6px;border-radius:6px" style-hover="background:#15120F;color:#FFC21A">+ ajouter</span>
+                        </sc-if>
+                      </div>
+                    </td>
+                  </sc-for>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin-top:14px;font-size:12px;color:#5B534A">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;font-weight:700">LÉGENDE</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:#DDEBFA;border-left:4px solid #4A8FE0"></span>Matin</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:#FCE3CF;border-left:4px solid #EE8A43"></span>Après-midi</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:#E8DCF6;border-left:4px solid #9A6FD6"></span>Soir</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:#FFFFFF;border:1px solid #D6CBB7;border-left:4px solid #15120F"></span>Journée / sans horaire</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;border:1.5px dashed #9C907E"></span>Prévue</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;border:1.5px solid #15120F"></span>Saisie, à envoyer (ne compte pas)</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:#15120F"></span>Envoyée (compte)</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:#E7F6EE;border:1.5px solid #2FA36B"></span>En direct</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:#FBE0EA;border-left:4px solid #D6457A"></span>Réunion (hors heures)</span>
+          </div>
+        </div>
+
+        <!-- selection bar -->
+        <sc-if value="{{ sel }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:50%;bottom:28px;transform:translateX(-50%);z-index:45;display:flex;align-items:center;gap:8px;padding:8px 8px 8px 22px;border-radius:999px;background:#15120F;color:#F2EDE3;box-shadow:0 20px 50px rgba(21,18,15,.35)">
+            <span style="font-weight:800;font-size:14px;margin-right:8px">{{ selCount }}</span>
+            <button style="height:44px;padding:0 18px;border-radius:999px;border:1px solid rgba(242,237,227,.25);background:transparent;color:#F2EDE3;font-size:14px;font-weight:700;cursor:pointer">Tout sélectionner</button>
+            <button style="height:44px;padding:0 18px;border-radius:999px;border:0;background:#5A1E14;color:#FFB4A6;font-size:14px;font-weight:800;cursor:pointer">{{ selDel }}</button>
+            <button onClick="{{ toggleSel }}" style="height:44px;padding:0 20px;border-radius:999px;border:0;background:#FFC21A;color:#15120F;font-size:14px;font-weight:800;cursor:pointer">Terminer</button>
+          </div>
+        </sc-if>
+
+        <!-- clients drawer -->
+        <sc-if value="{{ clients }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:0;top:60px;bottom:0;width:360px;z-index:42;background:#FFFDF8;border-right:1px solid #E3DACB;box-shadow:20px 0 50px rgba(21,18,15,.14);display:flex;flex-direction:column">
+            <div style="padding:20px 20px 12px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:900;font-size:24px;letter-spacing:-.02em">Clients</span><button onClick="{{ toggleClients }}" aria-label="Fermer" style="width:40px;height:40px;border-radius:50%;border:1px solid #D6CBB7;background:transparent;cursor:pointer;font-size:15px">✕</button></div>
+              <div style="height:44px;border-radius:999px;border:1.5px solid #15120F;padding:0 16px;display:flex;align-items:center;color:#8A7F70;font-size:14px">Rechercher un client…</div>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:#8A7F70">GLISSEZ UN CLIENT SUR LE PLANNING ↘</span>
+            </div>
+            <div style="flex:1;overflow:auto;padding:0 12px;display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ clientList }}" as="cl" hint-placeholder-count="5">
+                <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;background:#F7F1E6;cursor:grab">
+                  <span style="color:#B5A994;font-size:16px">⠿</span>
+                  <span style="width:12px;height:12px;border-radius:50%;background:{{ cl.dot }};flex:none"></span>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-weight:800;font-size:14px">{{ cl.c }}</span><span style="font-size:12.5px;color:#5B534A">{{ cl.s }}</span></div>
+                  <span style="font-size:14px;color:#8A7F70">✎</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="padding:14px 20px 20px;display:flex;gap:8px">
+              <button style="flex:1;height:48px;border-radius:999px;border:0;background:#FFC21A;font-size:14px;font-weight:800;cursor:pointer">+ Nouveau client</button>
+              <button style="flex:1;height:48px;border-radius:999px;border:1px solid #D6CBB7;background:transparent;font-size:13.5px;font-weight:700;cursor:pointer">Importer (CSV/Excel)</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasPanel }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ closePanel }}" style="position:absolute;left:0;right:0;top:0;bottom:0;z-index:43;background:rgba(21,18,15,.32)"></div>
+        </sc-if>
+        <!-- side panel -->
+        <sc-if value="{{ hasPanel }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;right:0;top:60px;bottom:0;width:440px;z-index:44;background:#FFFDF8;border-left:1px solid #E3DACB;box-shadow:-20px 0 60px rgba(21,18,15,.16);display:flex;flex-direction:column">
+            <div style="height:4px;background:#FFC21A"></div>
+            <div style="padding:20px 24px 16px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid #EFE7D9">
+              <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:#5B534A">{{ pKicker }}</span>
+                <span style="font-weight:900;font-size:30px;line-height:1;letter-spacing:-.03em">{{ pTitle }}</span>
+                <span style="font-size:14px;color:#5B534A">{{ pSub }}</span>
+              </div>
+              <button onClick="{{ closePanel }}" aria-label="Fermer" style="flex:none;width:40px;height:40px;border-radius:50%;border:1px solid #D6CBB7;background:transparent;cursor:pointer;font-size:15px">✕</button>
+            </div>
+
+            <div style="flex:1;overflow:auto;padding:20px 24px;display:flex;flex-direction:column;gap:20px">
+              <sc-if value="{{ isIntPanel }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:8px">
+                  <button style="flex:1;height:44px;border-radius:999px;border:1px solid #D6CBB7;background:transparent;font-size:14px;font-weight:700;cursor:pointer">✎ Fiche</button>
+                  <button style="flex:1;height:44px;border-radius:999px;border:1px solid #D6CBB7;background:transparent;font-size:14px;font-weight:700;cursor:pointer">⧉ Documents</button>
+                </div>
+                <div style="background:{{ pStateBg }};color:{{ pStateFg }};border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em;opacity:.75">HEURES DÉCLARÉES</span>
+                  <span style="font-weight:900;font-size:28px;letter-spacing:-.03em;line-height:1.05">{{ pStateBig }}</span>
+                  <span style="font-size:13px;opacity:.8">{{ pStateTxt }}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <span style="font-weight:800;font-size:14px">Horaire prévu <span style="font-weight:500;color:#8A7F70">facultatif</span></span>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#FFFFFF;display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px">{{ pStart }}</div>
+                    <span style="color:#8A7F70">→</span>
+                    <div style="flex:1;height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#FFFFFF;display:flex;align-items:center;padding:0 14px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px">{{ pEnd }}</div>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    <sc-for list="{{ presets }}" as="p" hint-placeholder-count="3">
+                      <button onClick="{{ p.onClick }}" style="height:36px;padding:0 12px;border-radius:999px;border:1.5px solid {{ p.bd }};background:{{ p.bg }};font-size:13px;font-weight:800;cursor:pointer;color:#15120F">{{ p.l }} <span style="font-family:'JetBrains Mono',monospace;font-weight:500;font-size:11.5px">{{ p.h }}</span></button>
+                    </sc-for>
+                    <button style="height:36px;padding:0 10px;border:0;background:transparent;font-size:13px;font-weight:700;text-decoration:underline;cursor:pointer;color:#5B534A">Effacer</button>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font-weight:800;font-size:14px">Note pour le poseur</span>
+                  <div style="min-height:72px;border-radius:12px;border:1px solid #D6CBB7;background:#FFFFFF;padding:12px 14px;font-size:14px;color:#8A7F70">Ex : code portail 1234, attention au chien…</div>
+                </div>
+                <button style="height:52px;border-radius:999px;border:0;background:#FFC21A;font-size:15px;font-weight:800;cursor:pointer;box-shadow:inset 0 -3px 0 #D9A200">Enregistrer</button>
+                <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid #EFE7D9;padding-top:16px">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:#8A7F70">ACTIONS</span>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                    <button style="height:48px;border-radius:14px;border:1px solid #D6CBB7;background:transparent;font-size:13px;font-weight:700;cursor:pointer;text-align:left;padding:0 14px">Copier vers un autre jour…</button>
+                    <button style="height:48px;border-radius:14px;border:1px solid #D6CBB7;background:transparent;font-size:13px;font-weight:700;cursor:pointer;text-align:left;padding:0 14px">Dupliquer au lendemain</button>
+                    <button style="height:48px;border-radius:14px;border:1px solid #D6CBB7;background:transparent;font-size:13px;font-weight:700;cursor:pointer;text-align:left;padding:0 14px">Ajouter une tâche à ce créneau</button>
+                    <button style="height:48px;border-radius:14px;border:1px solid #F0B8AE;background:#FCE4E1;color:#8E1B14;font-size:13px;font-weight:800;cursor:pointer;text-align:left;padding:0 14px">Supprimer</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ isAddPanel }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;background:#E6DDCD;border-radius:999px;padding:4px">
+                  <sc-for list="{{ addTabs }}" as="t" hint-placeholder-count="3">
+                    <button onClick="{{ t.onClick }}" style="flex:1;border:0;cursor:pointer;height:42px;border-radius:999px;font-size:14px;font-weight:800;background:{{ t.bg }};color:{{ t.fg }}">{{ t.l }}</button>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ addIsInt }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <span style="font-weight:800;font-size:14px">Client</span>
+                    <sc-for list="{{ clientPick }}" as="cl" hint-placeholder-count="4">
+                      <div style="display:flex;align-items:center;gap:12px;height:52px;padding:0 14px;border-radius:14px;border:1.5px solid {{ cl.bd }};background:{{ cl.bg }};cursor:pointer">
+                        <span style="width:12px;height:12px;border-radius:50%;background:{{ cl.dot }}"></span>
+                        <span style="font-weight:800;font-size:14px">{{ cl.c }}</span><span style="font-size:12.5px;color:#5B534A">{{ cl.s }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <span style="font-weight:800;font-size:14px">Horaire prévu <span style="font-weight:500;color:#8A7F70">facultatif · une fin pour un rendez-vous à heure fixe</span></span>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ presets }}" as="p" hint-placeholder-count="3">
+                        <button onClick="{{ p.onClick }}" style="height:36px;padding:0 12px;border-radius:999px;border:1.5px solid {{ p.bd }};background:{{ p.bg }};font-size:13px;font-weight:800;cursor:pointer;color:#15120F">{{ p.l }} <span style="font-family:'JetBrains Mono',monospace;font-weight:500;font-size:11.5px">{{ p.h }}</span></button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="min-height:64px;border-radius:12px;border:1px solid #D6CBB7;background:#FFFFFF;padding:12px 14px;font-size:14px;color:#8A7F70">Note pour le poseur (optionnel)</div>
+                  <button style="height:52px;border-radius:999px;border:0;background:#FFC21A;font-size:15px;font-weight:800;cursor:pointer;box-shadow:inset 0 -3px 0 #D9A200">Ajouter au planning</button>
+                </sc-if>
+                <sc-if value="{{ addIsTask }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:14px;color:#5B534A">Aucune tâche ce jour-là.</span>
+                  <div style="height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#FFFFFF;display:flex;align-items:center;padding:0 14px;font-size:14px;color:#8A7F70">Ex : ranger le dépôt</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    <span style="height:36px;padding:0 14px;border-radius:999px;border:1.5px solid #15120F;display:flex;align-items:center;font-weight:800;font-size:13px">—</span>
+                    <span style="height:36px;padding:0 14px;border-radius:999px;background:#DDEBFA;display:flex;align-items:center;font-weight:800;font-size:13px">Matin</span>
+                    <span style="height:36px;padding:0 14px;border-radius:999px;background:#FCE3CF;display:flex;align-items:center;font-weight:800;font-size:13px">Après-midi</span>
+                    <span style="height:36px;padding:0 14px;border-radius:999px;background:#E8DCF6;display:flex;align-items:center;font-weight:800;font-size:13px">Soir</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700">Heure de <span style="height:44px;width:96px;border-radius:12px;border:1px solid #D6CBB7;background:#fff;display:flex;align-items:center;padding:0 12px;font-family:'JetBrains Mono',monospace;color:#8A7F70">début</span> à <span style="height:44px;width:96px;border-radius:12px;border:1px solid #D6CBB7;background:#fff;display:flex;align-items:center;padding:0 12px;font-family:'JetBrains Mono',monospace;color:#8A7F70">fin</span></div>
+                  <span style="font-size:13px;color:#5B534A;line-height:1.4">Une tâche peut être avant, pendant ou après le créneau du salarié. Jamais comptée dans les heures.</span>
+                  <span style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700"><span style="width:20px;height:20px;border-radius:6px;border:2px solid #15120F"></span>Garder dans mes tâches habituelles</span>
+                  <button style="height:52px;border-radius:999px;border:0;background:#15120F;color:#F2EDE3;font-size:15px;font-weight:800;cursor:pointer">Ajouter</button>
+                </sc-if>
+                <sc-if value="{{ addIsMeet }}" hint-placeholder-val="{{ false }}">
+                  <div style="height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#FFFFFF;display:flex;align-items:center;padding:0 14px;font-size:14px;color:#8A7F70">Titre de la réunion</div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                    <div style="height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#fff;display:flex;align-items:center;padding:0 12px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700">jeu. 15</div>
+                    <div style="height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#fff;display:flex;align-items:center;padding:0 12px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700">07:30</div>
+                    <div style="height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#fff;display:flex;align-items:center;padding:0 12px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#8A7F70">fin</div>
+                  </div>
+                  <div style="height:48px;border-radius:12px;border:1px solid #D6CBB7;background:#FFFFFF;display:flex;align-items:center;padding:0 14px;font-size:14px;color:#8A7F70">Lieu (facultatif)</div>
+                  <div style="display:flex;gap:6px"><span style="height:38px;padding:0 14px;border-radius:999px;border:2px solid #15120F;background:#FFF3CC;display:flex;align-items:center;font-weight:800;font-size:13px">Toute l'équipe</span><span style="height:38px;padding:0 14px;border-radius:999px;border:1px solid #D6CBB7;display:flex;align-items:center;font-weight:700;font-size:13px">Participants</span></div>
+                  <span style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700"><span style="width:20px;height:20px;border-radius:6px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-size:12px">✓</span>Prévenir par notification</span>
+                  <button style="height:52px;border-radius:999px;border:0;background:#15120F;color:#F2EDE3;font-size:15px;font-weight:800;cursor:pointer">Ajouter la réunion</button>
+                </sc-if>
+              </sc-if>
+
+              <sc-if value="{{ isAbsPanel }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ statusOpts }}" as="s" hint-placeholder-count="4">
+                    <button style="display:flex;align-items:center;gap:14px;height:56px;padding:0 18px;border-radius:14px;border:1.5px solid {{ s.bd }};background:{{ s.bg }};font-size:15px;font-weight:700;cursor:pointer;text-align:left"><span style="width:12px;height:12px;border-radius:50%;background:{{ s.dot }}"></span>{{ s.l }}</button>
+                  </sc-for>
+                </div>
+                <button style="height:48px;border-radius:999px;border:1px solid #D6CBB7;background:transparent;font-size:14px;font-weight:700;cursor:pointer">Feuille d'heures</button>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- ============ 1b BUREAU TELEPHONE ============ -->
+    <div id="1b" style="display:flex;flex-direction:column;gap:16px;width:420px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">1b</span>
+        <span style="font-weight:900;font-size:26px;letter-spacing:-.02em">Bureau · téléphone</span>
+      </div>
+      <span style="font-size:14px;color:#5B534A;line-height:1.45">Touchez un jour : les cartes salariés suivent. Le menu ☰ garde tous les intitulés contractuels.</span>
+      <div style="width:390px;height:844px;border-radius:48px;background:#15120F;padding:10px;box-shadow:0 30px 80px rgba(21,18,15,.25)">
+        <div style="width:100%;height:100%;border-radius:40px;overflow:hidden;background:#F2EDE3;display:flex;flex-direction:column">
+          <div style="background:#15120F;color:#F2EDE3;padding:44px 18px 16px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <button aria-label="menu" style="width:44px;height:44px;border-radius:50%;border:1px solid rgba(242,237,227,.2);background:transparent;color:#F2EDE3;font-size:18px">☰</button>
+              <div style="font-weight:800;font-size:20px">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</div>
+              <button style="width:44px;height:44px;border-radius:50%;border:0;background:#FFC21A;color:#15120F;font-size:16px;font-weight:900">✦</button>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <span style="font-weight:900;font-size:30px;letter-spacing:-.03em">S-42</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;color:rgba(242,237,227,.65)">12 – 18 OCT.  ‹  ›</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+              <sc-for list="{{ mDays }}" as="d" hint-placeholder-count="7">
+                <button onClick="{{ d.onClick }}" style="height:56px;border-radius:14px;border:0;background:{{ d.bg }};color:{{ d.fg }};cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><span style="font-size:10.5px;font-weight:700;opacity:.8">{{ d.l }}</span><span style="font-weight:900;font-size:17px">{{ d.n }}</span></button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;padding:12px 16px 4px;overflow:hidden">
+            <span style="flex:none;height:34px;padding:0 12px;border-radius:999px;background:#FCE4E1;color:#8E1B14;display:flex;align-items:center;font-size:12.5px;font-weight:800">5 j à relancer</span>
+            <span style="flex:none;height:34px;padding:0 12px;border-radius:999px;background:#E7F6EE;color:#17663F;display:flex;align-items:center;font-size:12.5px;font-weight:800">● 1 en direct</span>
+            <span style="flex:none;height:34px;padding:0 12px;border-radius:999px;background:#FFFDF8;border:1px solid #E3DACB;display:flex;align-items:center;font-size:12.5px;font-weight:700">1 congé</span>
+          </div>
+          <div style="flex:1;overflow:auto;padding:8px 16px 20px;display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ mRows }}" as="r" hint-placeholder-count="5">
+              <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:10px;min-height:44px">
+                  <span style="width:36px;height:36px;border-radius:50%;background:{{ r.av }};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;flex:none">{{ r.ini }}</span>
+                  <span style="flex:1;font-weight:800;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;color:{{ r.stC }}">{{ r.st }}</span>
+                </div>
+                <sc-for list="{{ r.items }}" as="it" hint-placeholder-count="1">
+                  <sc-if value="{{ it.isAbs }}"><div style="height:52px;border-radius:12px;background:repeating-linear-gradient(135deg,{{ it.absA }} 0 9px,{{ it.absB }} 9px 18px);display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.14em;font-size:11px;color:#3A332B">{{ it.title }}</div></sc-if>
+                  <sc-if value="{{ it.isCard }}">
+                    <div style="position:relative;display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:52px;padding:8px 12px 8px 16px;border-radius:12px;background:{{ it.bg }};border:{{ it.bd }};color:{{ it.fg }};overflow:hidden">
+                      <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:{{ it.stripe }}"></span>
+                      <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-weight:800;font-size:14px;text-decoration:{{ it.deco }}">{{ it.title }}</span><span style="font-size:12px;color:{{ it.subFg }}">{{ it.sub }}</span></div>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:{{ it.timeFg }};text-align:right;flex:none;max-width:120px">{{ it.time }}</span>
+                    </div>
+                  </sc-if>
+                </sc-for>
+                <div style="display:flex;gap:6px">
+                  <button style="flex:1;height:44px;border-radius:12px;border:1.5px dashed #D6CBB7;background:transparent;font-size:13px;font-weight:800;color:#5B534A">+ Ajouter un chantier</button>
+                  <button style="height:44px;padding:0 14px;border-radius:12px;border:1.5px dashed #D6CBB7;background:transparent;font-size:13px;font-weight:800;color:#5B534A">+ Tâche</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SALARIE ============ -->
+  <div style="display:flex;flex-direction:column;gap:14px;max-width:1100px;border-top:2px solid #15120F;padding-top:28px">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">SALARIÉ · /POSEUR · LE PARCOURS</span>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <sc-for list="{{ parcours }}" as="p" hint-placeholder-count="5">
+        <div style="display:flex;align-items:center;gap:10px;height:48px;padding:0 18px 0 6px;border-radius:999px;background:#FFFDF8;border:1px solid #E3DACB"><span style="width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px">{{ p.n }}</span><span style="font-weight:800;font-size:14px">{{ p.l }}</span></div>
+      </sc-for>
+    </div>
+    <span style="font-size:15px;color:#3A332B;line-height:1.5;max-width:900px">Deux directions pour la même journée (jeudi 15, Sam pointe depuis 07:45 chez Villa Exemple, matinée saisie chez Maison Démo, 1 h de trou à qualifier). A met l'action suivante en tête ; B dessine la journée sur une règle horaire.</span>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:56px;align-items:flex-start">
+
+    <!-- 1c Salarié A -->
+    <div id="1c" style="display:flex;flex-direction:column;gap:16px;width:420px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">1c</span>
+        <span style="font-weight:900;font-size:26px;letter-spacing:-.02em">Salarié A · « Et maintenant ? »</span>
+      </div>
+      <span style="font-size:14px;color:#5B534A;line-height:1.45">Une pile de rappels en tête, le pointage en grand, la barre du pouce en bas. Touchez « Envoyer ma journée » pour faire défiler ses 5 états.</span>
+      <div style="width:390px;height:844px;border-radius:48px;background:#15120F;padding:10px;box-shadow:0 30px 80px rgba(21,18,15,.25)">
+        <div style="width:100%;height:100%;border-radius:40px;overflow:hidden;background:#F2EDE3;display:flex;flex-direction:column;position:relative">
+          <div style="background:#15120F;color:#F2EDE3;padding:44px 18px 14px;display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:10px">
+              <button aria-label="Jour précédent" style="width:40px;height:40px;border-radius:50%;border:1px solid rgba(242,237,227,.2);background:transparent;color:#F2EDE3">‹</button>
+              <div style="display:flex;flex-direction:column"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;color:#FFC21A">AUJOURD'HUI</span><span style="font-weight:900;font-size:21px;letter-spacing:-.02em">Jeudi 15 octobre</span></div>
+            </div>
+            <span style="width:40px;height:40px;border-radius:50%;border:2px solid #FFC21A;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px">SG</span>
+          </div>
+          <div style="flex:1;overflow:auto;padding:14px 16px 150px;display:grid;grid-auto-rows:max-content;align-content:start;gap:12px">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:center;gap:10px;height:48px;padding:0 14px;border-radius:14px;background:#FFC21A;font-weight:800;font-size:14px"><span style="width:26px;height:26px;border-radius:8px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px">1</span>journée du 13 octobre à envoyer<span style="margin-left:auto">›</span></div>
+              <div style="display:flex;gap:6px">
+                <span style="flex:1;height:44px;border-radius:14px;background:#FCE4E1;color:#8E1B14;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px">1 réserve à lever ›</span>
+                <span style="flex:1;height:44px;border-radius:14px;background:#FFFDF8;border:1px solid #E3DACB;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px">2 formations à voir ›</span>
+              </div>
+            </div>
+            <div style="background:#1B1713;color:#F2EDE3;border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:12px;position:relative;overflow:hidden">
+              <div style="position:absolute;right:-30px;top:-30px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,#2ED3A0 0,rgba(46,211,160,0) 70%);opacity:.35"></div>
+              <span style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#2ED3A0"><span style="width:8px;height:8px;border-radius:50%;background:#2ED3A0;animation:bxPulse 1.4s ease-out infinite"></span>POINTAGE EN COURS · DEPUIS 07:45</span>
+              <div style="display:flex;align-items:baseline;gap:10px"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:58px;line-height:1;letter-spacing:-.04em">3:12</span><span style="font-size:14px;color:rgba(242,237,227,.65)">Villa Exemple · Lyon</span></div>
+              <button style="height:52px;border-radius:999px;border:0;background:#F2EDE3;color:#15120F;font-size:15px;font-weight:800">Terminer ma journée</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+              <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;color:#5B534A">TOTAL</span><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px">7:12</span></div>
+              <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;color:#5B534A">PAUSE</span><span style="font-weight:800;font-size:14px;color:#9A3412">1 à préciser</span></div>
+              <button onClick="{{ togglePanier }}" style="border-radius:14px;border:{{ panierBd }};background:{{ panierBg }};color:{{ panierFg }};padding:10px 12px;display:flex;flex-direction:column;gap:2px;text-align:left;cursor:pointer"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;color:#5B534A">PANIER</span><span style="font-weight:800;font-size:14px">{{ panierTxt }}</span></button>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:#8A6A00;margin-top:4px">CHANTIERS DU JOUR</span>
+            <div style="position:relative;background:#FFFFFF;border-radius:16px;padding:14px 14px 14px 18px;display:flex;flex-direction:column;gap:6px;overflow:hidden;border:1.5px solid #15120F">
+              <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#4A8FE0"></span>
+              <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:900;font-size:17px">Maison Démo</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;padding:4px 7px;border-radius:6px;background:#FFE1CC;color:#9A3412">À ENVOYER</span></div>
+              <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700"><span style="color:#5B534A;font-weight:500">Bron</span><span>07:30 → 11:30 · 4:00</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:14px;background:#E9E1D2">
+              <span style="flex:1;font-size:13px;line-height:1.3"><b style="font-family:'JetBrains Mono',monospace">1:00</b> entre 11:30 et 12:30 — <b style="color:#9A3412">c'était quoi ?</b></span>
+              <button onClick="{{ pickRoute }}" style="height:44px;padding:0 14px;border-radius:12px;border:1.5px solid {{ routeBd }};background:{{ routeBg }};color:{{ routeFg }};font-weight:800;font-size:13px;cursor:pointer">Route</button>
+              <button onClick="{{ pickPause }}" style="height:44px;padding:0 14px;border-radius:12px;border:1.5px solid {{ pauseBd }};background:{{ pauseBg }};color:{{ pauseFg }};font-weight:800;font-size:13px;cursor:pointer">Pause</button>
+            </div>
+            <div style="position:relative;background:#E7F6EE;border-radius:16px;padding:14px 14px 14px 18px;display:flex;flex-direction:column;gap:6px;overflow:hidden;border:1.5px solid #2FA36B">
+              <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#2FA36B"></span>
+              <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:900;font-size:17px">Villa Exemple</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#5B534A">⧉ 2</span></div>
+              <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700"><span style="color:#5B534A;font-weight:500">Lyon</span><span style="color:#17663F">en cours depuis 07:45</span></div>
+            </div>
+            <div style="position:relative;background:#FCE3CF;border-radius:16px;padding:14px 14px 14px 18px;display:flex;flex-direction:column;gap:6px;overflow:hidden;border:1.5px dashed #9C907E">
+              <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#EE8A43"></span>
+              <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:900;font-size:17px">Résidence Test</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#5B534A">PRÉVU</span></div>
+              <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700"><span style="color:#5B534A;font-weight:500">Villeurbanne</span><span style="color:#5B534A">13:30 → 17:00</span></div>
+              <span style="font-size:12.5px;color:#5B534A">+ 3:30 prévues par le bureau, pas encore confirmées</span>
+            </div>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#F2EDE3;border-top:1px solid #E3DACB;padding:12px 16px 10px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:8px">
+              <button aria-label="Ajouter une intervention" style="width:56px;height:56px;flex:none;border-radius:16px;border:2px solid #15120F;background:#FFFDF8;font-size:26px;font-weight:700">+</button>
+              <button aria-label="Scanner le QR" style="width:56px;height:56px;flex:none;border-radius:16px;border:2px solid #15120F;background:#FFFDF8;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700">QR</button>
+              <button onClick="{{ cycleSend }}" style="flex:1;height:56px;border-radius:16px;border:0;background:{{ sendBg }};color:{{ sendFg }};font-size:16px;font-weight:900;cursor:pointer;box-shadow:{{ sendSh }}">{{ sendTxt }}</button>
+            </div>
+            <span style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;color:#8A7F70">{{ sendHint }}</span>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">
+              <span style="height:40px;border-radius:12px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800">Journée</span>
+              <span style="height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5B534A">Semaine</span>
+              <span style="height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5B534A">Mois</span>
+              <span style="height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#5B534A">Plus</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1d Salarié B -->
+    <div id="1d" style="display:flex;flex-direction:column;gap:16px;width:420px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <span style="height:32px;padding:0 12px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">1d</span>
+        <span style="font-weight:900;font-size:26px;letter-spacing:-.02em">Salarié B · « La règle »</span>
+      </div>
+      <span style="font-size:14px;color:#5B534A;line-height:1.45">La journée dessinée à l'échelle : les trous se voient, le prévu est un fantôme, la ligne rouge est l'heure actuelle. Toucher la règle vide ajoute une intervention à cette heure.</span>
+      <div style="width:390px;height:844px;border-radius:48px;background:#15120F;padding:10px;box-shadow:0 30px 80px rgba(21,18,15,.25)">
+        <div style="width:100%;height:100%;border-radius:40px;overflow:hidden;background:#15120F;display:flex;flex-direction:column;position:relative">
+          <div style="color:#F2EDE3;padding:44px 18px 14px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div style="font-weight:800;font-size:18px">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</div>
+              <span style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px">Sam <span style="width:36px;height:36px;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px">SG</span></span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+              <sc-for list="{{ bWeek }}" as="d" hint-placeholder-count="7">
+                <div style="height:58px;border-radius:14px;background:{{ d.bg }};color:{{ d.fg }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px"><span style="font-size:10.5px;font-weight:700;opacity:.75">{{ d.l }}</span><span style="font-weight:900;font-size:16px">{{ d.n }}</span><span style="width:6px;height:6px;border-radius:50%;background:{{ d.dot }}"></span></div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:flex-end;justify-content:space-between">
+              <div style="display:flex;flex-direction:column;gap:2px"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;color:rgba(242,237,227,.6)">TOTAL · JEUDI 15</span><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:48px;line-height:1;letter-spacing:-.04em">7:12</span></div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:12px;color:rgba(242,237,227,.7)"><span>2 chantiers · panier pris</span><span style="color:#FFC21A;font-weight:700">+ 3:30 prévues à confirmer</span></div>
+            </div>
+          </div>
+          <div style="flex:1;background:#F2EDE3;border-radius:28px 28px 0 0;position:relative;overflow:hidden">
+            <div style="position:absolute;left:0;right:0;top:0;bottom:0;padding:16px 16px 0 60px">
+              <sc-for list="{{ ruler }}" as="h" hint-placeholder-count="12">
+                <div style="position:absolute;left:0;right:16px;top:{{ h.y }};display:flex;align-items:center;gap:8px"><span style="width:50px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#8A7F70">{{ h.l }}</span><span style="flex:1;height:1px;background:#E3DACB"></span></div>
+              </sc-for>
+              <div style="position:absolute;left:64px;right:16px;top:32px;height:152px;border-radius:14px;background:#DDEBFA;border:1.5px solid #15120F;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;justify-content:space-between"><span style="font-weight:900;font-size:16px">Maison Démo</span><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;padding:3px 6px;border-radius:5px;background:#FFE1CC;color:#9A3412">À ENVOYER</span></div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700">07:30 → 11:30 · 4:00</span>
+                <span style="font-size:12px;color:#5B534A">Bron · pause 0</span>
+              </div>
+              <div style="position:absolute;left:64px;right:16px;top:188px;height:34px;border-radius:12px;background:repeating-linear-gradient(135deg,#F2EDE3 0 7px,#E6DDCD 7px 14px);border:1.5px dashed #C9B998;display:flex;align-items:center;justify-content:space-between;padding:0 6px 0 12px">
+                <span style="font-size:12px;font-weight:800;color:#9A3412">1:00 · c'était quoi ?</span>
+                <div style="display:flex;gap:4px"><span style="height:26px;padding:0 10px;border-radius:8px;background:#FFFDF8;border:1px solid #D6CBB7;display:flex;align-items:center;font-size:12px;font-weight:800">Route</span><span style="height:26px;padding:0 10px;border-radius:8px;background:#FFFDF8;border:1px solid #D6CBB7;display:flex;align-items:center;font-size:12px;font-weight:800">Pause</span></div>
+              </div>
+              <div style="position:absolute;left:64px;right:16px;top:226px;height:106px;border-radius:14px 14px 0 0;background:#E7F6EE;border:1.5px solid #2FA36B;border-bottom:0;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;justify-content:space-between"><span style="font-weight:900;font-size:16px">Villa Exemple</span><span style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;color:#17663F"><span style="width:7px;height:7px;border-radius:50%;background:#2FA36B;animation:bxPulse 1.4s ease-out infinite"></span>EN COURS</span></div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;color:#17663F">depuis 12:30 · 2:42</span>
+                <span style="font-size:12px;color:#5B534A">Lyon · ⧉ 2 documents</span>
+              </div>
+              <div style="position:absolute;left:52px;right:8px;top:332px;display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#E53935"></span><span style="flex:1;height:2px;background:#E53935"></span><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;color:#E53935;background:#F2EDE3;padding:0 4px">15:12</span></div>
+              <div style="position:absolute;left:64px;right:16px;top:344px;height:60px;border-radius:0 0 14px 14px;border:1.5px dashed #9C907E;border-top:0;background:rgba(252,227,207,.55);padding:8px 12px;display:flex;flex-direction:column;gap:2px">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:#5B534A">PRÉVU JUSQU'À 17:00</span>
+                <span style="font-size:12px;color:#5B534A">Fin par le bureau, à confirmer à l'envoi</span>
+              </div>
+            </div>
+            <div style="position:absolute;left:0;right:0;bottom:0;padding:12px 16px 18px;background:linear-gradient(180deg,rgba(242,237,227,0) 0,#F2EDE3 30%);display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;gap:8px">
+                <button style="flex:1;height:52px;border-radius:999px;border:2px solid #15120F;background:#FFFDF8;font-size:14px;font-weight:800">Terminer ma journée</button>
+                <button aria-label="Ajouter une intervention" style="width:52px;height:52px;border-radius:50%;border:2px solid #15120F;background:#FFFDF8;font-size:24px;font-weight:700">+</button>
+              </div>
+              <button style="height:60px;border-radius:999px;border:0;background:#FFC21A;font-size:17px;font-weight:900;box-shadow:inset 0 -4px 0 #D9A200;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 26px">Envoyer ma journée<span style="width:44px;height:44px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-size:18px">→</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;cockpit&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Bureau&quot;},&quot;envoyeesSombres&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Bureau&quot;}}">
+const TINT={matin:{bg:'#DDEBFA',st:'#4A8FE0'},apm:{bg:'#FCE3CF',st:'#EE8A43'},soir:{bg:'#E8DCF6',st:'#9A6FD6'},jour:{bg:'#FFFFFF',st:'#15120F'}};
+const CL={
+  V:{c:'Villa Exemple',p:'Fenêtres',v:'Lyon',docs:2,dot:'#4A8FE0'},
+  M:{c:'Maison Démo',p:'Volets',v:'Bron',dot:'#2FA36B'},
+  R:{c:'Résidence Test',p:'Portail',v:'Villeurbanne',docs:1,dot:'#D6457A'},
+  A:{c:'Atelier Fictif',p:'Menuiserie',v:'Vénissieux',dot:'#EE8A43'},
+  O:{c:'Autre',p:'',v:'',dot:'#C0392B'}
+};
+const ABS={conge:['CONGÉ','#EFE6D2','#E4D6B8','Note : vacances'],maladie:['ABSENT · MALADIE','#F1E2E2','#E7D2D2','Arrêt maladie'],intemp:['INTEMPÉRIE','#DCE6EE','#CBD9E4','Pluie, chantier arrêté']};
+const m=(k,s,e,st,x)=>Object.assign({kind:'int',cl:CL[k],s,e,st},x||{});
+const a=(t)=>({kind:'abs',t});
+const meet={kind:'meet'};
+const ROWS=[
+  {name:'Alex Test',ini:'AT',av:'#FFE9A8',pend:1,days:[[m('V','08:00','12:00','envoyee',{docs:2}),m('R','13:30','17:00','envoyee',{res:true})],[m('M','08:00','17:00','envoyee')],[m('V','08:00','12:00','envoyee'),m('A','13:30','16:45','brouillon')],[m('V','07:45',null,'live')],[m('R','08:00','12:00','prevue')],[],[]]},
+  {name:'Bruno Essai',ini:'BE',av:'#DCEFE4',pend:2,days:[[m('M','08:00','12:00','envoyee')],[m('V','08:00','12:00','prevue')],[m('R','13:30','17:00','envoyee')],[m('M','08:00','17:00','prevue')],[m('V','08:00','12:00','prevue')],[],[]]},
+  {name:'Chloé Exemple',ini:'CE',av:'#F6DDE8',pend:0,days:[[a('conge')],[a('conge')],[a('conge')],[m('A','18:00','22:00','prevue')],[m('R','08:00','12:00','prevue')],[],[]]},
+  {name:'Dina Démo',ini:'DD',av:'#DDE7F6',pend:1,days:[[m('M','08:00','17:00','envoyee')],[meet,m('V','08:00','12:00','envoyee')],[m('R','13:30','17:00','retiree')],[a('maladie')],[a('maladie')],[],[]]},
+  {name:'Eli Fictif',ini:'EF',av:'#EDE3F8',pend:1,days:[[m('O','09:00','10:00','ajoutee',{note:'Dépannage SAV'})],[m('V','13:30','17:00','envoyee')],[m('M','18:00','20:00','brouillon')],[m('R',null,null,'prevue')],[],[m('V','08:00','12:00','prevue')],[]]},
+  {name:'Maximilien-Alexandre Dubois-Lefèvre',ini:'MD',av:'#FFE1CC',chef:true,pend:0,days:[[m('A','08:00','17:00','envoyee')],[m('A','08:00','17:00','envoyee')],[m('A','08:00','17:00','envoyee')],[m('A','08:00','17:00','prevue',{tasks:'1/3'})],[m('A','08:00','17:00','prevue')],[],[]]},
+  {name:'Fanny Modèle',ini:'FM',av:'#E2F0D9',pend:1,days:[[a('intemp')],[m('R','08:00','12:00','envoyee')],[],[m('M','13:30','17:00','prevue')],[],[],[]]},
+  {name:'Gaspard Essai',ini:'GE',av:'#E6DDCD',pend:0,days:[[],[],[m('V','08:00','12:00','envoyee')],[m('V','08:00','12:00','prevue')],[],[],[]]}
+];
+const DAYS=[['Lun',12],['Mar',13],['Mer',14],['Jeu',15],['Ven',16],['Sam',17],['Dim',18]];
+const TODAY=3;
+const mins=(s,e)=>{if(!s||!e)return 0;const [h1,m1]=s.split(':').map(Number),[h2,m2]=e.split(':').map(Number);let d=h2*60+m2-h1*60-m1;if(d<0)d+=1440;return d;};
+const fmt=n=>Math.floor(n/60)+'h'+String(n%60).padStart(2,'0');
+const cren=(s,e)=>{if(!s)return'jour';const h=parseInt(s);if(e&&h<12&&parseInt(e)>=15)return'jour';return h<12?'matin':h<18?'apm':'soir';};
+
+class Component extends DCLogic {
+  state={panel:null,menu:false,clients:false,sel:false,selected:{},addKind:'Intervention',preset:'Matin',mDay:3,send:2,panier:false,gap:null};
+
+  componentDidMount(){try{if(localStorage.getItem('bx-essai-cockpit')==='0')this.setState({kpiOpen:false});}catch(e){}}
+  styleItem(it,key,dark){
+    const base={isAbs:false,isCard:true,hasTag:false,hasTag2:false,hasDocs:false,deco:'none',sh:'none',selOn:false};
+    const sel=this.state.sel, picked=!!this.state.selected[key];
+    const p=this.state.panel;
+    const active=p&&p.key===key;
+    if(it.kind==='abs'){const A=ABS[it.t];return{...base,isAbs:true,isCard:false,title:A[0],absA:A[1],absB:A[2],sub:A[3],onClick:(e)=>{e.stopPropagation();this.setState({panel:{type:'abs',key,ri:key.split('-')[0]}});}};}
+    if(it.kind==='meet'){return{...base,title:'Réunion sécurité',sub:'Dépôt · toute l\'équipe',time:'07:30–08:00',bg:'#FBE0EA',bd:'1.5px solid #D6457A',fg:'#15120F',subFg:'#5B534A',timeFg:'#15120F',stripe:'#D6457A',hasTag:true,tag:'RÉUNION · HORS HEURES',tagBg:'#F6C6D8',tagFg:'#7A1840',sh:active?'0 0 0 3px #FFC21A':'none',onClick:(e)=>e.stopPropagation()};}
+    const cl=it.cl,cr=cren(it.s,it.e),t=TINT[cr],d=mins(it.s,it.e);
+    const o={...base,title:cl.c==='Autre'?(it.note||'Autre'):cl.c,sub:cl.c==='Autre'?'Autre · nommé par le salarié':cl.p+' · '+cl.v,stripe:t.st,bg:t.bg,fg:'#15120F',subFg:'#5B534A',timeFg:'#5B534A',
+      time:it.s?(it.e?it.s+'–'+it.e:it.s+' · fin à préciser'):'sans horaire',hasDocs:!!it.docs||!!cl.docs,docs:it.docs||cl.docs,bd:'1.5px dashed #9C907E'};
+    if(it.st==='brouillon'){Object.assign(o,{bd:'1.5px solid #15120F',timeFg:'#15120F',time:it.s+'–'+it.e+' · '+fmt(d),hasTag:true,tag:'À ENVOYER',tagBg:'#FFE1CC',tagFg:'#9A3412'});}
+    if(it.st==='envoyee'){ if(dark)Object.assign(o,{bg:'#15120F',bd:'1.5px solid #15120F',fg:'#F2EDE3',subFg:'rgba(242,237,227,.68)',timeFg:'#FFC21A',time:'✓ '+it.s+'–'+it.e+' · '+fmt(d)});
+      else Object.assign(o,{bd:'1.5px solid #2FA36B',timeFg:'#17663F',time:'✓ '+it.s+'–'+it.e+' · '+fmt(d)});}
+    if(it.st==='live'){Object.assign(o,{bg:'#E7F6EE',bd:'1.5px solid #2FA36B',stripe:'#2FA36B',timeFg:'#17663F',time:'● depuis '+it.s+' · 3h12',hasTag:true,tag:'EN DIRECT',tagBg:'#2FA36B',tagFg:'#FFFFFF'});}
+    if(it.st==='retiree'){Object.assign(o,{bg:'#EFE9DE',bd:'1.5px solid #D6CBB7',deco:'line-through',hasTag:true,tag:'RETIRÉE PAR LE SALARIÉ',tagBg:'#E6DDCD',tagFg:'#5B534A'});}
+    if(it.st==='ajoutee'){Object.assign(o,{bg:'#FFFDF8',bd:'1.5px dashed #D9480F',stripe:'#D9480F',time:'1h00 · hors planning',hasTag:true,tag:'AJOUTÉE PAR LE SALARIÉ',tagBg:'#FFE1CC',tagFg:'#9A3412'});}
+    if(it.res){Object.assign(o,{hasTag2:true,tag2:'⚠ RÉSERVE À TRAITER',tag2Bg:'#FCE4E1',tag2Fg:'#8E1B14'});}
+    if(it.tasks){Object.assign(o,{hasTag2:true,tag2:'TÂCHES '+it.tasks,tag2Bg:'#FFFDF8',tag2Fg:'#15120F'});}
+    if(sel){const locked=it.st!=='prevue'&&it.st!=='brouillon';o.selOn=!locked;o.chk=picked?'✓':'';o.chkBg=picked?'#FFC21A':'transparent';if(locked){o.sh='none';}}
+    if(active)o.sh='0 0 0 3px #FFC21A, 0 8px 20px rgba(21,18,15,.18)';
+    if(picked&&sel)o.sh='0 0 0 3px #FFC21A';
+    o.onClick=(e)=>{e.stopPropagation();
+      if(this.state.sel){this.setState(s=>({selected:{...s.selected,[key]:!s.selected[key]}}));return;}
+      this.setState({panel:{type:'int',key,it,cr},menu:false,clients:false});};
+    return o;
+  }
+
+  renderVals(){
+    const st=this.state, dark=this.props.envoyeesSombres??true;
+    const dayIntCount=DAYS.map(()=>0),daySent=DAYS.map(()=>0),dayPlan=DAYS.map(()=>0);
+    let weekSent=0,weekPlanned=0;
+    const rows=ROWS.map((r,ri)=>{
+      let sent=0;
+      const cells=r.days.map((items,di)=>{
+        items.forEach(it=>{if(it.kind==='int'){dayIntCount[di]++;const d=mins(it.s,it.e);if(it.st==='envoyee'){sent+=d;daySent[di]+=d;}else if(it.st==='prevue'||it.st==='live'){dayPlan[di]+=d||240;}}});
+        const isAbs=items.some(i=>i.kind==='abs');
+        return {bg:di===TODAY?'#FFF6DB':'transparent',empty:items.length===0,canMore:items.length>0&&!isAbs,
+          items:items.map((it,ii)=>this.styleItem(it,ri+'-'+di+'-'+ii,dark)),
+          onAdd:()=>{if(isAbs||st.sel)return;this.setState({panel:{type:'add',key:'add-'+ri+'-'+di,ri,di},menu:false,clients:false});}};
+      });
+      weekSent+=sent;
+      return {name:r.name,ini:r.ini,av:r.av,chef:!!r.chef,st:r.pend?r.pend+(r.pend>1?' jours':' jour')+' en attente':'À jour',stC:r.pend?'#C2410C':'#17663F',
+        pct:Math.min(100,Math.round(sent/60/35*100))+'%',hrs:Math.round(sent/60*10)/10+'',cells};
+    });
+    weekPlanned=Math.round(dayPlan.reduce((x,y)=>x+y,0)/60);
+    const grads=['#FF4D8D','#FF8A3D','#FFC21A','#9B6BFF','#2F7BFF','#2ED3A0','#FF4D8D','#FF8A3D'];
+    const tot=DAYS.map((_,i)=>daySent[i]+dayPlan[i]);const mx=Math.max(...tot,1);
+    const loadBars=DAYS.map((d,i)=>({l:d[0][0]+' '+d[1],v:Math.round(tot[i]/60)+'h',h:Math.round(tot[i]/mx*58)+'px',g:'linear-gradient(180deg,'+grads[i]+','+grads[i+1]+')',ol:i===TODAY?'2px solid #FFC21A':'none',lc:i===TODAY?'#FFC21A':'rgba(242,237,227,.6)'}));
+    const days=DAYS.map((d,i)=>({l:d[0],n:d[1],isToday:i===TODAY,bg:i===TODAY?'#FFF3CC':'transparent',top:i===TODAY?'inset 0 4px 0 #FFC21A':'none',sub:dayIntCount[i]?dayIntCount[i]+' interv. · '+Math.round((daySent[i]+dayPlan[i])/60)+' h':'—'}));
+
+    const p=st.panel;
+    let pKicker='',pTitle='',pSub='',pStateBg='#F2EDE3',pStateFg='#15120F',pStateBig='',pStateTxt='',pStart='--:--',pEnd='--:--';
+    if(p&&p.type==='int'){const it=p.it,[ri,di]=p.key.split('-').map(Number);
+      pKicker='INTERVENTION · '+DAYS[di][0].toUpperCase()+' '+DAYS[di][1]+' OCT · '+ROWS[ri].name.toUpperCase();
+      pTitle=it.cl.c==='Autre'?(it.note||'Autre'):it.cl.c;pSub=it.cl.c==='Autre'?'Autre · à attribuer à un vrai client':it.cl.p+' · '+it.cl.v;
+      pStart=it.s||'--:--';pEnd=it.e||'--:--';
+      if(it.st==='envoyee'){pStateBg='#15120F';pStateFg='#F2EDE3';pStateBig=it.s+' → '+it.e+' · '+fmt(mins(it.s,it.e));pStateTxt='Envoyées par le salarié · comptent dans la paie';}
+      else if(it.st==='brouillon'){pStateBg='#FFE1CC';pStateFg='#7A2A0A';pStateBig=it.s+' → '+it.e;pStateTxt='Saisies, pas encore envoyées · ne comptent pas';}
+      else if(it.st==='live'){pStateBg='#E7F6EE';pStateFg='#17663F';pStateBig='En cours depuis '+it.s;pStateTxt='Pointage en direct · ne peut être ni déplacé ni supprimé';}
+      else if(it.st==='retiree'){pStateBig='Retirée';pStateTxt='Retirée par le salarié, gardée dans sa fiche';}
+      else {pStateBig='Pas encore déclarées';pStateTxt='Le salarié verra cet horaire comme « prévu »';}
+    }
+    if(p&&p.type==='add'){pKicker='NOUVEAU · '+DAYS[p.di][0].toUpperCase()+' '+DAYS[p.di][1]+' OCT';pTitle='Ajouter';pSub='Pour '+ROWS[p.ri].name;}
+    if(p&&p.type==='abs'){const ri=+p.ri;pKicker='STATUT';pTitle=ROWS[ri].name.split(' ')[0];pSub='Statut à partir d\'aujourd\'hui';}
+
+    const presetsDef=[['Matin','08:00–12:00'],['Après-midi','13:30–17:00'],['Journée','08:00–17:00']];
+    const presets=presetsDef.map(([l,h])=>({l,h,bg:st.preset===l?'#FFC21A':'#FFFFFF',bd:st.preset===l?'#15120F':'#D6CBB7',onClick:()=>this.setState({preset:l})}));
+    const addTabs=['Intervention','Tâche','Réunion'].map(l=>({l,bg:st.addKind===l?'#15120F':'transparent',fg:st.addKind===l?'#FFC21A':'#15120F',onClick:()=>this.setState({addKind:l})}));
+    const clientList=Object.values(CL).map(c=>({c:c.c,s:c.c==='Autre'?'Chantier non listé — le salarié le nomme':c.p+' · '+c.v,dot:c.dot}));
+    const clientPick=clientList.slice(0,4).map((c,i)=>({...c,bg:i===0?'#FFF3CC':'#FFFFFF',bd:i===0?'#15120F':'#E3DACB'}));
+    const statusOpts=[['Présent','#2FA36B'],['Congé','#E0A400'],['Arrêt maladie','#E0A400'],['Intempérie','#E0A400']].map(([l,dot],i)=>({l,dot,bg:i===0?'#E7F6EE':'#FFFFFF',bd:i===0?'#2FA36B':'#E3DACB'}));
+
+    const nSel=Object.values(st.selected).filter(Boolean).length;
+    const menuGroups=[
+      {title:'CHANTIERS',items:[{l:'Réserves',r:'1'},{l:'Coût chantiers',r:''},{l:'Borne',r:'non reliée'}]},
+      {title:'ÉQUIPE',items:[{l:'Demandes de congé',r:'1'},{l:'Formations',r:'2/3'},{l:'Envoyer par e-mail',r:''}]},
+      {title:'PLANNING',items:[{l:'Imprimer',r:'⌘P'},{l:'Versions du planning',r:'V3'},{l:'Interventions supprimées ou décalées',r:''},{l:'Réglages de l\'entreprise',r:''}]}
+    ];
+
+    const mDays=DAYS.map((d,i)=>({l:d[0],n:d[1],bg:i===st.mDay?'#FFC21A':(i===TODAY?'#3A3129':'#25201B'),fg:i===st.mDay?'#15120F':'#F2EDE3',onClick:()=>this.setState({mDay:i})}));
+    const mRows=ROWS.map((r,ri)=>({name:r.name,ini:r.ini,av:r.av,st:r.pend?r.pend+' J EN ATTENTE':'À JOUR',stC:r.pend?'#C2410C':'#17663F',items:r.days[st.mDay].map((it,ii)=>this.styleItem(it,'m'+ri+'-'+st.mDay+'-'+ii,dark))}));
+
+    const SEND=[
+      {t:'Hors-ligne · Envoyer ma journée →',bg:'#D6CBB7',fg:'#5B534A',sh:'none',h:'HORS-LIGNE, TOUT EST GARDÉ · 1 EN ATTENTE'},
+      {t:'Envoyer ce qui reste (1)',bg:'#15120F',fg:'#FFC21A',sh:'none',h:'1 SAISIE SUR LE TÉLÉPHONE À TRANSFÉRER'},
+      {t:'Envoyer ma journée →',bg:'#FFC21A',fg:'#15120F',sh:'inset 0 -4px 0 #D9A200',h:'PRÊT · LE POINTAGE EN COURS NE PART PAS'},
+      {t:'Journée envoyée ✓',bg:'#2FA36B',fg:'#FFFFFF',sh:'none',h:'REÇUE PAR LE BUREAU'},
+      {t:'Envoyer ma journée →',bg:'#E6DDCD',fg:'#8A7F70',sh:'none',h:'RIEN À ENVOYER'}
+    ][st.send];
+
+    const bWeek=DAYS.map((d,i)=>({l:d[0][0],n:d[1],bg:i===TODAY?'#FFC21A':'#25201B',fg:i===TODAY?'#15120F':'#F2EDE3',dot:[ '#2FA36B','#E53935','#2FA36B','#FFC21A','transparent','transparent','transparent'][i]==='#FFC21A'&&i===TODAY?'#15120F':['#2FA36B','#E53935','#2FA36B','#15120F','#5B534A','transparent','transparent'][i]}));
+    const ruler=['07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'].map((l,i)=>({l,y:(16+i*38)+'px'}));
+
+    const days2=DAYS.map((d,i)=>({l:d[0],n:d[1],bg:i===TODAY?'#FFF3CC':'transparent',top:i===TODAY?'inset 0 4px 0 #FFC21A':'none',h:Math.round(tot[i]/60)+' h',w:Math.round(tot[i]/mx*100)+'%',g:'linear-gradient(90deg,'+grads[i]+','+grads[i+1]+')'}));
+    const goDay=(i)=>()=>this.setState({mDay:i,mView:'day'});
+    const wkHead=DAYS.map((d,i)=>({l:d[0][0],n:d[1],bg:i===TODAY?'#FFC21A':'#FFFDF8',fg:'#15120F',onClick:goDay(i)}));
+    const blk=(it)=>{if(it.kind==='abs')return{bg:'repeating-linear-gradient(135deg,#EFE6D2 0 3px,#D9C9A6 3px 6px)',bd:'0'};if(it.kind==='meet')return{bg:'#FBE0EA',bd:'1px solid #D6457A'};
+      if(it.st==='envoyee')return{bg:'#15120F',bd:'0'};if(it.st==='live')return{bg:'#2FA36B',bd:'0'};const t=TINT[cren(it.s,it.e)];
+      if(it.st==='brouillon')return{bg:t.bg,bd:'1.5px solid #15120F'};if(it.st==='retiree')return{bg:'#E6DDCD',bd:'0'};return{bg:t.bg,bd:'1px dashed #9C907E'};};
+    const wkRows=ROWS.map(r=>({first:r.name.split(' ')[0],st:r.pend?r.pend+' j':'à jour',stC:r.pend?'#C2410C':'#17663F',cells:r.days.map((items,i)=>({bg:i===TODAY?'#FFF6DB':'#FFFDF8',blocks:items.map(blk),onClick:goDay(i)}))}));
+    const mv=st.mView||'day';
+    const SS={
+      envoye:{bd:'1.5px solid transparent',bg:'#25201B',fg:'#F2EDE3',op:1,dot:'#2FA36B',dotFg:'#FFFFFF',mark:'✓',t:'Jour envoyé',d:'Toutes les heures sont au bureau. Coche verte.'},
+      oublie:{bd:'2px solid #FF6B3D',bg:'#3A1A14',fg:'#F2EDE3',op:1,dot:'#FF6B3D',dotFg:'#15120F',mark:'!',t:'À envoyer / oublié',d:'Jour passé planifié sans heures envoyées, ou lignes saisies pas envoyées. Anneau orange + « ! ».'},
+      today:{bd:'2px solid #FFC21A',bg:'#FFC21A',fg:'#15120F',op:1,dot:'#15120F',dotFg:'#FFC21A',mark:'●',t:'Aujourd\'hui',d:'Fond jaune. La pastille reprend l\'état du jour (ici : en cours).'},
+      futur:{bd:'1.5px dashed rgba(242,237,227,.3)',bg:'transparent',fg:'#F2EDE3',op:.6,dot:'transparent',dotFg:'rgba(242,237,227,.6)',mark:'·',t:'Jour à venir',d:'Atténué, contour pointillé s\'il y a du prévu. Jamais compté comme un oubli.'},
+      absent:{bd:'1.5px solid transparent',bg:'repeating-linear-gradient(135deg,#3A3129 0 6px,#2A241E 6px 12px)',fg:'#F2EDE3',op:.85,dot:'#E6DDCD',dotFg:'#15120F',mark:'C',t:'Absence',d:'Rayures + lettre : C congé, M maladie, I intempérie, R repos.'},
+      vide:{bd:'1.5px solid transparent',bg:'#25201B',fg:'#F2EDE3',op:.45,dot:'transparent',dotFg:'transparent',mark:'',t:'Rien de prévu',d:'Jour passé sans planning ni heures : rien à faire.'},
+      clos:{bd:'1.5px solid #8A7F70',bg:'#1F1B17',fg:'#F2EDE3',op:.7,dot:'#8A7F70',dotFg:'#15120F',mark:'▣',t:'Clôturé',d:'Mois ou heures clôturés par le bureau : lecture seule.'},
+      renvoye:{bd:'2px solid #E53935',bg:'#3A1414',fg:'#F2EDE3',op:1,dot:'#E53935',dotFg:'#FFFFFF',mark:'↺',t:'Renvoyé par le bureau',d:'Motif à lire, lignes à corriger puis renvoyer.'}
+    };
+    const stripDef=[['L',12,'envoye'],['M',13,'oublie'],['M',14,'envoye'],['J',15,'today'],['V',16,'absent'],['S',17,'futur'],['D',18,'vide']];
+    const strip=stripDef.map(([l,n,k])=>({l,n,...SS[k],aria:SS[k].t+', '+n+' octobre',bd:k==='today'?'2px solid #F2EDE3':SS[k].bd}));
+    const stripStates=[['J',15,'today'],['L',12,'envoye'],['M',13,'oublie'],['S',17,'futur'],['V',16,'absent'],['D',18,'vide'],['M',13,'clos'],['M',13,'renvoye']].map(([l,n,k])=>({l,n,...SS[k]}));
+    const row=(l,b,bBg,bFg,c)=>({l,hasB:!!b,b:b||'',bBg:bBg||'#E6DDCD',bFg:bFg||'#15120F',c:c||'#15120F'});
+    const plusA=[row('Historique','PDF'),row('↳ Interventions supprimées','60 j'),row('Formations','2 à voir','#E53935','#FFFFFF'),row('Mes congés','1 en attente','#FFF3CC','#6B4E00'),row('Mon équipe','chef')].map((x,i)=>({...x,bt:i?'1px solid #EFE7D9':'0'}));
+    const plusB=[row('Notifications','Activer'),row('Informations'),row('Changer ma photo')].map((x,i)=>({...x,bt:i?'1px solid #EFE7D9':'0'}));
+    return {
+      strip,stripStates,plusA,plusB,panierPressed:st.panier?'true':'false',panierFg:st.panier?'#FFC21A':'#15120F',
+      days2,wkHead,wkRows,isMvDay:mv==='day',isMvWeek:mv==='week',
+      mvDay:()=>this.setState({mView:'day'}),mvWeek:()=>this.setState({mView:'week'}),
+      mvDayBg:mv==='day'?'#FFC21A':'transparent',mvDayFg:mv==='day'?'#15120F':'#F2EDE3',mvWeekBg:mv==='week'?'#FFC21A':'transparent',mvWeekFg:mv==='week'?'#15120F':'#F2EDE3',
+      focus1:!!st.focus1,notFocus1:!st.focus1,toggleFocus1:()=>this.setState(s=>({focus1:!s.focus1,menu:false,clients:false,panel:null})),
+      focus:!!st.focus,notFocus:!st.focus,gridPad:st.focus?'12px':'14px 16px',
+      setBar:()=>this.setState({focus:false}),setFocus:()=>this.setState({focus:true}),
+      barBg:st.focus?'transparent':'#15120F',barFg:st.focus?'#15120F':'#FFC21A',focBg:st.focus?'#15120F':'transparent',focFg:st.focus?'#FFC21A':'#15120F',
+      rows,days,loadBars,weekSent:Math.round(weekSent/60),weekPlanned,showKpi:(this.props.cockpit??true)&&st.kpiOpen!==false,kpiClosed:(this.props.cockpit??true)&&st.kpiOpen===false,
+      toggleKpi:()=>this.setState(s=>{const v=s.kpiOpen===false;try{localStorage.setItem('bx-essai-cockpit',v?'1':'0');}catch(e){}return{kpiOpen:v};}),
+      menu:st.menu,menuBg:st.menu?'#15120F':'#FFFDF8',toggleMenu:()=>this.setState(s=>({menu:!s.menu})),menuGroups,
+      clients:st.clients,clientsBg:st.clients?'#FFC21A':'#FFFDF8',toggleClients:()=>this.setState(s=>({clients:!s.clients,panel:null,menu:false})),clientList,clientPick,
+      sel:st.sel,selBtnBg:st.sel?'#FFC21A':'#FFFDF8',toggleSel:()=>this.setState(s=>({sel:!s.sel,selected:{},panel:null})),
+      selCount:nSel+(nSel>1?' sélectionnées':' sélectionnée'),selDel:'Supprimer ('+nSel+')',
+      openRelance:()=>{},
+      hasPanel:!!p,isIntPanel:!!p&&p.type==='int',isAddPanel:!!p&&p.type==='add',isAbsPanel:!!p&&p.type==='abs',closePanel:()=>this.setState({panel:null}),
+      pKicker,pTitle,pSub,pStateBg,pStateFg,pStateBig,pStateTxt,pStart,pEnd,presets,addTabs,statusOpts,
+      addIsInt:st.addKind==='Intervention',addIsTask:st.addKind==='Tâche',addIsMeet:st.addKind==='Réunion',
+      mDays,mRows,
+      parcours:[{n:'1',l:'Ouvrir : ce qui m\'attend'},{n:'2',l:'Pointer (QR) ou noter mes heures'},{n:'3',l:'Répondre aux trous : route ou pause'},{n:'4',l:'Panier'},{n:'5',l:'Envoyer ma journée'}],
+      sendTxt:SEND.t,sendBg:SEND.bg,sendFg:SEND.fg,sendSh:SEND.sh,sendHint:SEND.h,cycleSend:()=>this.setState(s=>({send:(s.send+1)%5})),
+      panierBg:st.panier?'#15120F':'#FFFDF8',panierBd:st.panier?'1px solid #15120F':'1px solid #E3DACB',panierTxt:st.panier?'✓ Pris':'Non pris',togglePanier:()=>this.setState(s=>({panier:!s.panier})),
+      routeBg:st.gap==='r'?'#15120F':'#FFFDF8',routeBd:st.gap==='r'?'#15120F':'#D6CBB7',pauseBg:st.gap==='p'?'#15120F':'#FFFDF8',pauseBd:st.gap==='p'?'#15120F':'#D6CBB7',
+      routeFg:st.gap==='r'?'#FFC21A':'#15120F',pauseFg:st.gap==='p'?'#FFC21A':'#15120F',
+      pickRoute:()=>this.setState(s=>({gap:s.gap==='r'?null:'r'})),pickPause:()=>this.setState(s=>({gap:s.gap==='p'?null:'p'})),
+      bWeek,ruler
+    };
+  }
+}
+</script>
+</body>
+</html>
