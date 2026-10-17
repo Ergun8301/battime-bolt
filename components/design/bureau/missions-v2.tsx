@@ -1,12 +1,10 @@
 'use client';
 
-// Design du bureau (v2b) · la réunion et le compteur de tâches d'une case. Mêmes données, mêmes gestes et mêmes repères que MeetingChip / TasksBadge
-// (components/missions-office.tsx) ; seul le dessin change : une ligne sans couleur (planche v2b : pas de couleur pour la réunion), heure à droite ;
-// le lieu et « toute l'équipe » sont dans l'infobulle (et sous le titre au téléphone) ; pastille « ☐ Tâches 1/3 ».
+// Design du bureau (v2) · la réunion et le compteur de tâches d'une case. Mêmes données, mêmes gestes et mêmes repères que MeetingChip / TasksBadge
+// (components/missions-office.tsx) ; seul le dessin change : carte rose (titre, lieu, heure à droite) et pastille « ☐ Tâches 1/3 ».
 import { toast } from 'sonner';
 import type { Meeting } from '@/lib/missions';
-import { meetingTimeLabel, taskProgress } from '@/supabase/functions/_shared/missions';
-import { heureFr } from './bulle-v2';
+import { hhmm, meetingTimeLabel, taskProgress } from '@/supabase/functions/_shared/missions';
 
 const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
@@ -17,8 +15,8 @@ export function ReunionV2({ m, onOpen, inert = false, grande = false }: { m: Mee
   return (
     <button type="button" className="dzp-reunion" data-grande={grande ? '' : undefined} data-inerte={inert ? '' : undefined} title={plein} aria-label={plein} data-testid="meeting-chip" data-meeting={m.id}
       onPointerDown={stop} onClick={(e) => { e.stopPropagation(); if (inert) { toast('Réunion / tâches — hors sélection'); return; } onOpen?.(); }}>
-      <span className="dzp-reunion__txt"><b>{m.title}</b>{grande && sous ? <span>{sous}</span> : null}</span>
-      <span className="dzp-reunion__heure">{grande ? quand : heureFr(m.start_time)}</span>
+      <span className="dzp-reunion__txt"><b>{m.title}</b>{sous ? <span>{sous}</span> : null}</span>
+      <span className="dzp-reunion__heure">{grande ? quand : hhmm(m.start_time)}</span>
     </button>
   );
 }

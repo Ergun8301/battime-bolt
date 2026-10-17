@@ -1,8 +1,7 @@
 'use client';
 
-// Design du bureau (v2b « Couleur ») · LE PLANNING. Chargé À LA DEMANDE par admin-planning.tsx quand le drapeau `?ui=2` est actif (jamais dans le premier chargement).
-// Ce morceau ne lit rien et n'écrit rien : il reçoit de l'écran existant ses états et ses gestionnaires (contexte-v2.ts) et dessine la planche v2b
-// (docs/design-brief/designer-planning-v2/ : README, SPEC-v2b.md, tokens.css bloc `.dz-planning-v2b`).
+// Design du bureau (v2) · LE PLANNING (lot 1). Chargé À LA DEMANDE par admin-planning.tsx quand le drapeau `?ui=2` est actif (jamais dans le premier chargement).
+// Ce morceau ne lit rien et n'écrit rien : il reçoit de l'écran existant ses états et ses gestionnaires (contexte-v2.ts) et dessine la planche du designer.
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -11,27 +10,32 @@ import { totauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
 import './bureau-jetons.css';
 import './planning-v2.css';
 import { BarreNoire, BarreSemaine, TiroirClients } from './barres-v2';
-import { Bandeau, useDeplie } from './bandeau-v2';
+import { Bandeau } from './bandeau-v2';
 import { Grille } from './grille-v2';
 import { Mobile } from './mobile-v2';
-import { LEGENDE } from './menu-mobile-v2';
 import type { PlanningCtx } from './contexte-v2';
 
 export { default as MenuMobileV2 } from './menu-mobile-v2';
 export { Ghost } from './bulle-v2';
 export { default as FicheV2 } from './fiche-v2';
 
+const LEGENDE: { k: string; l: string }[] = [
+  { k: 'matin', l: 'Matin (avant 12 h)' }, { k: 'apres-midi', l: 'Après-midi (12 h – 18 h)' }, { k: 'soir', l: 'Soir (après 18 h)' }, { k: 'journee', l: 'Journée entière ou sans horaire' },
+  { k: 'prevue', l: 'Prévue (pointillés)' }, { k: 'a-envoyer', l: 'Saisie, à envoyer (ne compte pas)' }, { k: 'envoyee', l: 'Envoyée (compte)' }, { k: 'en-cours', l: 'En direct (pointage en cours)' },
+  { k: 'ajoutee', l: 'Ajoutée par le salarié' }, { k: 'retiree', l: 'Retirée par le salarié (barrée)' }, { k: 'reunion', l: 'Réunion (hors heures)' },
+  { k: 'absence', l: 'Absence (rayée)' }, { k: 'clos', l: 'Mois clôturé (CLOS)' }, { k: 'reserve', l: 'Réserve à traiter' },
+];
+
 function Legende() {
   const [ouverte, setOuverte] = useState(false);
   return (
-    <div className="dzp-legende-zone">
-      <button type="button" className="dzp-legende-bouton" aria-expanded={ouverte} onClick={() => setOuverte((o) => !o)} data-testid="legende-ouvrir">Légende {ouverte ? '▴' : '▾'}</button>
-      {ouverte && (
-        <div className="dzp-legende" data-open="" data-testid="legende">
-          {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
-        </div>
-      )}
-    </div>
+    <>
+      {!ouverte && <button type="button" className="dzp-legende-bouton" aria-expanded={false} onClick={() => setOuverte(true)} data-testid="legende-ouvrir">Légende ▾</button>}
+      <div className="dzp-legende" data-open={ouverte ? '' : undefined} data-testid="legende">
+        <button type="button" className="dzp-legende__t" onClick={() => setOuverte(false)} aria-expanded={true}>LÉGENDE ▴</button>
+        {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
+      </div>
+    </>
   );
 }
 
@@ -41,7 +45,7 @@ function Aide({ c }: { c: PlanningCtx }) {
   return (
     <div className="dzp-aide" data-testid="aide-demarrage">
       <button type="button" className="dzp-aide__x" onClick={c.dismissCoach} aria-label="Fermer le guide" title="Fermer">✕</button>
-      <span className="dzp-aide__k">Pour démarrer</span>
+      <span className="dzp-kicker">Pour démarrer</span>
       <h3 className="dzp-aide__t">Deux étapes, et tout roule.</h3>
       <button type="button" className="dzp-aide__etape" data-fait={c.workers.length > 0 ? '' : undefined} onClick={() => { if (c.workers.length === 0) c.setWorkerOpen(true); }}>
         <span className="dzp-aide__n">{c.workers.length > 0 ? '✓' : '1'}</span><span><b>Ajoutez un salarié</b><br /><small>Il reçoit une invitation par email</small></span>
@@ -97,7 +101,6 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     window.addEventListener('keydown', f);
     return () => window.removeEventListener('keydown', f);
   }, [accountMenuOpen, chantierMenuOpen, statPanel, setAccountMenuOpen, setChantierMenuOpen, setStatPanel]);
-  const [deplie, poserDeplie] = useDeplie(c.user?.id);
   const dates = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const totaux = useMemo(() => {
     const exclure = new Set<string>();
@@ -107,24 +110,21 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
   }, [dates.join('|'), c.displayWorkers, c.realEntries, c.planning, c.draftEntries, c.withdrawnIds]);
   const relances = (c.waitingByWorker as { id: string; name: string; days: string[] }[]) || [];
   return (
-    <div className="dz-planning-v2b">
+    <>
       <div className="dzp-bureau-desk">
         <BarreNoire c={c} />
-        <BarreSemaine c={c} envoyees={totaux.envoyees} prevues={totaux.aVenir} ouvrirChiffres={() => poserDeplie(!deplie)} />
-        <Bandeau c={c} chiffres={{ envoyees: totaux.envoyees, aVenir: totaux.aVenir, jours: totaux.jours, relances }} deplie={deplie} poser={poserDeplie} />
+        <BarreSemaine c={c} />
+        <Bandeau c={c} chiffres={{ envoyees: totaux.envoyees, aVenir: totaux.aVenir, jours: totaux.jours, relances }} />
         <TiroirClients c={c} />
+        {c.workers.length > 0 && !c.selectMode && <div className="dzp-astuce">{c.copyTipDesk}</div>}
         <div className="dzp-zone">
           <Aide c={c} />
           <Grille c={c} totaux={totaux} />
-          {/* L'astuce « Copier une case » ne recouvre plus la grille : sous la grille, à gauche, tant qu'on ne l'a pas fermée (« ? » dans le coin pour la revoir). */}
-          <div className="dzp-pied">
-            {c.workers.length > 0 && !c.selectMode && <div className="dzp-astuce">{c.copyTipDesk}</div>}
-            <Legende />
-          </div>
+          <Legende />
         </div>
       </div>
       <Mobile c={c} />
       <Dock c={c} />
-    </div>
+    </>
   );
 }

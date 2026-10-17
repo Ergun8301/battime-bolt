@@ -34,10 +34,6 @@ export const ADAPTATIONS = {
     srcOpacity: src ? getComputedStyle(src).opacity : null,
   };
 });`, 'D4 : les repères visibles pendant le glisser sont ceux du planning v2 : la case visée porte .dzp-cible-msg (« Déposer ici » .mv / « Copier ici » .cp), le fantôme est [data-testid=drag-overlay] avec une pastille « + » (<i>), la bulle tenue porte data-glisse. Même information, même gestes ; le fantôme de la planche est une carte sombre (titre + horaire prévu) qui ne montre jamais les heures envoyées (overlayReal = faux)'],
-    ["=== '' && /Copier une case : cliquez dessus puis", "!== undefined && /Copier une case : cliquez dessus puis",
-      'v2b (SPEC-v2b « survol : infobulle (chantier, durée, qui l’a créée) ») : la bulle porte maintenant une infobulle voulue par la planche ; le contrôle garde l’astuce visible (même texte), il ne peut plus exiger l’absence de titre'],
-    ["/08:00–17:00/.test(await copyCell.innerText())", "/8 h–17 h/.test(await copyCell.innerText())",
-      'v2b : l’horaire de la bulle s’écrit « 8 h–17 h » (planche v2b, ligne 2 de la bulle), plus « 08:00–17:00 » ; même horaire prévu, toujours sans « à envoyer »'],
   ],
   'absences-lot2': [],
   'versions-lot8': [
