@@ -1,29 +1,89 @@
-/* BEMEXO bureau v2 · PLANNING (lot 1) : barre noire, barre de semaine, bandeau, grille, bulles, légende, menus, téléphone.
+/* BEMEXO bureau v2 · PLANNING : ordinateur = planche d'essai 2a (barre unique de 64 px, menu des chiffres, plein écran, grille compacte) ; téléphone = lot 1.
    Jetons : bureau-jetons.css (portée .dz-bureau). Classes `dzp-*`. Chargé À LA DEMANDE avec le morceau planning-v2 (jamais dans le premier chargement de /admin).
-   Valeurs prises de la planche (« BEMEXO Bureau - Dossier ») : docs/design-brief/designer-bureau/. */
+   Valeurs de l'ordinateur prises du HTML et du script de la planche 2a : docs/design-brief/designer-essai/ ; téléphone : docs/design-brief/designer-bureau/. */
 
 /* ── Racine : le bureau v2 prend la place du fond parchemin de la v1 ── */
 html[data-dz-bureau] .bt-admin { background: var(--dz-creme); padding: 0; }
 .bt-pl.dz-bureau { box-shadow: none; border-radius: 0; background: var(--dz-creme); color: var(--dz-encre); min-height: 100vh; }
 
-/* ── Barre noire (60 px) ── */
-.dzp-noire { position: sticky; top: 0; z-index: 30; flex: none; height: var(--dz-barre-h); background: var(--dz-encre); color: var(--dz-creme); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; gap: 24px; }
-.dzp-noire__g, .dzp-noire__d { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.dzp-noire__g { gap: 28px; }
+/* ── Barre UNIQUE de la planche 2a (64 px) : logo | semaine | compteurs | (espace) | actions. Valeurs copiées du HTML de 2a. ── */
+.dzp-bureau-desk { --dz-barre-h: 64px; }
+.dzp-haut { position: sticky; top: 0; z-index: 30; }
+.dzp-barre2a { height: 64px; background: #15120F; color: #F2EDE3; display: flex; align-items: center; gap: 14px; padding: 0 16px 0 22px; white-space: nowrap; }
+.dzp-barre2a .dzp-logo { flex: none; font-weight: 800; font-size: 21px; letter-spacing: -.01em; }
 .dzp-logo { font-weight: 800; font-size: 22px; letter-spacing: -.01em; white-space: nowrap; }
 .dzp-logo b { background: var(--dz-jaune); color: var(--dz-encre); padding: 0 2px; font-weight: 800; }
-.dzp-onglets { display: flex; gap: 4px; font-size: var(--dz-fs-14); }
-.dzp-onglet { padding: 8px 12px; min-height: var(--dz-clic); background: none; border: 0; color: rgba(242,237,227,.82); cursor: pointer; font-size: var(--dz-fs-14); display: inline-flex; align-items: center; }
-.dzp-onglet[aria-current="page"] { font-weight: 800; color: var(--dz-jaune); box-shadow: inset 0 -2px 0 var(--dz-jaune); cursor: default; }
-.dzp-essai { display: flex; align-items: center; gap: 10px; height: var(--dz-clic); padding: 0 4px 0 14px; border-radius: var(--dz-r-pill); border: 1px solid rgba(242,237,227,.25); font-size: 13px; font-weight: 700; white-space: nowrap; }
-.dzp-essai[data-fini] { border-color: var(--dz-erreur-vif); }
-.dzp-essai button, .dzp-menu-essai button { height: 28px; padding: 0 12px; border-radius: var(--dz-r-pill); background: var(--dz-creme); color: var(--dz-encre); border: 0; font-weight: 800; font-size: 13px; cursor: pointer; }
-.dzp-assistant { display: inline-flex; align-items: center; gap: 8px; height: var(--dz-clic); padding: 0 16px; border-radius: var(--dz-r-pill); background: var(--dz-jaune); color: var(--dz-encre); border: 0; font-size: 13.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
-.dzp-compte { position: relative; }
-.dzp-compte__btn { display: flex; align-items: center; gap: 10px; height: var(--dz-clic); padding: 0 14px 0 4px; border-radius: var(--dz-r-pill); background: var(--dz-encre-3); color: var(--dz-creme); border: 0; font-size: 13.5px; font-weight: 700; cursor: pointer; max-width: 260px; }
-.dzp-compte__btn span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dzp-b-sep { flex: none; width: 1px; height: 28px; background: rgba(242,237,227,.18); }
+.dzp-b-semaine { flex: none; display: flex; align-items: center; gap: 6px; }
+.dzp-b-fleche { width: 36px; height: 36px; flex: none; border-radius: 50%; border: 1px solid rgba(242,237,227,.2); background: transparent; color: #F2EDE3; cursor: pointer; font-size: 13.33px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.dzp-b-s { font-weight: 900; font-size: 22px; letter-spacing: -.03em; }
+.dzp-b-dates { font-family: var(--dz-font-chiffres); font-size: 12px; color: rgba(242,237,227,.7); }
+.dzp-b-actuelle { height: 26px; padding: 0 8px; border-radius: 6px; background: #2FA36B; color: #FFFFFF; display: flex; align-items: center; font-family: var(--dz-font-chiffres); font-size: 10px; font-weight: 700; letter-spacing: .1em; border: 0; }
+button.dzp-b-actuelle { background: transparent; border: 1px solid #FFC21A; color: #FFC21A; cursor: pointer; position: relative; }
+.dzp-b-compteurs { flex: none; display: flex; align-items: center; gap: 4px; }
+.dzp-compteur { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border-radius: 999px; border: 0; background: transparent; font-family: inherit; font-size: 12.5px; font-weight: 700; color: rgba(242,237,227,.85); cursor: pointer; }
+.dzp-compteur b { font-family: var(--dz-font-chiffres); color: #FFC21A; font-weight: 700; }
+.dzp-compteur[data-ton="relance"] { background: #3A1A14; color: #F2EDE3; }
+.dzp-compteur__point { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #FF6B3D; }
+.dzp-compteur:hover, .dzp-compteur[aria-expanded="true"] { box-shadow: inset 0 0 0 1px rgba(255,194,26,.6); }
+.dzp-b-espace { flex: 1; min-width: 0; }
+.dzp-b-actions { flex: none; display: flex; align-items: center; gap: 6px; }
+.dzp-b-pilule { height: 38px; padding: 0 13px; border-radius: 999px; border: 1px solid rgba(242,237,227,.2); background: transparent; color: #F2EDE3; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; }
+.dzp-b-pilule[aria-pressed="true"], .dzp-b-pilule[aria-expanded="true"] { border-color: #FFC21A; color: #FFC21A; background: rgba(255,194,26,.12); }
+.dzp-b-pilule--jaune { padding: 0 16px; border: 0; background: #FFC21A; color: #15120F; font-weight: 800; }
+.dzp-b-rond { width: 38px; height: 38px; flex: none; border-radius: 50%; border: 1px solid rgba(242,237,227,.2); background: transparent; color: #F2EDE3; font-size: 15px; cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-family: inherit; }
+.dzp-b-rond[data-ton="jaune"] { border-color: #FFC21A; color: #FFC21A; }
+.dzp-b-rond[data-actif], .dzp-b-rond[aria-expanded="true"] { border-color: #FFC21A; color: #FFC21A; }
+.dzp-b-avatar { width: 38px; height: 38px; flex: none; border-radius: 50%; border: 0; padding: 0; background: #F2EDE3; color: #15120F; display: flex; align-items: center; justify-content: center; font-family: inherit; font-weight: 900; font-size: 12px; cursor: pointer; overflow: hidden; }
+.dzp-b-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dzp-barre2a .dzp-menu { color: var(--dz-encre); white-space: normal; }
+/* La loupe : un rond de 38 px qui s'ouvre en champ posé SUR la barre (vers la gauche), sans pousser les autres boutons. */
+.dzp-loupe__champ { position: absolute; z-index: 46; right: 0; top: 50%; transform: translateY(-50%); width: 320px; height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 14px; border-radius: 999px; background: #25201B; border: 1px solid #FFC21A; color: #FFC21A; box-shadow: 0 10px 30px rgba(21,18,15,.3); }
+.dzp-loupe__champ input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: #F2EDE3; font-family: inherit; font-size: 13px; font-weight: 600; outline: none; }
+.dzp-loupe__champ input::placeholder { color: rgba(242,237,227,.6); }
+.dzp-loupe__champ input::-webkit-search-cancel-button { display: none; }
+.dzp-loupe__x { width: 28px; height: 28px; flex: none; border-radius: 50%; border: 0; background: rgba(242,237,227,.12); color: #F2EDE3; cursor: pointer; font-size: 12px; }
+/* Essai et « S'abonner » : en tête de « Plus ⋯ » (la barre unique n'a plus de place pour eux). */
+.dzp-menu-essai { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 6px 6px 6px 14px; border-radius: var(--dz-r-s); background: var(--dz-encre); color: var(--dz-creme); font-size: 13px; font-weight: 700; }
+.dzp-menu-essai[data-fini] { box-shadow: inset 0 0 0 1.5px var(--dz-erreur-vif); }
+.dzp-menu-essai button { height: 32px; padding: 0 12px; border-radius: var(--dz-r-pill); background: var(--dz-jaune); color: var(--dz-encre); border: 0; font-weight: 800; font-size: 13px; cursor: pointer; }
+.dzp-menu__item:disabled { color: var(--dz-inactif-texte); cursor: not-allowed; }
 .dzp-avatar { width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--dz-creme); color: var(--dz-encre); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 12px; overflow: hidden; }
 .dzp-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Barre plus étroite (sous 1 440 px puis sous 1 280 px) : mêmes éléments, espacements resserrés, puis dates et libellés des compteurs en infobulle. Jamais de retour à la ligne. */
+/* À 1 440 px, la barre de la planche déborde déjà de ~10 px (ses deux séparateurs y sont écrasés à 0) ; avec la loupe (+44 px), on resserre d'un cran :
+   écarts de 10 px au lieu de 14, pilules et compteurs 2 px plus serrés de chaque côté. Les tailles (64, 38, 36, 34 px), couleurs et rayons restent ceux de la planche. */
+@media (max-width: 1499px) {
+  .dzp-barre2a { gap: 10px; padding: 0 12px 0 16px; }
+  .dzp-compteur { padding: 0 8px; }
+  .dzp-b-pilule { padding: 0 11px; }
+  .dzp-b-pilule--jaune { padding: 0 14px; }
+}
+@media (max-width: 1279px) {
+  .dzp-barre2a { gap: 8px; padding: 0 10px 0 14px; }
+  .dzp-barre2a .dzp-logo { font-size: 19px; }
+  .dzp-b-dates { display: none; }
+  .dzp-compteur__l { display: none; }
+  .dzp-compteur { padding: 0 7px; gap: 4px; }
+  .dzp-b-pilule { padding: 0 10px; font-size: 12.5px; }
+  .dzp-b-actions { gap: 4px; }
+}
+@media (max-width: 1100px) {
+  .dzp-barre2a { gap: 6px; }
+  .dzp-b-actuelle { padding: 0 6px; letter-spacing: .04em; }
+  .dzp-b-semaine { gap: 4px; }
+  .dzp-b-fleche { width: 32px; height: 32px; }
+  .dzp-b-rond, .dzp-b-avatar { width: 34px; height: 34px; }
+  .dzp-b-pilule { padding: 0 9px; }
+  .dzp-b-pilule--jaune { padding: 0 11px; }
+}
+
+/* ── Plein écran : la barre disparaît, seule reste la pastille flottante de la planche ── */
+.dzp-pastille-pe { position: fixed; top: 12px; right: 14px; z-index: 31; display: flex; align-items: center; gap: 6px; padding: 5px 5px 5px 14px; border-radius: 999px; background: #15120F; color: #F2EDE3; box-shadow: 0 10px 30px rgba(21,18,15,.3); }
+.dzp-pastille-pe__s { font-weight: 900; font-size: 15px; margin-right: 2px; }
+.dzp-pastille-pe button { width: 32px; height: 32px; border-radius: 50%; border: 0; background: #25201B; color: #F2EDE3; cursor: pointer; font-family: inherit; padding: 0; }
+.dzp-pastille-pe .dzp-pastille-pe__q { width: auto; height: 32px; padding: 0 12px; border-radius: 999px; background: #FFC21A; color: #15120F; font-size: 12.5px; font-weight: 800; }
+.dzp-bureau-desk[data-plein-ecran] .dzp-zone { padding: 12px; }
 
 /* ── Menus déroulants (Plus ⋯, compte) et voile sans fond ── */
 .dzp-fond-menu { position: fixed; inset: 0; z-index: 40; background: transparent; }
@@ -41,15 +101,8 @@ html[data-dz-bureau] .bt-admin { background: var(--dz-creme); padding: 0; }
 .dzp-menu-compte__co { font-weight: 900; font-size: 15px; }
 .dzp-menu-compte__u { font-size: 12.5px; color: var(--dz-texte-2); }
 
-/* ── Barre de semaine ── */
-.dzp-semaine { position: sticky; top: var(--dz-barre-h); z-index: 30; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 16px 24px 12px; background: var(--dz-creme); }
-.dzp-semaine__g { display: flex; align-items: center; gap: 14px; }
-.dzp-semaine__t { display: flex; flex-direction: column; gap: 2px; }
+/* ── Pièces communes (téléphone, fiche, menus) ── */
 .dzp-kicker { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); letter-spacing: .18em; color: var(--dz-texte-2); text-transform: uppercase; }
-.dzp-semaine__nb { display: flex; align-items: baseline; gap: 12px; }
-.dzp-semaine__s { font-weight: 900; font-size: var(--dz-fs-38); line-height: 1; letter-spacing: -.04em; white-space: nowrap; }
-.dzp-semaine__p { font-weight: 700; font-size: 16px; color: var(--dz-texte-note); }
-.dzp-fleches { display: flex; gap: 6px; margin-left: 6px; }
 .dzp-rond { width: var(--dz-clic); height: var(--dz-clic); flex: none; border-radius: 50%; border: 1px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; cursor: pointer; }
 .dzp-rond--petit { width: 34px; height: 34px; font-size: 15px; }
 .dzp-pilule { height: var(--dz-clic); padding: 0 14px; border-radius: var(--dz-r-pill); border: 1px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); display: inline-flex; align-items: center; gap: 8px; font-size: var(--dz-fs-14); font-weight: 700; cursor: pointer; white-space: nowrap; }
@@ -60,116 +113,133 @@ html[data-dz-bureau] .bt-admin { background: var(--dz-creme); padding: 0; }
 .dzp-pilule--badge { padding-right: 6px; }
 .dzp-badge { min-width: 24px; height: 24px; padding: 0 6px; border-radius: var(--dz-r-pill); background: var(--dz-jaune); color: var(--dz-encre); font-family: var(--dz-font-chiffres); font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .dzp-badge[data-ton="rouge"] { background: var(--dz-erreur); color: #fff; }
-.dzp-semaine__d { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .dzp-sep { width: 1px; height: 26px; background: var(--dz-trait-fort); margin: 0 4px; }
 .dzp-relatif { position: relative; }
 
-/* ── Bandeau de chiffres (repliable) ── */
-.dzp-bandeau { position: relative; flex: none; display: grid; grid-template-columns: 1.7fr 1fr 1fr 1fr 1fr; gap: 10px; padding: 0 24px 14px; }
-.dzp-tuile { position: relative; text-align: left; font-family: inherit; color: var(--dz-encre); background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-l); padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-button.dzp-tuile { cursor: pointer; }
-.dzp-tuile--sombre { background: var(--dz-encre-2); border-color: var(--dz-encre-2); color: var(--dz-creme); padding: 14px 18px; flex-direction: row; gap: 18px; }
-.dzp-tuile--relance { background: var(--dz-erreur-fond); border: 1.5px solid var(--dz-erreur); color: var(--dz-erreur-texte); }
-.dzp-tuile--direct { background: var(--dz-en-cours-fond); border: 1.5px solid var(--dz-en-cours); color: var(--dz-en-cours-texte); }
-.dzp-tuile__k { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); font-weight: 700; letter-spacing: .14em; color: var(--dz-texte-2); text-transform: uppercase; }
-.dzp-tuile--sombre .dzp-tuile__k { color: rgba(242,237,227,.75); }
-.dzp-tuile--relance .dzp-tuile__k { color: var(--dz-erreur-texte); }
-.dzp-tuile--direct .dzp-tuile__k { color: var(--dz-en-cours-texte); }
+/* ── Menu des chiffres (sous la barre) : les quatre tuiles du 1a, telles que dessinées ── */
+.dzp-chiffres { position: absolute; left: 0; right: 0; top: 64px; z-index: 41; display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 12px; padding: 14px 16px 18px; background: #F2EDE3; border-bottom: 1px solid #E3DACB; box-shadow: 0 20px 40px rgba(21,18,15,.16); white-space: normal; }
+.dzp-tuile { position: relative; text-align: left; font-family: inherit; color: #15120F; background: #FFFDF8; border: 1px solid #E3DACB; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dzp-tuile--sombre { background: #1B1713; border: 0; color: #F2EDE3; padding: 16px 20px; flex-direction: row; gap: 20px; align-items: stretch; }
+.dzp-tuile--relance { background: #FCE4E1; border: 1.5px solid #E53935; }
+.dzp-tuile--direct { background: #E7F6EE; border: 1.5px solid #2FA36B; }
+.dzp-tuile__k { font-family: var(--dz-font-chiffres); font-size: 10.5px; font-weight: 700; letter-spacing: .14em; color: #5B534A; text-transform: uppercase; }
+.dzp-tuile--sombre .dzp-tuile__k { color: rgba(242,237,227,.6); }
+.dzp-tuile--relance .dzp-tuile__k, .dzp-tuile--relance .dzp-tuile__v { color: #8E1B14; }
+.dzp-tuile--direct .dzp-tuile__k, .dzp-tuile--direct .dzp-tuile__v { color: #17663F; }
 .dzp-tuile__v { display: flex; align-items: baseline; gap: 6px; }
-.dzp-tuile__v b { font-weight: 900; font-size: var(--dz-fs-34); line-height: 1; letter-spacing: -.04em; }
-.dzp-tuile__v span { font-weight: 700; color: var(--dz-texte-2); }
+.dzp-tuile__v b { font-weight: 900; font-size: 36px; line-height: 1; letter-spacing: -.04em; }
+.dzp-tuile__v span { font-weight: 700; color: #5B534A; }
 .dzp-tuile--relance .dzp-tuile__v span, .dzp-tuile--direct .dzp-tuile__v span { color: inherit; }
 .dzp-tuile--direct .dzp-tuile__v { align-items: center; gap: 10px; }
-.dzp-tuile__s { font-size: 12.5px; line-height: 1.35; color: var(--dz-texte-2); }
+.dzp-tuile__s { font-size: 12.5px; line-height: 1.35; color: #5B534A; }
 .dzp-tuile--relance .dzp-tuile__s { color: #7A2A22; }
-.dzp-tuile--direct .dzp-tuile__s { color: var(--dz-en-cours-texte); }
-.dzp-point { width: 12px; height: 12px; border-radius: 50%; background: var(--dz-en-cours); flex: none; }
+.dzp-tuile--direct .dzp-tuile__s { color: #1F5A3B; }
+.dzp-tuile__liste { margin-top: 2px; max-height: 168px; overflow-y: auto; background: #FFFDF8; border: 1px solid #F0B8AE; border-radius: 12px; padding: 4px 6px; }
+.dzp-point { width: 12px; height: 12px; border-radius: 50%; background: #2FA36B; flex: none; animation: dzpPouls 1.4s ease-out infinite; }
+@keyframes dzpPouls { 0% { box-shadow: 0 0 0 0 rgba(47,163,107,.55); } 100% { box-shadow: 0 0 0 8px rgba(47,163,107,0); } }
 .dzp-total { display: flex; flex-direction: column; justify-content: space-between; min-width: 150px; }
 .dzp-total__n { display: flex; align-items: baseline; gap: 6px; }
-.dzp-total__n b { font-family: var(--dz-font-chiffres); font-weight: 700; font-size: var(--dz-fs-40); line-height: 1; letter-spacing: -.04em; }
-.dzp-total__n span { font-weight: 700; color: rgba(242,237,227,.75); }
-.dzp-total__s { font-size: 12.5px; color: rgba(242,237,227,.8); }
-.dzp-barres { flex: 1; display: flex; align-items: flex-end; gap: 8px; min-height: 90px; }
-.dzp-barre { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
-.dzp-barre__n, .dzp-barre__l { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); color: rgba(242,237,227,.8); }
-.dzp-barre__l { font-weight: 700; }
-.dzp-barre[data-auj] .dzp-barre__l { color: var(--dz-jaune); }
-.dzp-barre__b { width: 100%; border-radius: 6px 6px 2px 2px; background: var(--dz-creme); min-height: 3px; }
-.dzp-barre[data-auj] .dzp-barre__b { background: var(--dz-jaune); outline: 2px solid var(--dz-creme); outline-offset: 2px; }
-.dzp-barre[data-zero] .dzp-barre__b { background: rgba(242,237,227,.25); }
-.dzp-replier { position: absolute; right: 30px; top: -10px; height: 24px; padding: 0 10px; border-radius: var(--dz-r-pill); background: var(--dz-creme); border: 1px solid var(--dz-trait-fort); font-size: 12px; font-weight: 800; color: var(--dz-texte-2); display: flex; align-items: center; cursor: pointer; z-index: 41; }
-.dzp-replie { flex: none; padding: 0 24px 12px; }
-.dzp-replie__ligne { min-height: 40px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 20px; padding: 4px 6px 4px 16px; border-radius: var(--dz-r-pill); border: 1px solid var(--dz-trait); background: var(--dz-carte); font-size: 13.5px; }
-.dzp-replie__ligne b { font-family: var(--dz-font-chiffres); }
-.dzp-replie__rel { color: var(--dz-erreur-texte); }
-.dzp-replie__dir { display: inline-flex; align-items: center; gap: 6px; color: var(--dz-en-cours-texte); }
-.dzp-replie__dir .dzp-point { width: 8px; height: 8px; }
-.dzp-deplier { margin-left: auto; height: 30px; padding: 0 12px; border-radius: var(--dz-r-pill); background: var(--dz-encre); color: var(--dz-jaune); border: 0; font-weight: 800; font-size: 12.5px; cursor: pointer; }
+.dzp-total__n b { font-weight: 900; font-size: 40px; line-height: 1; letter-spacing: -.04em; }
+.dzp-total__n span { font-weight: 700; color: rgba(242,237,227,.6); }
+.dzp-total__s { font-size: 12.5px; color: rgba(242,237,227,.65); }
+.dzp-barres { flex: 1; display: flex; align-items: flex-end; gap: 10px; padding-top: 6px; }
+.dzp-barre { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+.dzp-barre__n, .dzp-barre__l { font-family: var(--dz-font-chiffres); font-size: 10px; color: rgba(242,237,227,.7); white-space: nowrap; }
+.dzp-barre__l { font-weight: 700; color: rgba(242,237,227,.6); }
+.dzp-barre[data-auj] .dzp-barre__l { color: #FFC21A; }
+.dzp-barre__b { width: 100%; min-height: 4px; border-radius: 8px 8px 3px 3px; }
+.dzp-barre[data-auj] .dzp-barre__b { outline: 2px solid #FFC21A; outline-offset: 2px; }
 .dzp-panneau-stat { position: absolute; z-index: 45; top: calc(100% - 8px); width: 360px; max-width: calc(100vw - 32px); max-height: 60vh; overflow-y: auto; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); box-shadow: var(--dz-ombre-menu); padding: 12px; color: var(--dz-encre); }
 .dzp-panneau-stat .bt-pl-sp-h, .dzp-panneau-stat .bt-pl-sp-foot { padding: 6px; }
+.dzp-pieces { top: 72px; right: 16px; white-space: normal; }
 
-/* ── Grille ── */
-.dzp-zone { flex: 1; padding: 0 24px 24px; min-width: 0; }
-.dzp-defile { overflow-x: auto; border-radius: var(--dz-r-l); }
-.dzp-table { width: 100%; min-width: 1110px; border-collapse: separate; border-spacing: 0; table-layout: fixed; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-l); }
-.dzp-table col:first-child { width: var(--dz-col-salarie); }
-.dzp-th-nom, .dzp-th-jour { border-bottom: 2px solid var(--dz-encre); background: var(--dz-carte); }
-.dzp-th-nom { text-align: left; padding: 12px 14px; font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); letter-spacing: .14em; color: var(--dz-texte-2); font-weight: 700; text-transform: uppercase; border-top-left-radius: var(--dz-r-l); }
-.dzp-th-jour { padding: 10px; border-left: 1px solid var(--dz-trait-doux); text-align: left; vertical-align: top; font-weight: 400; }
-.dzp-th-jour[data-auj] { background: var(--dz-jour-courant-entete); box-shadow: inset 0 4px 0 var(--dz-jaune); }
+/* ── Grille de la planche 2a : carte #FFFDF8, bordure #E3DACB, rayon 16, colonne salarié de 220 px ── */
+.dzp-zone { flex: 1; padding: 14px 16px 16px; min-width: 0; }
+.dzp-defile { border-radius: 16px; }
+.dzp-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; background: #FFFDF8; border: 1px solid #E3DACB; border-radius: 16px; overflow: hidden; }
+.dzp-table col:first-child { width: 220px; }
+.dzp-th-nom { position: relative; text-align: left; padding: 10px 14px; border-bottom: 2px solid #15120F; vertical-align: bottom; font-weight: 400; }
+.dzp-th-nom__k { display: block; font-family: var(--dz-font-chiffres); font-size: 10px; letter-spacing: .14em; color: #5B534A; font-weight: 700; text-transform: uppercase; }
+.dzp-th-nom__h { display: flex; align-items: baseline; gap: 6px; margin-top: 2px; white-space: nowrap; }
+.dzp-th-nom__h b { font-weight: 900; font-size: 20px; letter-spacing: -.03em; }
+.dzp-th-nom__h span { font-size: 11.5px; color: #5B534A; }
+.dzp-th-jour { padding: 8px 10px; border-bottom: 2px solid #15120F; border-left: 1px solid #EFE7D9; text-align: left; vertical-align: bottom; font-weight: 400; background: transparent; }
+.dzp-th-jour[data-auj] { background: #FFF3CC; box-shadow: inset 0 4px 0 #FFC21A; }
 .dzp-th-jour[data-clos] { background: var(--dz-cloture-fond); }
-.dzp-th-jour:last-child { border-top-right-radius: var(--dz-r-l); }
-.dzp-jour { display: flex; align-items: center; gap: 8px; }
-.dzp-jour__l { font-size: 13px; font-weight: 700; color: var(--dz-texte-2); }
-.dzp-jour__n { font-weight: 900; font-size: var(--dz-fs-22); letter-spacing: -.03em; }
-.dzp-etiq { margin-left: auto; font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); font-weight: 700; letter-spacing: .08em; padding: 3px 6px; border-radius: 5px; background: var(--dz-encre); color: var(--dz-jaune); }
-.dzp-etiq[data-clos] { background: var(--dz-cloture-etiquette); color: #fff; }
-.dzp-jour__sub { font-family: var(--dz-font-chiffres); font-size: 11.5px; color: var(--dz-texte-2); font-weight: 500; }
-.dzp-case-sel { width: 22px; height: 22px; flex: none; border-radius: 6px; border: 2px solid var(--dz-encre); background: var(--dz-carte); font-size: 12px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--dz-encre); }
+.dzp-jour { display: flex; align-items: baseline; gap: 7px; white-space: nowrap; min-width: 0; }
+.dzp-jour__l { font-size: 12.5px; font-weight: 700; color: #5B534A; }
+.dzp-jour__n { font-weight: 900; font-size: 21px; letter-spacing: -.03em; }
+.dzp-jour__h { margin-left: auto; font-family: var(--dz-font-chiffres); font-size: 10.5px; color: #5B534A; }
+.dzp-jour__jauge { margin-top: 5px; height: 4px; border-radius: 2px; background: #EFE7D9; overflow: hidden; }
+.dzp-jour__jauge span { display: block; height: 100%; border-radius: 2px; }
+.dzp-etiq { align-self: center; font-family: var(--dz-font-chiffres); font-size: 9px; font-weight: 700; letter-spacing: .08em; padding: 2px 5px; border-radius: 4px; background: var(--dz-cloture-etiquette); color: #fff; }
+.dzp-case-sel { width: 22px; height: 22px; flex: none; align-self: center; border-radius: 6px; border: 2px solid var(--dz-encre); background: var(--dz-carte); font-size: 12px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--dz-encre); }
 .dzp-case-sel[data-on] { background: var(--dz-jaune); }
-.dzp-td-nom { vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--dz-trait-doux); }
-.dzp-nom-btn { display: block; width: 100%; background: transparent; border: 0; padding: 0; text-align: left; cursor: pointer; font-family: inherit; color: inherit; border-radius: var(--dz-r-xs); }
-.dzp-nom-haut { display: flex; align-items: center; gap: 10px; }
-.dzp-nom-haut .dzp-avatar { width: 36px; height: 36px; font-size: 12.5px; background: var(--dz-sable); }
-.dzp-nom-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.dzp-nom { font-weight: 800; font-size: var(--dz-fs-14); line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
-.dzp-nom-etat { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.dzp-chef { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); font-weight: 700; letter-spacing: .06em; background: var(--dz-chef-fond); color: var(--dz-chef-texte); padding: 2px 5px; border-radius: 4px; }
-.dzp-etat { display: inline-flex; align-items: center; gap: 5px; font-size: var(--dz-fs-12); font-weight: 700; color: var(--dz-en-cours-texte); }
-.dzp-etat::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
-.dzp-etat[data-ton="attente"] { color: var(--dz-erreur-texte); }
-.dzp-etat[data-ton="absent"] { color: var(--dz-texte-2); }
-.dzp-heures { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
-.dzp-jauge { height: 6px; border-radius: 3px; background: var(--dz-trait-doux); overflow: hidden; }
-.dzp-jauge span { display: block; height: 100%; border-radius: 3px; background: var(--dz-encre); }
-.dzp-heures__t { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); color: var(--dz-texte-2); }
-.dzp-td { vertical-align: top; padding: 6px; border-bottom: 1px solid var(--dz-trait-doux); border-left: 1px solid var(--dz-trait-doux); height: var(--dz-case-min-h); position: relative; }
-.dzp-td[data-auj] { background: var(--dz-jour-courant-case); }
-.dzp-td[data-live] { background: var(--dz-en-cours-fond); }
+.dzp-td-nom { vertical-align: top; padding: 10px 14px; border-bottom: 1px solid #EFE7D9; }
+.dzp-nom-btn { display: block; width: 100%; min-width: 0; background: transparent; border: 0; padding: 0; text-align: left; cursor: pointer; font-family: inherit; color: inherit; border-radius: var(--dz-r-xs); }
+.dzp-nom-haut { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.dzp-table .dzp-nom-haut .dzp-avatar { width: 32px; height: 32px; font-size: 12px; color: #15120F; }
+.dzp-nom-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.dzp-table .dzp-nom { font-weight: 800; font-size: 13.5px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dzp-table .dzp-etat { display: block; font-family: var(--dz-font-chiffres); font-size: 10.5px; font-weight: 700; color: #17663F; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dzp-table .dzp-etat[data-ton="attente"] { color: #C2410C; }
+.dzp-table .dzp-jauge { margin-top: 8px; height: 5px; border-radius: 3px; background: #EFE7D9; overflow: hidden; }
+.dzp-table .dzp-jauge span { display: block; height: 100%; background: linear-gradient(90deg, #FFC21A, #FF8A3D); }
+.dzp-td { position: relative; vertical-align: top; padding: 5px; border-bottom: 1px solid #EFE7D9; border-left: 1px solid #EFE7D9; }
+.dzp-td[data-auj] { background: #FFF6DB; }
 .dzp-td[data-clos] { background: var(--dz-cloture-fond); }
 .dzp-td[data-cible="ok"] { background: var(--dz-cible-fond); box-shadow: var(--dz-cible-anneau); }
 .dzp-td[data-cible="refus"] { box-shadow: var(--dz-cible-refus); }
-.dzp-case { display: flex; flex-direction: column; gap: 5px; height: 100%; min-height: 92px; cursor: pointer; }
+.dzp-case { display: flex; flex-direction: column; gap: 5px; height: 100%; cursor: pointer; min-width: 0; }
 .dzp-case[data-ferme] { cursor: default; }
-.dzp-vide { flex: 1; min-height: 88px; border-radius: var(--dz-r-s); border: 1.5px dashed var(--dz-trait-fort); display: flex; align-items: center; justify-content: center; color: var(--dz-texte-3); font-size: 20px; font-weight: 700; }
-.dzp-case:hover .dzp-vide { background: var(--dz-jaune-pale); }
-.dzp-clos-txt { flex: 1; min-height: 88px; display: flex; align-items: center; justify-content: center; color: var(--dz-texte-2); font-size: var(--dz-fs-12); font-weight: 700; }
-.dzp-ajouter { align-self: flex-end; margin-top: auto; background: none; border: 0; font-size: var(--dz-fs-12); font-weight: 700; color: var(--dz-texte-2); padding: 2px 6px; min-height: 24px; cursor: pointer; }
-.dzp-ajouter:hover { color: var(--dz-encre); }
+.dzp-vide { min-height: 62px; border-radius: 10px; border: 1.5px dashed #E0D6C4; display: flex; align-items: center; justify-content: center; color: #B5A994; font-size: 18px; }
+.dzp-case:hover .dzp-vide { background: #F7F1E6; color: #15120F; border-color: #15120F; }
+.dzp-clos-txt { min-height: 62px; display: flex; align-items: center; justify-content: center; color: var(--dz-texte-2); font-size: var(--dz-fs-12); font-weight: 700; }
+/* « + ajouter » dans une case pleine : absent de la planche au repos, il apparaît au survol de la case (hors du flux). */
+.dzp-ajouter { position: absolute; right: 6px; bottom: 4px; z-index: 2; opacity: 0; background: #15120F; color: #FFC21A; border: 0; border-radius: 999px; font-family: inherit; font-size: 11px; font-weight: 800; padding: 3px 8px; cursor: pointer; transition: opacity var(--dz-t-rapide); }
+.dzp-td:hover .dzp-ajouter, .dzp-ajouter:focus-visible { opacity: 1; }
 .dzp-cible-msg { align-self: stretch; min-height: 26px; border-radius: 8px; background: var(--dz-encre); color: var(--dz-jaune); font-size: var(--dz-fs-12); font-weight: 800; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.1; padding: 0 6px; pointer-events: none; }
 .dzp-cible-msg[data-refus] { background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); }
 .dzp-cible-msg .cp, .bt-pl--copying .dzp-cible-msg .mv { display: none; }
 .bt-pl--copying .dzp-cible-msg .cp { display: inline; }
+.dzp-aucun { padding: 28px; text-align: center; color: #5B534A; font-size: 14px; }
 
-/* Absence : rayures 135°, mêmes valeurs que le salarié */
-.dzp-absence { position: relative; flex: 1; min-height: 90px; width: 100%; border: 0; border-radius: var(--dz-r-s); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px; cursor: pointer; color: var(--dz-texte-note); font-family: inherit; }
-.dzp-absence b { font-family: var(--dz-font-chiffres); font-weight: 700; letter-spacing: .1em; font-size: var(--dz-fs-11); text-align: center; text-transform: uppercase; }
-.dzp-absence span { font-size: var(--dz-fs-12); }
-.dzp-absence[data-type="conge"] { background: repeating-linear-gradient(135deg, var(--dz-conge-a) 0 9px, var(--dz-conge-b) 9px 18px); }
-.dzp-absence[data-type="maladie"] { background: repeating-linear-gradient(135deg, var(--dz-maladie-a) 0 9px, var(--dz-maladie-b) 9px 18px); }
-.dzp-absence[data-type="intemperie"] { background: repeating-linear-gradient(135deg, var(--dz-intemperie-a) 0 9px, var(--dz-intemperie-b) 9px 18px); }
+/* Absence : rayures 135° (9 px), libellé mono capitales, comme la planche */
+.dzp-absence { position: relative; min-height: 62px; width: 100%; border: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 6px; cursor: pointer; color: #3A332B; font-family: inherit; }
+.dzp-absence b { font-family: var(--dz-font-chiffres); font-weight: 700; letter-spacing: .14em; font-size: 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.dzp-absence[data-type="conge"] { background: repeating-linear-gradient(135deg, #EFE6D2 0 9px, #E4D6B8 9px 18px); }
+.dzp-absence[data-type="maladie"] { background: repeating-linear-gradient(135deg, #F1E2E2 0 9px, #E7D2D2 9px 18px); }
+.dzp-absence[data-type="intemperie"] { background: repeating-linear-gradient(135deg, #DCE6EE 0 9px, #CBD9E4 9px 18px); }
 .dzp-absence[data-type="repos"] { background: repeating-linear-gradient(135deg, var(--dz-repos-a) 0 9px, var(--dz-repos-b) 9px 18px); }
 .dzp-absence .dzp-case-sel { position: absolute; top: 6px; right: 6px; }
+
+/* Carte de la grille 2a (intervention, réunion, heures hors planning) : `styleItem` du script, « envoyées sombres » allumé */
+.dzp-carte { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 7px 12px; border-radius: 10px; overflow: hidden; background: #FFFFFF; border: 1.5px dashed #9C907E; color: #15120F; --c-lisere: #15120F; --c-heure: #5B534A; --c-tag-f: #E6DDCD; --c-tag-t: #5B534A; text-align: left; }
+.dzp-carte[data-creneau="matin"] { background: #DDEBFA; --c-lisere: #4A8FE0; }
+.dzp-carte[data-creneau="apres-midi"] { background: #FCE3CF; --c-lisere: #EE8A43; }
+.dzp-carte[data-creneau="soir"] { background: #E8DCF6; --c-lisere: #9A6FD6; }
+.dzp-carte[data-creneau="journee"] { background: #FFFFFF; --c-lisere: #15120F; }
+.dzp-carte__lisere { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c-lisere, #15120F); }
+.dzp-carte__titre { font-weight: 800; font-size: 12.5px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dzp-carte__heure { font-family: var(--dz-font-chiffres); font-size: 11px; font-weight: 700; color: var(--c-heure); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dzp-carte__tag { align-self: flex-start; max-width: 100%; font-family: var(--dz-font-chiffres); font-size: 9px; font-weight: 700; letter-spacing: .08em; padding: 2px 5px; border-radius: 4px; background: var(--c-tag-f); color: var(--c-tag-t); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dzp-carte[data-etat="a-envoyer"] { border: 1.5px solid #15120F; --c-heure: #15120F; --c-tag-f: #FFE1CC; --c-tag-t: #9A3412; }
+.dzp-carte[data-etat="envoyee"] { background: #15120F; border: 1.5px solid #15120F; color: #F2EDE3; --c-heure: #FFC21A; }
+.dzp-carte[data-etat="en-cours"] { background: #E7F6EE; border: 1.5px solid #2FA36B; --c-lisere: #2FA36B; --c-heure: #17663F; --c-tag-f: #2FA36B; --c-tag-t: #FFFFFF; }
+.dzp-carte[data-etat="retiree"] { background: #EFE9DE; border: 1.5px solid #D6CBB7; --c-tag-f: #E6DDCD; --c-tag-t: #5B534A; }
+.dzp-carte[data-etat="retiree"] .dzp-carte__titre { text-decoration: line-through; }
+.dzp-carte[data-etat="ajoutee"] { background: #FFFDF8; border: 1.5px dashed #D9480F; --c-lisere: #D9480F; --c-tag-f: #FFE1CC; --c-tag-t: #9A3412; }
+.dzp-carte[data-etat="reunion"] { background: #FBE0EA; border: 1.5px solid #D6457A; --c-lisere: #D6457A; --c-heure: #15120F; --c-tag-f: #F6C6D8; --c-tag-t: #7A1840; }
+.dzp-carte[data-etat="en-cours"] .dzp-carte__heure { letter-spacing: -.02em; }
+/* Étiquettes : sur deux lignes au besoin à partir de 1 280 px, comme la planche (« RETIRÉE PAR LE / SALARIÉ ») ; coupées par « … » en dessous (aucun retour à la ligne à 1 024 px). */
+@media (min-width: 1280px) { .dzp-carte__tag { white-space: normal; overflow: visible; } }
+/* Sous 1 280 px, la colonne salarié prend la largeur que la planche rend réellement (176 px) pour laisser de la place aux jours. */
+@media (max-width: 1279px) { .dzp-table col:first-child { width: 176px; } .dzp-td-nom, .dzp-th-nom { padding-left: 10px; padding-right: 10px; } }
+.dzp-carte__case { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; }
+.dzp-carte-btn { display: block; width: 100%; padding: 0; border: 0; background: none; font-family: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 10px; }
+.dzp-table .dzp-bulle-wrap, .dzp-table .dzp-prise { border-radius: 10px; }
+.dzp-table .dzp-taches { min-height: 22px; font-size: 10.5px; }
+.dzp-table .bt-pl-livechip { border-radius: 10px; }
 
 /* ── Bulle d'intervention (même composant en grille, en grand au téléphone) ── */
 .dzp-bulle-wrap { position: relative; border-radius: var(--dz-r-bulle); }
@@ -234,7 +304,6 @@ button.dzp-tuile { cursor: pointer; }
 .dzp-m-cartes .dzp-taches, .dzp-m-carte .dzp-taches { min-height: var(--dz-tap); padding: 0 14px; font-size: 13px; }
 
 /* ── Légende ── */
-.dzp-legende-bouton { margin-top: 10px; display: inline-flex; height: 32px; padding: 0 12px; border-radius: var(--dz-r-pill); border: 1px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); align-items: center; font-size: 13px; font-weight: 700; cursor: pointer; }
 .dzp-legende { margin-top: 10px; display: none; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: var(--dz-fs-125); color: var(--dz-texte-note); background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: 14px; padding: 10px 14px; }
 .dzp-legende__t { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); letter-spacing: .14em; font-weight: 700; color: var(--dz-texte-2); background: none; border: 0; cursor: pointer; padding: 0; min-height: 24px; }
 .dzp-legende__i { display: inline-flex; align-items: center; gap: 6px; }
@@ -394,9 +463,8 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
 }
 @media (forced-colors: active) { .dzp-bureau-desk :focus-visible { outline: 2px solid CanvasText; } }
 
-/* Légende : fermée par défaut, ouverte par « Légende ▾ » ; à partir de 1 600 px elle reste ouverte. */
+/* Légende : fermée par défaut, ouverte par « Plus ⋯ » › Légende (planche 2a : rien au-dessus du planning). */
 .dzp-legende[data-open] { display: flex; }
-@media (min-width: 1600px) { .dzp-legende { display: flex; } .dzp-legende-bouton { display: none; } .dzp-legende__t { pointer-events: none; } }
 /* Avatars : une teinte douce par salarié (règle de couleur d'avant : un hachage de l'identifiant) ; absent = teinte « maladie » */
 .dzp-avatar[data-teinte="0"] { background: var(--dz-jaune); } .dzp-avatar[data-teinte="1"] { background: var(--dz-matin); }
 .dzp-avatar[data-teinte="2"] { background: #E0ECE6; } .dzp-avatar[data-teinte="3"] { background: var(--dz-maladie-a); }
@@ -465,8 +533,6 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
 .dzp-m-corps .bt-cp-tip-ok { min-height: var(--dz-tap); border-radius: var(--dz-r-pill); border: 1.5px solid var(--dz-encre); background: var(--dz-carte); font-family: inherit; font-weight: 800; }
 
 .dzp-nom-btn { min-height: var(--dz-clic); }
-.dzp-ajouter { position: relative; }
-.dzp-ajouter::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--dz-clic)); height: var(--dz-clic); transform: translate(-50%, -50%); }
 
 /* Fiche : les contrôles repris tels quels (horaire prévu, préréglages) respectent la cible de 40 px (44 px au toucher). */
 .dzp-fiche button { min-height: var(--dz-clic); min-width: var(--dz-clic); }
@@ -490,3 +556,22 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
 
 /* Copier : la bulle d'origine reste pleine (seul un déplacement l'estompe à 45 %) */
 .bt-pl--copying .dzp-bulle-wrap[data-glisse] { opacity: 1; outline: none; }
+
+/* Grille 2a : les huit teintes d'avatar de la planche (une par salarié, même hachage qu'avant) ; absent aujourd'hui = rose « maladie ». */
+.dzp-table .dzp-avatar[data-teinte="0"] { background: #FFE9A8; } .dzp-table .dzp-avatar[data-teinte="1"] { background: #DCEFE4; }
+.dzp-table .dzp-avatar[data-teinte="2"] { background: #F6DDE8; } .dzp-table .dzp-avatar[data-teinte="3"] { background: #DDE7F6; }
+.dzp-table .dzp-avatar[data-teinte="4"] { background: #EDE3F8; } .dzp-table .dzp-avatar[data-teinte="5"] { background: #FFE1CC; }
+.dzp-table .dzp-avatar[data-teinte="6"] { background: #E2F0D9; } .dzp-table .dzp-avatar[data-teinte="7"] { background: #E6DDCD; }
+.dzp-table .dzp-avatar[data-teinte="absent"] { background: #F1E2E2; }
+
+/* Pièces de ligne du lot 1 que garde le téléphone (nom, CHEF, état) ; la grille 2a les redessine plus haut (.dzp-table …). */
+.dzp-nom { font-weight: 800; font-size: var(--dz-fs-14); line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.dzp-nom-etat { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dzp-chef { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); font-weight: 700; letter-spacing: .06em; background: var(--dz-chef-fond); color: var(--dz-chef-texte); padding: 2px 5px; border-radius: 4px; }
+.dzp-etat { display: inline-flex; align-items: center; gap: 5px; font-size: var(--dz-fs-12); font-weight: 700; color: var(--dz-en-cours-texte); }
+.dzp-etat::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.dzp-etat[data-ton="attente"] { color: var(--dz-erreur-texte); }
+.dzp-table .dzp-etat::before { content: none; }
+.dzp-table .dzp-hors { padding: 0; border: 0; border-radius: 10px; background: none; font-size: inherit; line-height: inherit; }
+.dzp-b-avatar__i { display: contents; }
+.dzp-vh { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

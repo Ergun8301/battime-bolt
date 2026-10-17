@@ -5,11 +5,22 @@
 import { toast } from 'sonner';
 import type { Meeting } from '@/lib/missions';
 import { hhmm, meetingTimeLabel, taskProgress } from '@/supabase/functions/_shared/missions';
+import { Carte2a } from './bulle-v2';
 
 const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
-export function ReunionV2({ m, onOpen, inert = false, grande = false }: { m: Meeting; onOpen?: () => void; inert?: boolean; grande?: boolean }) {
+export function ReunionV2({ m, onOpen, inert = false, grande = false, compacte = false }: { m: Meeting; onOpen?: () => void; inert?: boolean; grande?: boolean; compacte?: boolean }) {
   const quand = meetingTimeLabel(m.start_time, m.end_time);
+  // Grille 2a : la réunion est une carte comme les autres (rose, liseré framboise, étiquette « RÉUNION · HORS HEURES »), même bouton et mêmes gestes.
+  if (compacte) {
+    const plein2a = `Réunion · ${quand} · ${m.title}${m.place ? ` · ${m.place}` : ''}${m.all_team ? ' · toute l’équipe' : ''} — ne compte pas dans les heures`;
+    return (
+      <button type="button" className="dzp-carte-btn" data-inerte={inert ? '' : undefined} title={plein2a} aria-label={plein2a} data-testid="meeting-chip" data-meeting={m.id}
+        onPointerDown={stop} onClick={(e) => { e.stopPropagation(); if (inert) { toast('Réunion / tâches — hors sélection'); return; } onOpen?.(); }}>
+        <Carte2a etat="reunion" creneau="reunion" titre={m.title} heure={quand} etiquette="RÉUNION · HORS HEURES" testId="meeting-card" />
+      </button>
+    );
+  }
   const plein = `Réunion · ${quand} · ${m.title}${m.place ? ` · ${m.place}` : ''}${m.all_team ? ' · toute l’équipe' : ''} — ne compte pas dans les heures`;
   const sous = [m.place, m.all_team ? 'toute l’équipe' : ''].filter(Boolean).join(' · ');
   return (

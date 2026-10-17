@@ -1,17 +1,17 @@
 'use client';
 
-// Design du bureau (v2) · LE PLANNING (lot 1). Chargé À LA DEMANDE par admin-planning.tsx quand le drapeau `?ui=2` est actif (jamais dans le premier chargement).
+// Design du bureau (v2) · LE PLANNING, planche d'essai 2a (« Bureau · barre unique + plein écran ») posée sur la base du lot 1. Chargé À LA DEMANDE par admin-planning.tsx quand le drapeau `?ui=2` est actif (jamais dans le premier chargement).
 // Ce morceau ne lit rien et n'écrit rien : il reçoit de l'écran existant ses états et ses gestionnaires (contexte-v2.ts) et dessine la planche du designer.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ActionDone } from '@/components/action-done';
 import { totauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
 import './bureau-jetons.css';
 import './planning-v2.css';
-import { BarreNoire, BarreSemaine, TiroirClients } from './barres-v2';
-import { Bandeau } from './bandeau-v2';
-import { Grille } from './grille-v2';
+import { BarreUnique, PastillePleinEcran, TiroirClients } from './barres-v2';
+import { ListePieces, PanneauChiffres } from './bandeau-v2';
+import { chargeJours, Grille } from './grille-v2';
 import { Mobile } from './mobile-v2';
 import type { PlanningCtx } from './contexte-v2';
 
@@ -26,16 +26,15 @@ const LEGENDE: { k: string; l: string }[] = [
   { k: 'absence', l: 'Absence (rayée)' }, { k: 'clos', l: 'Mois clôturé (CLOS)' }, { k: 'reserve', l: 'Réserve à traiter' },
 ];
 
-function Legende() {
-  const [ouverte, setOuverte] = useState(false);
+/** La légende : la planche 2a ne la dessine pas au-dessus du planning ; elle s'ouvre depuis « Plus ⋯ » › Légende, sous la grille (Échap ou « LÉGENDE ▴ » la referme). */
+function Legende({ ouverte, fermer }: { ouverte: boolean; fermer: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (ouverte) ref.current?.scrollIntoView({ block: 'nearest' }); }, [ouverte]);
   return (
-    <>
-      {!ouverte && <button type="button" className="dzp-legende-bouton" aria-expanded={false} onClick={() => setOuverte(true)} data-testid="legende-ouvrir">Légende ▾</button>}
-      <div className="dzp-legende" data-open={ouverte ? '' : undefined} data-testid="legende">
-        <button type="button" className="dzp-legende__t" onClick={() => setOuverte(false)} aria-expanded={true}>LÉGENDE ▴</button>
-        {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
-      </div>
-    </>
+    <div className="dzp-legende" ref={ref} data-open={ouverte ? '' : undefined} data-testid="legende">
+      <button type="button" className="dzp-legende__t" onClick={fermer} aria-expanded={true}>LÉGENDE ▴</button>
+      {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
+    </div>
   );
 }
 
@@ -87,20 +86,47 @@ function Dock({ c }: { c: PlanningCtx }) {
   );
 }
 
+/** Une frappe dans un champ de saisie (la touche F n'y passe jamais en plein écran). */
+const dansUnChamp = (t: EventTarget | null) => {
+  const e = t as HTMLElement | null;
+  return !!e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName) || !!e.closest('[role="dialog"],[role="alertdialog"],[role="menu"]'));
+};
+
+/** Recherche : même règle que les listes « Clients » et « Salariés » d'aujourd'hui (minuscules, « contient ») ; un salarié reste si son nom OU un chantier de sa semaine correspond. */
+function filtrer(c: PlanningCtx, q: string, dates: string[]) {
+  const t = q.trim().toLowerCase();
+  if (!t) return c.displayWorkers;
+  return c.displayWorkers.filter((w) => `${w.first_name} ${w.last_name}`.toLowerCase().includes(t)
+    || c.planning.some((p) => p.user_id === w.id && dates.includes(p.work_date) && (p.worksite?.client_name || '').toLowerCase().includes(t)));
+}
+
 export default function PlanningV2({ c }: { c: PlanningCtx }) {
   // Le drapeau posé sur <html> habille aussi les fenêtres Radix (rendues dans <body>) : voir la fin de planning-v2.css.
   useEffect(() => {
     document.documentElement.setAttribute('data-dz-bureau', '');
     return () => document.documentElement.removeAttribute('data-dz-bureau');
   }, []);
-  // Échap ferme les menus, le tiroir Clients et les panneaux de chiffres (les fenêtres, elles, se ferment toutes seules : Radix).
+  const [pleinEcran, setPleinEcran] = useState(false);
+  const [recherche, setRecherche] = useState('');
+  const [legende, setLegende] = useState(false);
+  // Échap ferme les menus, le tiroir Clients, le menu des chiffres, la légende, puis le plein écran (les fenêtres, elles, se ferment toutes seules : Radix).
   const { accountMenuOpen, chantierMenuOpen, statPanel, setAccountMenuOpen, setChantierMenuOpen, setStatPanel } = c;
   useEffect(() => {
-    if (!accountMenuOpen && !chantierMenuOpen && !statPanel) return;
-    const f = (e: KeyboardEvent) => { if (e.key !== 'Escape') return; setAccountMenuOpen(false); setChantierMenuOpen(false); setStatPanel(null); };
+    const f = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (accountMenuOpen || chantierMenuOpen || statPanel) { setAccountMenuOpen(false); setChantierMenuOpen(false); setStatPanel(null); return; }
+        if (legende) { setLegende(false); return; }
+        if (pleinEcran && !document.querySelector('[role="dialog"],[role="alertdialog"]')) setPleinEcran(false);
+        return;
+      }
+      // Planche 2a : « Plein écran : touche ⤢ ou F ». Jamais pendant une saisie, jamais avec une touche de commande, jamais sous une fenêtre ouverte.
+      if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey && !dansUnChamp(e.target) && !document.querySelector('[role="dialog"],[role="alertdialog"]')) {
+        e.preventDefault(); setPleinEcran((v) => !v);
+      }
+    };
     window.addEventListener('keydown', f);
     return () => window.removeEventListener('keydown', f);
-  }, [accountMenuOpen, chantierMenuOpen, statPanel, setAccountMenuOpen, setChantierMenuOpen, setStatPanel]);
+  }, [accountMenuOpen, chantierMenuOpen, statPanel, legende, pleinEcran, setAccountMenuOpen, setChantierMenuOpen, setStatPanel]);
   const dates = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const totaux = useMemo(() => {
     const exclure = new Set<string>();
@@ -109,18 +135,29 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dates.join('|'), c.displayWorkers, c.realEntries, c.planning, c.draftEntries, c.withdrawnIds]);
   const relances = (c.waitingByWorker as { id: string; name: string; days: string[] }[]) || [];
+  // La grille ne montre que les salariés retenus par la recherche (affichage seulement : la sélection « toute la semaine » garde toute l'équipe).
+  const visibles = useMemo(() => filtrer(c, recherche, dates),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [c.displayWorkers, c.planning, recherche, dates.join('|')]);
+  const cGrille = visibles === c.displayWorkers ? c : { ...c, displayWorkers: visibles };
   return (
     <>
-      <div className="dzp-bureau-desk">
-        <BarreNoire c={c} />
-        <BarreSemaine c={c} />
-        <Bandeau c={c} chiffres={{ envoyees: totaux.envoyees, aVenir: totaux.aVenir, jours: totaux.jours, relances }} />
+      <div className="dzp-bureau-desk" data-plein-ecran={pleinEcran ? '' : undefined}>
+        {pleinEcran
+          ? <PastillePleinEcran c={c} quitter={() => setPleinEcran(false)} />
+          : (
+            <div className="dzp-haut">
+              <BarreUnique c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} legende={() => setLegende(true)} />
+              {c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={{ envoyees: totaux.envoyees, aVenir: totaux.aVenir, charge: chargeJours(c, dates, totaux), relances }} fermer={() => setStatPanel(null)} />}
+              {c.statPanel === 'docs' && <ListePieces c={c} />}
+            </div>
+          )}
         <TiroirClients c={c} />
         {c.workers.length > 0 && !c.selectMode && <div className="dzp-astuce">{c.copyTipDesk}</div>}
         <div className="dzp-zone">
           <Aide c={c} />
-          <Grille c={c} totaux={totaux} />
-          <Legende />
+          <Grille c={cGrille} totaux={totaux} recherche={recherche.trim()} />
+          <Legende ouverte={legende} fermer={() => setLegende(false)} />
         </div>
       </div>
       <Mobile c={c} />

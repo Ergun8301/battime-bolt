@@ -99,6 +99,57 @@ export function CarteBulle({ d, sel, grand, raison }: { d: DonneesBulle; sel?: S
   );
 }
 
+/** « 4h00 » : la durée telle que l'écrit la planche 2a (heures, « h », minutes sur deux chiffres). */
+export const duree2a = (minutes: number): string => { const m = Math.max(0, Math.round(minutes)); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
+
+/** Minutes écoulées depuis « 07:45 » (heure de Paris), ou null si l'heure n'est pas lisible (pointage d'un autre jour : « jeu. 07:45 »). */
+export function minutesDepuis(depuis: string, maintenant = new Date()): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(depuis.trim());
+  if (!m) return null;
+  const [h, mn] = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(maintenant).split(':').map(Number);
+  const d = h * 60 + mn - (Number(m[1]) * 60 + Number(m[2]));
+  return d >= 0 ? d : null;
+}
+
+/**
+ * La bulle de la GRILLE, telle que la dessine la planche 2a (`styleItem` du script, réglage « envoyées sombres » allumé) : fond du créneau, liseré de 4 px,
+ * titre 800 12,5 px, horaire en mono 11 px, une seule étiquette. Mêmes états que la bulle d'avant (lus par lireBulle), seuls le dessin et les libellés suivent la planche.
+ */
+export function lireBulle2a(d: DonneesBulle) {
+  const b = lireBulle(d);
+  const { p, real, draft, live } = d;
+  const prevu = p.estimated_start ? (p.estimated_end ? `${hhmm(p.estimated_start)}–${hhmm(p.estimated_end)}` : `${hhmm(p.estimated_start)} · fin à préciser`) : 'sans horaire';
+  let heure = prevu;
+  let etiquette: string | null = null;
+  if (b.etat === 'envoyee' && real) heure = `✓ ${hhmm(real.start)}–${hhmm(real.end)} · ${duree2a(real.minutes)}`;
+  else if (b.etat === 'a-envoyer' && draft) { heure = `${hhmm(draft.start)}–${hhmm(draft.end)} · ${duree2a(draft.minutes)}`; etiquette = 'À ENVOYER'; }
+  else if (b.etat === 'en-cours' && live) { const n = minutesDepuis(live); heure = `● depuis ${live}${n !== null ? ` · ${duree2a(n)}` : ''}`; etiquette = 'EN DIRECT'; }
+  else if (b.etat === 'retiree') etiquette = 'RETIRÉE PAR LE SALARIÉ';
+  else if (b.etat === 'ajoutee') {
+    const min = real?.minutes ?? draft?.minutes ?? null;
+    heure = min !== null ? `${duree2a(min)} · hors planning` : `${prevu} · hors planning`;
+    etiquette = 'AJOUTÉE PAR LE SALARIÉ';
+  }
+  // « Autre » nommé par le salarié : la planche titre la carte par ce nom (« Dépannage SAV »), même quand des heures existent.
+  const titre = p.worksite?.client_name === 'Autre' && p.notes?.trim() ? p.notes.trim() : b.titre;
+  return { ...b, titre, heure, etiquette };
+}
+
+/** Une carte de la grille 2a (aussi utilisée pour une réunion et pour les heures ajoutées hors planning). */
+export function Carte2a({ etat, creneau, titre, heure, etiquette, sel, testId = 'bubble', title }: {
+  etat: EtatBulle | 'reunion'; creneau: string; titre: ReactNode; heure: ReactNode; etiquette?: string | null; sel?: SelState; testId?: string; title?: string;
+}) {
+  return (
+    <div className="dzp-carte" data-etat={etat} data-creneau={creneau} data-withdrawn={etat === 'retiree' ? '1' : undefined} data-testid={testId} title={title}>
+      <span className="dzp-carte__lisere" aria-hidden="true" />
+      <span className="dzp-carte__titre" data-testid={testId === 'bubble' ? 'bubble-title' : undefined}>{titre}</span>
+      <span className="dzp-carte__heure" data-testid={testId === 'bubble' ? 'bubble-hours' : undefined}>{heure}</span>
+      {etiquette ? <span className="dzp-carte__tag" data-testid={etat === 'en-cours' ? 'bubble-live' : undefined}>{etiquette}</span> : null}
+      {sel && <CaseCoche sel={sel} classe="dzp-bulle__case dzp-carte__case" />}
+    </div>
+  );
+}
+
 /** Une bulle de la grille : on la prend (déplacer, copier) et on peut la viser (réordonner). Mêmes identifiants et repères que la bulle d'avant. */
 export function BulleV2({ d, sel, onEdit, onToggle, raison }: {
   d: DonneesBulle; sel?: SelState; onEdit: (p: PlanningWithWorksite) => void; onToggle?: (p: PlanningWithWorksite, lock: string | null) => void; raison?: string | null;
@@ -113,7 +164,8 @@ export function BulleV2({ d, sel, onEdit, onToggle, raison }: {
       <div ref={drag.setNodeRef} {...drag.attributes} {...drag.listeners} className="dzp-prise"
         onClick={(e) => { e.stopPropagation(); if (sel) onToggle?.(p, sel.lock); else onEdit(p); }}
         title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : ''}>
-        <CarteBulle d={d} sel={sel} raison={raison} />
+        {(() => { const b = lireBulle2a(d); return <Carte2a etat={b.etat} creneau={b.creneau} titre={b.titre} heure={b.heure} etiquette={b.etiquette} sel={sel} title={b.sous || undefined} />; })()}
+        {raison ? <span className="dzp-bulle__raison" role="status">{raison}</span> : null}
       </div>
     </div>
   );
