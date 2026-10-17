@@ -1,0 +1,297 @@
+/* Design bureau · lot 2 « Heures et paie » · feuille d'heures, corrections, renvoi, export paie, alerte de verrouillage, clôture du mois, congés.
+   Référence : docs/design-brief/designer-bureau (HP01 à HP31, HM01 à HM07). Jetons : bureau-jetons.css (portée .dz-portail, posée sur chaque fenêtre).
+   Tout est préfixé `dz-hb-` (heures bureau). Aucune règle ne vise une classe de l'ancienne interface : sans le drapeau, ce fichier n'est jamais chargé.
+   Couches (README §4) : fenêtres et panneaux 50 ; une fenêtre ouverte SUR un panneau passe devant par son ordre dans la page (Radix l'ajoute à la fin de <body>, comme les fenêtres de l'interface actuelle) ; les menus, listes et calendriers ouverts depuis une fenêtre aussi ; messages Sonner au-dessus de tout.
+   Cibles : 40 px au pointeur, 44 px au toucher, 48 px pour les boutons principaux du téléphone. Texte : 11 px minimum. */
+
+/* ── Voile, panneau latéral, fenêtre centrée, feuille du bas ── */
+.dz-hb-voile { position: fixed; inset: 0; z-index: 50; background: var(--dz-voile-panneau); }
+.dz-hb-voile[data-ton="fenetre"] { background: var(--dz-voile); }
+
+.dz-portail.dz-hb-panneau, .dz-portail.dz-hb-fenetre {
+  position: fixed; z-index: 50; display: flex; flex-direction: column; overflow: hidden; margin: 0; padding: 0;
+  background: var(--dz-carte); color: var(--dz-encre); font-family: var(--dz-font-ui);
+  border: 0; border-top: 4px solid var(--dz-jaune); box-sizing: border-box;
+}
+.dz-portail.dz-hb-panneau {
+  top: 0; right: 0; bottom: 0; width: min(var(--dz-panneau-w), 100vw); border-radius: 0; box-shadow: var(--dz-ombre-fenetre);
+  animation: dz-hb-panneau-entree var(--dz-t-normal) ease-out;
+}
+.dz-portail.dz-hb-panneau[data-large="oui"] { width: min(var(--dz-panneau-large-w), 100vw); }
+.dz-portail.dz-hb-fenetre {
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); border-radius: var(--dz-r-dialog); box-shadow: var(--dz-ombre-fenetre);
+  animation: dz-hb-fenetre-entree var(--dz-t-normal) ease-out;
+}
+.dz-portail.dz-hb-fenetre[data-largeur="etroite"] { width: min(480px, calc(100vw - 32px)); }
+@keyframes dz-hb-panneau-entree { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes dz-hb-fenetre-entree { from { opacity: 0; transform: translate(-50%, calc(-50% + 12px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
+
+.dz-hb-tete { flex: none; position: relative; padding: 16px 76px 8px 20px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dz-hb-kicker { margin: 0; font: 500 var(--dz-fs-12)/1.25 var(--dz-font-chiffres); letter-spacing: .14em; text-transform: uppercase; color: var(--dz-titre-section); overflow-wrap: anywhere; }
+.dz-hb-titre { margin: 0; font: 900 var(--dz-fs-24)/1.1 var(--dz-font-ui); letter-spacing: var(--dz-tracking-titre); color: var(--dz-encre); overflow-wrap: anywhere; }
+.dz-hb-sous { margin: 2px 0 0; font: 500 14px/1.4 var(--dz-font-ui); color: var(--dz-texte-note); overflow-wrap: anywhere; }
+.dz-hb-fermer {
+  position: absolute; top: 16px; right: 20px; width: 44px; height: 44px; min-width: 44px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--dz-trait-fort); background: transparent; color: var(--dz-encre); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; font: 400 18px/1 var(--dz-font-ui);
+}
+.dz-hb-fermer:hover { background: var(--dz-sable); }
+.dz-hb-fermer .dz-hb-retour { display: none; }
+.dz-hb-corps { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 20px 18px; display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; gap: 14px; align-content: start; }
+.dz-hb-corps p { margin: 0; font: 400 14.5px/1.45 var(--dz-font-ui); color: var(--dz-texte-note); }
+.dz-hb-pied { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; padding: 14px 20px 18px; border-top: 1px solid var(--dz-trait-doux); background: var(--dz-carte); }
+.dz-hb-pied[data-pile="oui"] { flex-direction: column; align-items: stretch; }
+.dz-hb-pied[data-pile="oui"] .dz-hb-btn { width: 100%; }
+
+/* ── Boutons : pastille de 44 px, principal jaune, encre, danger ── */
+.dz-hb-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px 20px;
+  border-radius: var(--dz-r-pill); border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); box-shadow: none;
+  font: 800 14.5px/1.2 var(--dz-font-ui); text-align: center; white-space: normal; cursor: pointer; text-decoration: none;
+}
+.dz-hb-btn:hover:not(:disabled) { border-color: var(--dz-encre); }
+.dz-hb-btn[data-ton="principal"] { background: var(--dz-jaune); border-color: var(--dz-jaune-ombre); }
+.dz-hb-btn[data-ton="principal"]:hover:not(:disabled) { background: #FFD04D; border-color: var(--dz-jaune-ombre); }
+.dz-hb-btn[data-ton="encre"] { background: var(--dz-encre); border-color: var(--dz-encre); color: var(--dz-jaune); }
+.dz-hb-btn[data-ton="danger"] { background: var(--dz-erreur); border-color: var(--dz-erreur); color: #fff; }
+.dz-hb-btn[data-taille="principal"] { min-height: 48px; }
+.dz-hb-btn:disabled, .dz-hb-btn[aria-disabled="true"] { background: var(--dz-inactif-fond); border-color: var(--dz-inactif-fond); color: var(--dz-inactif-texte); cursor: default; }
+.dz-hb-lien { background: none; border: 0; padding: 0; min-height: 44px; display: inline-flex; align-items: center; font: 700 13px/1.3 var(--dz-font-ui); color: var(--dz-texte-note); text-decoration: underline; cursor: pointer; }
+
+/* ── Choix de période : trois options en pastille ── */
+.dz-hb-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; padding: 3px; min-height: 52px; border: 1.5px solid var(--dz-encre); border-radius: var(--dz-r-pill); background: var(--dz-carte); }
+.dz-hb-seg > button, .dz-hb-seg > span > button { width: 100%; min-height: 44px; border: 0; border-radius: var(--dz-r-pill); background: transparent; color: var(--dz-encre); font: 800 14.5px/1.1 var(--dz-font-ui); cursor: pointer; padding: 0 8px; }
+.dz-hb-seg > span { display: flex; }
+.dz-hb-seg [aria-pressed="true"] { background: var(--dz-encre); color: var(--dz-jaune); }
+.dz-hb-seg button:disabled { opacity: .55; cursor: default; }
+.dz-hb-seg[data-taille="sm"] { min-height: 48px; }
+.dz-hb-seg[data-taille="sm"] > button { min-height: 40px; font-size: 13.5px; }
+
+/* ── Cartes, lignes clé / valeur, étiquettes de section ── */
+.dz-hb-etiquette { margin: 0; font: 500 var(--dz-fs-12)/1.25 var(--dz-font-chiffres); letter-spacing: var(--dz-tracking-etiquette); text-transform: uppercase; color: var(--dz-titre-section); }
+.dz-hb-etiquette[data-ton="neutre"] { color: var(--dz-texte-2); }
+.dz-hb-carte { border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); overflow: hidden; }
+.dz-hb-kv { margin: 0; padding: 0; list-style: none; }
+.dz-hb-kv > li { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; min-height: 40px; padding: 8px 14px; border-top: 1px solid var(--dz-trait-doux); font: 400 14px/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-hb-kv > li:first-child { border-top: 0; }
+.dz-hb-kv > li > b { font: 700 14px/1.3 var(--dz-font-chiffres); color: var(--dz-encre); text-align: right; overflow-wrap: anywhere; }
+.dz-hb-kv > li > b[data-texte="ui"] { font-family: var(--dz-font-ui); font-weight: 800; }
+.dz-hb-note { padding: 12px 14px; border-radius: var(--dz-r-m); border: 1px solid var(--dz-trait-fort); background: var(--dz-verrou-fond); }
+.dz-hb-note b { display: block; font: 800 15px/1.3 var(--dz-font-ui); color: var(--dz-encre); }
+.dz-hb-note span { display: block; margin-top: 3px; font: 400 14px/1.4 var(--dz-font-ui); color: var(--dz-texte-note); }
+.dz-hb-note[data-ton="attention"] { border-color: var(--dz-jaune-ombre); background: var(--dz-jaune-pale); }
+.dz-hb-note[data-ton="attention"] span { color: var(--dz-jaune-texte); }
+.dz-hb-note[data-ton="erreur"] { border-color: var(--dz-erreur-bord-doux); background: var(--dz-erreur-fond); }
+.dz-hb-note[data-ton="erreur"] b, .dz-hb-note[data-ton="erreur"] span { color: var(--dz-erreur-texte); }
+
+/* ── Étiquettes d'état ── */
+.dz-hb-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 2px 8px; border-radius: var(--dz-r-xs); font: 700 var(--dz-fs-11)/1.2 var(--dz-font-chiffres); letter-spacing: .06em; text-transform: uppercase; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); }
+.dz-hb-chip[data-etat="envoye"], .dz-hb-chip[data-etat="direct"] { background: var(--dz-vert-plein); color: #fff; }
+.dz-hb-chip[data-etat="brouillon"], .dz-hb-chip[data-etat="prevue"] { background: var(--dz-verrou-fond); color: var(--dz-verrou-texte); border: 1px dashed var(--dz-prevu-trait); }
+.dz-hb-chip[data-etat="renvoyee"], .dz-hb-chip[data-etat="a-envoyer"] { background: var(--dz-a-envoyer-fond); color: var(--dz-a-envoyer-texte); }
+.dz-hb-chip[data-etat="corrigee"] { background: var(--dz-matin); color: #1D4F86; }
+.dz-hb-chip[data-etat="retiree"] { background: var(--dz-retire-fond); color: var(--dz-inactif-texte); text-decoration: line-through; }
+.dz-hb-chip[data-etat="alerte"] { background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); }
+.dz-hb-chip[data-etat="reserve"] { background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); }
+.dz-hb-chip[data-etat="sans-reserve"] { background: var(--dz-en-cours-fond); color: var(--dz-en-cours-texte); }
+.dz-hb-chip[data-etat="ajoute"] { background: var(--dz-encre); color: var(--dz-jaune); }
+.dz-hb-chip[data-etat="clos"] { background: var(--dz-cloture-etiquette); color: #fff; }
+
+/* ── Chiffres de la feuille d'heures ── */
+.dz-hb-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.dz-hb-stat { min-width: 0; padding: 12px 14px 12px; border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); display: flex; flex-direction: column; gap: 2px; }
+.dz-hb-stat > span:first-child { font: 500 var(--dz-fs-11)/1.25 var(--dz-font-chiffres); letter-spacing: var(--dz-tracking-etiquette); text-transform: uppercase; color: var(--dz-texte-2); }
+.dz-hb-stat > b { font: 700 34px/1.1 var(--dz-font-chiffres); letter-spacing: -.02em; color: var(--dz-encre); white-space: nowrap; }
+.dz-hb-stat > b small { font-size: 16px; margin-left: 3px; }
+.dz-hb-stat > small { font: 400 12.5px/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-hb-ligne-semaine { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.dz-hb-ligne-semaine b { font: 700 var(--dz-fs-13)/1.2 var(--dz-font-chiffres); color: var(--dz-encre); }
+
+/* ── Table des heures ── */
+.dz-hb-tableau { border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); overflow: hidden; }
+.dz-hb-tableau table { width: 100%; border-collapse: collapse; table-layout: auto; }
+.dz-hb-tableau th { padding: 12px 8px; text-align: left; font: 500 var(--dz-fs-11)/1.2 var(--dz-font-chiffres); letter-spacing: var(--dz-tracking-etiquette); text-transform: uppercase; color: var(--dz-texte-2); border-bottom: 1px solid var(--dz-trait); white-space: nowrap; }
+.dz-hb-tableau td { padding: 10px 8px; vertical-align: middle; border-top: 1px solid var(--dz-trait-doux); font: 400 13.5px/1.35 var(--dz-font-chiffres); color: var(--dz-encre); }
+.dz-hb-tableau tr:first-child td { border-top: 0; }
+.dz-hb-tableau th:first-child, .dz-hb-tableau td:first-child { padding-left: 14px; }
+.dz-hb-tableau th:last-child, .dz-hb-tableau td:last-child { padding-right: 14px; }
+.dz-hb-tableau tbody tr[data-cliquable="oui"] { cursor: pointer; }
+.dz-hb-tableau tbody tr[data-cliquable="oui"]:hover { background: var(--dz-jaune-pale); }
+.dz-hb-tableau tbody tr[data-etat="retiree"] { opacity: .65; }
+.dz-hb-tableau td.dz-hb-date { font-weight: 700; white-space: nowrap; }
+.dz-hb-tableau td.dz-hb-heures { white-space: nowrap; }
+.dz-hb-tableau td.dz-hb-duree { font-weight: 700; }
+.dz-hb-tableau td.dz-hb-client { font-family: var(--dz-font-ui); min-width: 120px; }
+.dz-hb-client b { display: block; font: 800 14.5px/1.25 var(--dz-font-ui); overflow-wrap: anywhere; }
+.dz-hb-client small { display: block; margin-top: 2px; font: 400 12px/1.35 var(--dz-font-ui); color: var(--dz-texte-2); overflow-wrap: anywhere; }
+.dz-hb-ouvrir { display: inline-flex; width: 100%; min-height: 40px; align-items: center; justify-content: flex-start; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.dz-hb-etats { display: flex; flex-wrap: wrap; gap: 4px; }
+.dz-hb-vide { padding: 36px 16px; text-align: center; color: var(--dz-texte-2); font: 500 14px/1.4 var(--dz-font-ui); }
+.dz-hb-attente { margin: 0; padding: 10px 14px; border-radius: var(--dz-r-m); border: 1px solid var(--dz-erreur-bord-doux); background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); font: 600 14px/1.4 var(--dz-font-ui); }
+
+/* Téléphone : une carte par ligne (HM01), pas de tableau */
+.dz-hb-cartes { margin: 0; padding: 0; border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); overflow: hidden; }
+.dz-hb-cartes > li { list-style: none; border-top: 1px solid var(--dz-trait-doux); }
+.dz-hb-cartes > li:first-child { border-top: 0; }
+.dz-hb-carte-ligne { width: 100%; min-height: 56px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 10px 14px; background: none; border: 0; text-align: left; color: var(--dz-encre); font-family: var(--dz-font-ui); cursor: pointer; }
+.dz-hb-carte-ligne b { display: block; font: 800 14.5px/1.25 var(--dz-font-ui); overflow-wrap: anywhere; }
+.dz-hb-carte-ligne small { display: block; margin-top: 2px; font: 400 12px/1.35 var(--dz-font-chiffres); color: var(--dz-texte-2); overflow-wrap: anywhere; }
+.dz-hb-carte-ligne > i { font: 700 15px/1 var(--dz-font-chiffres); font-style: normal; }
+
+/* ── Historique d'une ligne (HP03) ── */
+.dz-hb-histo { list-style: none; margin: 0; padding: 0 0 0 4px; display: grid; gap: 16px; }
+.dz-hb-histo > li { position: relative; padding-left: 20px; display: grid; gap: 2px; }
+.dz-hb-histo > li::before { content: ""; position: absolute; left: 0; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--dz-encre); }
+.dz-hb-histo > li::after { content: ""; position: absolute; left: 3.5px; top: 16px; bottom: -16px; width: 1px; background: var(--dz-trait-fort); }
+.dz-hb-histo > li:last-child::after { display: none; }
+.dz-hb-histo small { font: 400 var(--dz-fs-12)/1.35 var(--dz-font-chiffres); color: var(--dz-texte-2); }
+.dz-hb-histo b { font: 800 15px/1.3 var(--dz-font-ui); color: var(--dz-encre); }
+.dz-hb-histo span { font: 400 14px/1.4 var(--dz-font-ui); color: var(--dz-texte-note); }
+.dz-hb-histo [data-ton="alerte"] { color: var(--dz-erreur-texte); font-weight: 700; }
+
+/* ── Formulaires : champs de 48 px, motif, interrupteur du panier ── */
+.dz-hb-champs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.dz-hb-champ { display: grid; gap: 6px; min-width: 0; }
+.dz-hb-champ > label, .dz-hb-champ > span.dz-hb-nom, .dz-hb-groupe > legend { font: 800 14.5px/1.2 var(--dz-font-ui); color: var(--dz-encre); padding: 0; }
+.dz-hb-champ input[type="text"], .dz-hb-champ textarea, .dz-hb-champ select, .dz-hb-recherche {
+  width: 100%; min-height: 48px; padding: 8px 14px; border-radius: var(--dz-r-s); border: 1.5px solid var(--dz-input); background: var(--dz-carte); color: var(--dz-encre);
+  font: 400 16px/1.35 var(--dz-font-chiffres); box-sizing: border-box;
+}
+.dz-hb-champ textarea { min-height: 96px; resize: vertical; font-family: var(--dz-font-ui); }
+.dz-hb-champ input:focus-visible, .dz-hb-champ textarea:focus-visible { outline: var(--dz-focus-contour); outline-offset: var(--dz-focus-decalage); border-color: var(--dz-encre); }
+.dz-hb-champ [role="combobox"], .dz-hb-champ button[aria-label] { min-height: 48px; }
+.dz-hb-champ .dz-hb-heure { display: block; }
+.dz-hb-compteur { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.dz-hb-compteur small { font: 400 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); color: var(--dz-texte-2); }
+.dz-hb-interrupteur { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 8px 14px; border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); font: 800 15px/1.2 var(--dz-font-ui); }
+.dz-hb-interrupteur label { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; cursor: pointer; }
+.dz-hb-interrupteur label > span:first-child { flex: 1; }
+.dz-hb-interrupteur em { font: 700 13px/1 var(--dz-font-ui); font-style: normal; color: var(--dz-inactif-texte); }
+.dz-hb-interrupteur input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.dz-hb-interrupteur .dz-hb-bouton { flex: none; width: 52px; height: 32px; border-radius: 16px; background: var(--dz-sable); position: relative; transition: background var(--dz-t-rapide); }
+.dz-hb-interrupteur .dz-hb-bouton::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(21,18,15,.3); transition: transform var(--dz-t-rapide); }
+.dz-hb-interrupteur input:checked ~ .dz-hb-bouton { background: var(--dz-vert-plein); }
+.dz-hb-interrupteur input:checked ~ .dz-hb-bouton::after { transform: translateX(20px); }
+.dz-hb-interrupteur input:checked ~ em { color: var(--dz-en-cours-texte); }
+.dz-hb-interrupteur input:focus-visible ~ .dz-hb-bouton { outline: var(--dz-focus-contour); outline-offset: var(--dz-focus-decalage); }
+.dz-hb-groupe { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
+.dz-hb-trois { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 3px; border: 1.5px solid var(--dz-encre); border-radius: var(--dz-r-pill); background: var(--dz-carte); }
+.dz-hb-trois > button { min-height: 44px; padding: 0 6px; border: 0; border-radius: var(--dz-r-pill); background: transparent; color: var(--dz-encre); font: 800 14px/1.1 var(--dz-font-ui); cursor: pointer; }
+.dz-hb-trois > button[aria-pressed="true"] { background: var(--dz-encre); color: var(--dz-jaune); }
+.dz-hb-champ textarea[aria-invalid="true"] { border-color: var(--dz-erreur); }
+.dz-hb-corps p.dz-hb-erreur-champ { font: 700 13px/1.35 var(--dz-font-ui); color: var(--dz-erreur-texte); }
+.dz-hb-aide { font: 400 13px/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-hb-pause-bloc { display: grid; gap: 6px; }
+
+/* Champs réutilisés tels quels (heure, pause) : mêmes gestes, tailles et couleurs de la planche */
+.dz-hb-champ [aria-label*="choisir dans la liste"] { width: 44px; min-width: 44px; height: 48px; }
+.dz-hb-champ input[type="text"][aria-label^="Heure"] { height: 48px; font-size: 16px; }
+.dz-hb-fenetre .bt-pp .bt-pp-b { min-height: 44px; min-width: 44px; border-radius: var(--dz-r-pill); }
+.dz-hb-fenetre .bt-pp .bt-pp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.dz-hb-fenetre .bt-pp .bt-pp-b { padding: 0 14px; font-size: 14px; color: var(--dz-encre); border-color: var(--dz-trait-fort); background: var(--dz-carte); }
+.dz-hb-fenetre .bt-pp .bt-pp-b.on { background: var(--dz-encre); color: var(--dz-jaune); border-color: var(--dz-encre); }
+.dz-hb-fenetre .bt-pp .bt-pp-in { min-height: 44px; border-radius: var(--dz-r-s); }
+.dz-hb-fenetre .bt-pp .bt-pp-ok { min-height: 44px; border-radius: var(--dz-r-pill); }
+.dz-hb-fenetre .bt-pp .bt-pp-label { font: 800 14.5px/1.2 var(--dz-font-ui); }
+.dz-hb-fenetre .bt-pp .bt-pp-hint { font-size: 13px; color: var(--dz-texte-2); font-weight: 400; }
+.dz-hb-fenetre .bt-pp .bt-pp-err { color: var(--dz-erreur-texte); font-size: 13px; }
+
+/* ── Liste de choix (Exporter un salarié) ── */
+.dz-hb-recherche { border-radius: var(--dz-r-pill); }
+.dz-hb-choix { margin: 0; padding: 0; list-style: none; border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); overflow: hidden; background: var(--dz-carte); }
+.dz-hb-choix > li { border-top: 1px solid var(--dz-trait-doux); }
+.dz-hb-choix > li:first-child { border-top: 0; }
+.dz-hb-choix button { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: none; border: 0; text-align: left; cursor: pointer; font: 800 15px/1.2 var(--dz-font-ui); color: var(--dz-encre); }
+.dz-hb-choix button:hover { background: var(--dz-jaune-pale); }
+.dz-hb-choix button small { display: block; margin-top: 2px; font: 400 13px/1.2 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-hb-choix button > i { margin-left: auto; font-style: normal; color: var(--dz-texte-2); }
+.dz-hb-initiales { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--dz-matin); color: var(--dz-encre); display: inline-flex; align-items: center; justify-content: center; font: 800 12px/1 var(--dz-font-ui); }
+.dz-hb-initiales[data-ton="jaune"] { background: var(--dz-jaune); }
+
+/* ── Export paie : pastilles de fichier, comptable, clôture du mois ── */
+.dz-hb-fichiers { display: flex; flex-wrap: wrap; gap: 10px; }
+.dz-hb-fichiers .dz-hb-btn { min-width: 84px; }
+.dz-hb-comptable { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; }
+.dz-hb-comptable > div { min-width: 0; }
+.dz-hb-comptable b { display: block; font: 800 15px/1.25 var(--dz-font-ui); overflow-wrap: anywhere; }
+.dz-hb-comptable small { display: block; margin-top: 2px; font: 400 13px/1.3 var(--dz-font-ui); color: var(--dz-texte-2); overflow-wrap: anywhere; }
+.dz-hb-mois { margin: 0; padding: 0; list-style: none; }
+.dz-hb-mois > li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--dz-trait-doux); }
+.dz-hb-mois > li:first-child { border-top: 0; }
+.dz-hb-mois b { display: block; font: 800 15px/1.25 var(--dz-font-ui); text-transform: capitalize; }
+.dz-hb-mois small { display: block; margin-top: 2px; font: 400 13px/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-hb-mois .dz-hb-droite { display: flex; align-items: center; gap: 10px; flex: none; }
+.dz-hb-lien-carte { border: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 56px; padding: 10px 14px; text-align: left; background: var(--dz-carte); cursor: pointer; font-family: var(--dz-font-ui); color: var(--dz-encre); }
+.dz-hb-lien-carte b { display: block; font: 800 15px/1.25 var(--dz-font-ui); }
+.dz-hb-lien-carte small { display: block; margin-top: 2px; font: 400 13px/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-hb-lien-carte i { font-style: normal; color: var(--dz-texte-2); }
+.dz-hb-attente-fichier { display: inline-flex; align-items: center; gap: 8px; font: 700 13px/1.2 var(--dz-font-ui); color: var(--dz-texte-2); }
+
+/* ── Demandes de congé (HP12 à HP16) ── */
+.dz-hb-onglets { display: flex; gap: 20px; border-bottom: 1px solid var(--dz-trait); padding: 0 20px; }
+.dz-hb-onglets button { min-height: 44px; min-width: 44px; padding: 0; border: 0; border-bottom: 3px solid transparent; background: none; font: 800 15px/1.2 var(--dz-font-ui); color: var(--dz-texte-2); cursor: pointer; }
+.dz-hb-onglets--fiche { font-family: var(--dz-font-ui); background: var(--dz-carte); }
+.dz-hb-onglets button[aria-selected="true"] { color: var(--dz-encre); border-bottom-color: var(--dz-encre); }
+.dz-hb-demandes { margin: 0; padding: 0; list-style: none; border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); }
+.dz-hb-demande { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--dz-trait-doux); }
+.dz-hb-demande:first-child { border-top: 0; }
+.dz-hb-demande b { display: block; font: 800 15px/1.25 var(--dz-font-ui); overflow-wrap: anywhere; }
+.dz-hb-demande small { display: block; margin-top: 2px; font: 400 13px/1.35 var(--dz-font-ui); color: var(--dz-texte-2); overflow-wrap: anywhere; }
+.dz-hb-demande .dz-hb-actions { display: flex; gap: 8px; flex: none; }
+.dz-hb-demande .dz-hb-refus { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dz-hb-demande .dz-hb-refus input { flex: 1 1 200px; min-height: 48px; padding: 8px 14px; border-radius: var(--dz-r-s); border: 1.5px solid var(--dz-input); background: var(--dz-carte); font: 400 16px/1.3 var(--dz-font-ui); }
+
+/* ── Menu « Exporter ce salarié » ── */
+.dz-portail.dz-hb-menu { z-index: 50; min-width: 260px; padding: 6px; border: 1px solid var(--dz-trait-fort); border-radius: var(--dz-r-m); background: var(--dz-carte); color: var(--dz-encre); box-shadow: var(--dz-ombre-menu); font-family: var(--dz-font-ui); }
+.dz-portail.dz-hb-menu [role="menuitem"] { min-height: 48px; padding: 8px 12px; border-radius: var(--dz-r-s); cursor: pointer; display: flex; align-items: center; }
+.dz-portail.dz-hb-menu [role="menuitem"]:focus, .dz-portail.dz-hb-menu [role="menuitem"][data-highlighted] { background: var(--dz-jaune-pale); outline: none; }
+.dz-portail.dz-hb-menu b { display: block; font: 800 15px/1.2 var(--dz-font-ui); }
+.dz-portail.dz-hb-menu small { display: block; margin-top: 2px; font: 400 13px/1.2 var(--dz-font-ui); color: var(--dz-texte-2); }
+.dz-hb-corps-sq { display: grid; gap: 8px; }
+.dz-hb-corps-int { display: grid; gap: 12px; padding: 14px; }
+
+/* ── Chargement : squelettes ── */
+.dz-hb-squelette { height: 56px; border-radius: var(--dz-r-m); background: linear-gradient(90deg, var(--dz-squelette-a), var(--dz-squelette-b), var(--dz-squelette-a)); background-size: 400px 100%; animation: dz-hb-onde 1.2s linear infinite; }
+@keyframes dz-hb-onde { from { background-position: -400px 0; } to { background-position: 400px 0; } }
+
+/* Libellés courts au téléphone (le nom accessible reste le long, par aria-label) */
+.dz-hb-court { display: none; }
+@media (max-width: 1023px) { .dz-hb-court { display: inline; } .dz-hb-long { display: none; } }
+
+/* ── Téléphone et tablette (sous 1 024 px) : panneau = page plein écran avec « ‹ », fenêtre d'alerte centrée à 16 px, correction = feuille du bas ── */
+@media (max-width: 1023px) {
+  .dz-portail.dz-hb-panneau, .dz-portail.dz-hb-panneau[data-large="oui"] { width: 100vw; border-top: 0; animation: none; }
+  .dz-hb-panneau .dz-hb-tete { padding: 14px 20px 8px 76px; min-height: 64px; }
+  .dz-hb-panneau .dz-hb-fermer { left: 20px; right: auto; top: 14px; }
+  .dz-hb-panneau .dz-hb-fermer .dz-hb-croix { display: none; }
+  .dz-hb-panneau .dz-hb-fermer .dz-hb-retour { display: inline; }
+  .dz-hb-titre { font-size: 22px; }
+  .dz-hb-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dz-hb-stat > b { font-size: 30px; }
+  .dz-hb-stat[data-tel="cache"] { display: none; }
+  .dz-hb-pied { flex-wrap: nowrap; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .dz-hb-pied > .dz-hb-btn { flex: 1 1 0; padding-left: 8px; padding-right: 8px; }
+  .dz-portail.dz-hb-fenetre[data-tel="feuille"] {
+    top: auto; left: 0; right: 0; bottom: 0; transform: none; width: 100%; max-height: calc(100dvh - 24px);
+    border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0; animation: dz-hb-feuille-entree var(--dz-t-feuille) ease-out;
+  }
+  .dz-portail.dz-hb-fenetre[data-tel="feuille"]::before { content: ""; display: block; flex: none; width: 44px; height: 5px; border-radius: 3px; background: var(--dz-trait-fort); margin: 8px auto 0; }
+  .dz-hb-pied[data-pile-tel="oui"] { flex-direction: column-reverse; align-items: stretch; }
+  .dz-hb-pied[data-pile-tel="oui"] > .dz-hb-btn { width: 100%; flex: none; min-height: 48px; }
+  .dz-hb-fenetre .dz-hb-btn { min-height: 48px; }
+}
+@keyframes dz-hb-feuille-entree { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 1023px) and (pointer: fine) { .dz-hb-btn { min-height: 44px; } }
+@media (min-width: 1024px) and (pointer: fine) {
+  .dz-hb-btn { min-height: 40px; }
+  .dz-hb-btn[data-taille="principal"] { min-height: 44px; }
+  .dz-hb-pied .dz-hb-btn { min-height: 44px; }
+}
+@media (forced-colors: active) {
+  .dz-hb-btn, .dz-hb-fermer, .dz-hb-carte, .dz-hb-tableau { border: 1px solid CanvasText; }
+  .dz-hb-seg [aria-pressed="true"], .dz-hb-trois [aria-pressed="true"] { background: Highlight; color: HighlightText; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dz-portail.dz-hb-panneau, .dz-portail.dz-hb-fenetre { animation: none; }
+}
