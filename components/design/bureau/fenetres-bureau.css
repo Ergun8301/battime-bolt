@@ -1,0 +1,39 @@
+/* BEMEXO bureau v2 · fenêtres réutilisables (lots 1, 2, 3). Portée .dz-portail (rendu dans <body>) ; jetons : bureau-jetons.css.
+   Liseré jaune 4 px en haut ; centrée 20 px de rayon ; panneau latéral 480 px (760 px large) ; feuille du bas 28 px au téléphone.
+   Voile 50 % (fenêtre), 32 % (panneau). */
+.dz-voile-fenetre { position: fixed; inset: 0; z-index: 50; background: var(--dz-voile); }
+.dz-voile-fenetre[data-forme="panneau"] { background: var(--dz-voile-panneau); }
+.dz-fenetre {
+  position: fixed; z-index: 50; display: flex; flex-direction: column; max-height: calc(100dvh - 16px); overflow: hidden;
+  background: hsl(var(--card)); color: var(--dz-encre); border-top: 4px solid var(--dz-jaune); box-shadow: var(--dz-ombre-fenetre);
+  font-family: var(--dz-font-ui);
+}
+.dz-fenetre[data-forme="centree"] { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(calc(100vw - 32px), 560px); border-radius: var(--dz-r-dialog); }
+.dz-fenetre[data-forme="centree"][data-largeur="etroite"] { width: min(calc(100vw - 32px), 440px); }
+.dz-fenetre[data-forme="panneau"] { right: 0; top: 0; bottom: 0; max-height: none; width: min(100vw, var(--dz-panneau-w)); border-radius: var(--dz-r-dialog) 0 0 var(--dz-r-dialog); }
+.dz-fenetre[data-forme="panneau"][data-largeur="large"] { width: min(100vw, var(--dz-panneau-large-w)); }
+.dz-fenetre[data-forme="feuille"] { left: 0; right: 0; bottom: 0; border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0; }
+@media (max-width: 1023px) {
+  .dz-fenetre[data-forme="centree"], .dz-fenetre[data-forme="panneau"] { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0; max-height: 92dvh; }
+}
+.dz-fenetre__tete { display: flex; align-items: flex-start; gap: var(--dz-sp-5); padding: var(--dz-sp-7) var(--dz-sp-8) var(--dz-sp-4); }
+.dz-fenetre__titres { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dz-fenetre__kicker { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); letter-spacing: var(--dz-tracking-etiquette); color: var(--dz-titre-section); font-weight: 700; text-transform: uppercase; }
+.dz-fenetre__titre { margin: 0; font-weight: var(--dz-fw-titre); font-size: var(--dz-fs-22); letter-spacing: var(--dz-tracking-titre); line-height: 1.1; }
+.dz-fenetre__corps { flex: 1; min-height: 0; overflow-y: auto; padding: var(--dz-sp-3) var(--dz-sp-8) var(--dz-sp-7); font-size: var(--dz-fs-14); color: var(--dz-texte-note); }
+.dz-fenetre__pied { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--dz-sp-3); padding: var(--dz-sp-5) var(--dz-sp-8) var(--dz-sp-7); border-top: 1px solid var(--dz-trait-doux); }
+.dz-fenetre__fermer {
+  flex: none; width: var(--dz-clic); height: var(--dz-clic); border-radius: var(--dz-r-pill); border: 1px solid var(--dz-trait-fort);
+  background: var(--dz-carte); color: var(--dz-encre); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+@media (pointer: coarse) { .dz-fenetre__fermer { width: var(--dz-tap); height: var(--dz-tap); } }
+.dz-bouton-b {
+  height: var(--dz-clic); padding: 0 18px; border-radius: var(--dz-r-pill); border: 1.5px solid var(--dz-trait-fort); background: transparent; color: var(--dz-encre);
+  font-size: var(--dz-fs-14); font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: var(--dz-sp-2);
+}
+.dz-bouton-b[data-ton="principal"] { background: var(--dz-jaune); border-color: var(--dz-jaune-ombre); }
+.dz-bouton-b[data-ton="sombre"] { background: var(--dz-encre); border-color: var(--dz-encre); color: var(--dz-creme); }
+.dz-bouton-b[data-ton="destructif"] { background: var(--dz-erreur); border-color: var(--dz-erreur); color: #fff; }
+.dz-bouton-b[data-ton="destructif-doux"] { color: var(--dz-erreur-texte); border-color: var(--dz-erreur-bord-doux); }
+.dz-bouton-b:disabled { background: var(--dz-inactif-fond); border-color: var(--dz-inactif-fond); color: var(--dz-inactif-texte); cursor: not-allowed; }
+@media (pointer: coarse) { .dz-bouton-b { height: var(--dz-tap); } }
