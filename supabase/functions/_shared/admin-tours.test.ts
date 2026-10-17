@@ -15,7 +15,7 @@ import {
 import { TOUR_LABEL, tourAction, tourIdOf } from './worker-tours.ts';
 import { ASSISTANT_FUNCTIONS } from './assistant-outils.ts';
 import { GUIDES_BUREAU_UI2 } from './guides-bureau-ui2.ts';
-import { ficheV2, OUVRIR_PLUS } from './admin-tours-v2.ts';
+import { AIDE_V2, ficheV2, OUVRIR_PLUS, PAR_PLUS } from './admin-tours-v2.ts';
 
 const ROOTS = ['app', 'components'];
 // Le planning v2 du bureau (components/design/bureau) a ses propres ancres (les mêmes valeurs, posées une 2e fois : l'écran v2 REMPLACE l'écran v1, jamais les deux à la fois) :
@@ -598,13 +598,21 @@ Deno.test('Guides bureau v2 : éteints par défaut, l’empreinte de la consigne
   if (c.cible !== 'bureau-nav.couts' || !/Coût chantiers/.test(c.texte)) throw new Error('la fiche « couts » doit commencer par « Coût chantiers » (v1)');
 });
 
-Deno.test('Guides bureau v2 : « Coût chantiers » et « Versions du planning » passent par « Plus ⋯ », le reste est repris tel quel', () => {
+Deno.test('Guides bureau v2 : « Coût chantiers », « Versions du planning » et « Borne » passent par « Plus ⋯ », le reste est repris tel quel', () => {
+  const parPlus = (c: string) => (PAR_PLUS as readonly string[]).includes(c);
+  if (PAR_PLUS.join('|') !== 'bureau-nav.couts|bureau-nav.versions|bureau-nav.borne') throw new Error('v2b : Coût chantiers, Versions du planning et Borne sont les trois lignes de « Plus ⋯ » citées par les guides');
+  const core = Deno.readTextFileSync('supabase/functions/_shared/assistant-actions-core.ts');
+  const [n, phrase] = AIDE_V2.borne;
+  if (!/« Plus ⋯ »/.test(phrase) || !/« Borne »/.test(phrase)) throw new Error('la fiche d’aide « borne » v2 doit situer la Borne dans « Plus ⋯ »');
+  if (n !== 0 || !/id: 'borne'[\s\S]{0,400}etapes: \['Bouton « Borne » dans la barre du planning/.test(core)) throw new Error('éteint : la fiche d’aide « borne » garde sa phrase v1 en 1re étape (AIDE_V2 la remplacera à la bascule)');
+  if (!ADMIN_TOURS.some((t) => t.etapes.some((e) => e.cible === 'bureau-nav.borne'))) throw new Error('une fiche doit citer la Borne (sinon la règle v2 n’a plus d’objet)');
   for (const t of ADMIN_TOURS) {
     const v2 = ficheV2(t);
-    const touchees = t.etapes.filter((e) => e.cible === 'bureau-nav.couts' || e.cible === 'bureau-nav.versions').length;
+    const touchees = t.etapes.filter((e) => parPlus(e.cible)).length;
     if (v2.etapes.length !== t.etapes.length + touchees) throw new Error(`${t.id} : ${touchees} étape(s) remplacée(s) doivent ajouter exactement ${touchees} étape(s) « Plus ⋯ »`);
     v2.etapes.forEach((e, i) => {
-      if (e.cible === 'bureau-nav.couts' || e.cible === 'bureau-nav.versions') {
+      if (e.cible === 'bureau-planning.ajouter' && !/« \+ »/.test(e.texte)) throw new Error(`${t.id} : au téléphone, l’ajout se fait par « + » (v2b)`);
+      if (parPlus(e.cible)) {
         const avant = v2.etapes[i - 1];
         if (avant?.cible !== OUVRIR_PLUS.cible || avant.surface !== 'ordi') throw new Error(`${t.id} : « ${e.cible} » doit être précédée de « Plus ⋯ » (ordinateur)`);
       }
@@ -625,5 +633,5 @@ Deno.test('Guides bureau v2 : chaque cible des fiches v2 existe dans les écrans
   const horsLot1 = (m: string) => /bureau-(reglages|export|cout|conges|salaries|invit|versions\.|reserves|clients\.(budget|enregistrer|supprimer|archiver)|edit\.|stat\.liste|stat\.relancer)/.test(m);
   const reel = manque.filter((m) => !horsLot1(m));
   if (reel.length) throw new Error(`Ancres du planning v2 introuvables :\n${reel.join('\n')}`);
-  for (const a of ['bureau-nav.plus', 'bureau-nav.couts', 'bureau-nav.versions', 'bureau-nav.compte', 'bureau-nav.reglages', 'bureau-nav.menu']) if (!found.has(a)) throw new Error(`ancre « ${a} » absente du planning v2`);
+  for (const a of ['bureau-nav.plus', 'bureau-nav.couts', 'bureau-nav.versions', 'bureau-nav.borne', 'bureau-nav.clients', 'bureau-nav.salaries', 'bureau-nav.reserves', 'bureau-nav.compte', 'bureau-nav.reglages', 'bureau-nav.menu', 'bureau-planning.ajouter']) if (!found.has(a)) throw new Error(`ancre « ${a} » absente du planning v2`);
 });

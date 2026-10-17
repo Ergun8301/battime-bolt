@@ -1,6 +1,6 @@
 'use client';
 
-// Design du bureau (v2) · le menu ☰ du téléphone : le point d'entrée unique, avec les intitulés du cahier, plus « Légende » (feuille du bas de la planche, PM03 / PM04).
+// Design du bureau (v2, légende v2b) · le menu ☰ du téléphone : le point d'entrée unique, avec les intitulés du cahier, plus « Légende » (feuille du bas de la planche, PM03 / PM04).
 // Mêmes propriétés et mêmes gestes que le menu d'avant (components/admin-mobile-menu.tsx) ; seul l'habillage change. Le nom de l'entreprise, l'essai et « S'abonner »
 // sont dans l'en-tête noir du planning (une seule place) ; le badge de « Salariés » = congés + invitations, celui de « Réserves de chantier » = les réserves à traiter.
 import { useState } from 'react';
@@ -9,11 +9,11 @@ import type { AdminMobileMenuProps } from '@/components/admin-mobile-menu';
 import './bureau-jetons.css';
 import './planning-v2.css';
 
-const LEGENDE: { k: string; l: string }[] = [
-  { k: 'matin', l: 'Matin (avant 12 h)' }, { k: 'apres-midi', l: 'Après-midi (12 h – 18 h)' }, { k: 'soir', l: 'Soir (après 18 h)' }, { k: 'journee', l: 'Journée entière ou sans horaire' },
-  { k: 'prevue', l: 'Prévue (pointillés)' }, { k: 'a-envoyer', l: 'Saisie, à envoyer (ne compte pas)' }, { k: 'envoyee', l: 'Envoyée (compte)' }, { k: 'en-cours', l: 'En direct (pointage en cours)' },
-  { k: 'ajoutee', l: 'Ajoutée par le salarié' }, { k: 'retiree', l: 'Retirée par le salarié (barrée)' }, { k: 'reunion', l: 'Réunion (hors heures)' },
-  { k: 'absence', l: 'Absence (rayée)' }, { k: 'clos', l: 'Mois clôturé (CLOS)' }, { k: 'reserve', l: 'Réserve à traiter' },
+// Légende v2b (planche §H) : un code par état, sans couleur de chantier ni de créneau.
+export const LEGENDE: { k: string; l: string }[] = [
+  { k: 'prevue', l: 'Prévue (contour clair)' }, { k: 'en-cours', l: 'En ce moment (pointe)' }, { k: 'a-envoyer', l: 'Heures pas envoyées (action requise)' },
+  { k: 'envoyee', l: 'Heures envoyées' }, { k: 'ajoutee', l: 'Coin jaune : ajoutée par le salarié' }, { k: 'retiree', l: 'Retirée par le salarié (barrée)' },
+  { k: 'absence', l: 'Absence (rayée)' },
 ];
 
 function Rang({ onClick, children, ton, badge, testId, guide, ouvert }: { onClick: () => void; children: string; ton?: 'danger'; badge?: number; testId?: string; guide?: string; ouvert?: boolean }) {
