@@ -1,7 +1,9 @@
 'use client';
 
-// Design du bureau (v2) · barre noire, barre de semaine, menus (Plus ⋯, compte) et tiroir Clients.
-// Un seul accès par fonction (README du designer §1) : Formations et « Envoyer par e-mail » sont dans « Plus ⋯ » seulement, Réglages dans le menu du compte.
+// Design du bureau (v2b) · barre en deux niveaux, menus (Plus ⋯, compte) et tiroir Clients.
+// Niveau 1 (barre noire 52 px) : Planning, Statistiques | Clients, Salariés, Réserves (MÊMES fenêtres et intitulés qu'avant) | ✦ Assistant (contour), compte.
+// Niveau 2 (64 px) : ‹ › Aujourd'hui, période, « Semaine 42 · 131 h envoyées sur 234 h » (ouvre le bandeau déplié) ; Sélectionner, Imprimer, Plus ⋯, Exporter (seul bouton jaune).
+// Un seul accès par fonction : Borne, Formations et « Envoyer par e-mail » dans « Plus ⋯ », Réglages dans le menu du compte.
 import { useEffect, useState } from 'react';
 import { addDays, format, getISOWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -9,7 +11,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { Pencil, Printer } from 'lucide-react';
 import type { Worksite } from '@/lib/types';
 import { termineLe } from '@/supabase/functions/_shared/chantier-statut';
-import { indexCouleur } from './bulle-v2';
+import { dureeFr, indexCouleur } from './bulle-v2';
 import type { PlanningCtx } from './contexte-v2';
 
 /** « 12 – 18 octobre 2026 » ; sur deux mois : « 28 septembre – 4 octobre 2026 ». */
@@ -21,6 +23,7 @@ export function periodeSemaine(debut: Date): string {
 
 export function BarreNoire({ c }: { c: PlanningCtx }) {
   const { trial } = c;
+  const badgeSal = c.pendingLeaves + c.pendingInvites;
   return (
     <header className="dzp-noire" data-testid="barre-noire">
       <div className="dzp-noire__g">
@@ -28,22 +31,34 @@ export function BarreNoire({ c }: { c: PlanningCtx }) {
         <nav className="dzp-onglets" aria-label="Pages du bureau">
           <span className="dzp-onglet" aria-current="page">Planning</span>
           <button type="button" className="dzp-onglet" onClick={() => c.setStatsOpen(true)} data-testid="stat-stats" title="Statistiques de l'équipe — lecture seule">Statistiques</button>
+          <span className="dzp-noire__sep" aria-hidden="true" />
+          <button type="button" className="dzp-onglet" aria-expanded={c.chantierMenuOpen} onClick={() => { c.setChantierMenuOpen(!c.chantierMenuOpen); c.setClientsQuery(''); }} data-guide="bureau-nav.clients">Clients</button>
+          <button type="button" className="dzp-onglet" onClick={() => c.setSalariesOpen(true)} data-guide="bureau-nav.salaries"
+            title={badgeSal > 0 ? `${c.pendingLeaves} demande(s) de congé, ${c.pendingInvites} invitation(s) en attente` : undefined}>
+            Salariés{badgeSal > 0 && <span className="dzp-badge">{badgeSal}</span>}
+          </button>
+          <button type="button" className="dzp-onglet" onClick={() => c.setReservesOpen(true)} title="Réserves de chantier à traiter" data-guide="bureau-nav.reserves">
+            Réserves{c.openReserves > 0 && <span className="dzp-badge">{c.openReserves}</span>}
+          </button>
         </nav>
       </div>
       <div className="dzp-noire__d">
         {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
-          <span className="dzp-essai">Essai · {trial.daysLeft} jour{trial.daysLeft > 1 ? 's' : ''}<button type="button" onClick={c.onSubscribe} data-guide="bureau-nav.abonner">S&apos;abonner</button></span>
+          <span className="dzp-essai" title={`Essai gratuit : ${trial.daysLeft} jour${trial.daysLeft > 1 ? 's' : ''} restant${trial.daysLeft > 1 ? 's' : ''}`}>
+            <span className="dzp-essai__long">Essai · {trial.daysLeft} jour{trial.daysLeft > 1 ? 's' : ''}</span><span className="dzp-essai__court">Essai {trial.daysLeft} j</span>
+            <button type="button" onClick={c.onSubscribe} data-guide="bureau-nav.abonner">S&apos;abonner</button>
+          </span>
         )}
         {trial?.inTrial && trial.expired && (
-          <span className="dzp-essai" data-fini="">Essai terminé<button type="button" onClick={c.onSubscribe} data-guide="bureau-nav.abonner">S&apos;abonner</button></span>
+          <span className="dzp-essai" data-fini=""><span>Essai terminé</span><button type="button" onClick={c.onSubscribe} data-guide="bureau-nav.abonner">S&apos;abonner</button></span>
         )}
         {c.aiOn && c.isAdmin && (
-          <button type="button" className="dzp-assistant" onClick={() => c.setAssistantOpen(true)} title="Assistant BEMEXO" aria-label="Assistant BEMEXO" data-testid="bar-assistant" data-guide="bureau-nav.assistant">✦ Assistant</button>
+          <button type="button" className="dzp-assistant" onClick={() => c.setAssistantOpen(true)} title="Assistant BEMEXO" aria-label="Assistant BEMEXO" data-testid="bar-assistant" data-guide="bureau-nav.assistant"><i aria-hidden="true">✦</i> Assistant</button>
         )}
         <div className="dzp-compte">
-          <button type="button" className="dzp-compte__btn" onClick={() => c.setAccountMenuOpen(!c.accountMenuOpen)} aria-expanded={c.accountMenuOpen} title="Compte entreprise" data-guide="bureau-nav.compte">
+          <button type="button" className="dzp-compte__btn" onClick={() => c.setAccountMenuOpen(!c.accountMenuOpen)} aria-expanded={c.accountMenuOpen} title={`Compte entreprise · ${c.companyLabel}`} data-guide="bureau-nav.compte">
             <span className="dzp-avatar">{c.companyLogo ? <img src={c.companyLogo} alt="" /> : c.companyInitials}</span>
-            <span>{c.companyLabel}</span><span aria-hidden="true">▾</span>
+            <span className="dzp-compte__nom">{c.companyLabel}</span><span aria-hidden="true">▾</span>
           </button>
           {c.accountMenuOpen && (
             <>
@@ -66,13 +81,27 @@ export function BarreNoire({ c }: { c: PlanningCtx }) {
   );
 }
 
+/** « Plus ⋯ » (planche v2b) : Borne, Formations, Envoyer par e-mail ; et, comme avant, Coût chantiers, Versions du planning, Interventions supprimées ou décalées. */
 function MenuPlus({ c, fermer }: { c: PlanningCtx; fermer: () => void }) {
   const go = (f: () => void) => () => { fermer(); f(); };
+  const borne = c.kioskOn && !!c.user?.company_id;
   return (
     <>
       <div className="dzp-fond-menu" onClick={fermer} />
       <div className="dzp-menu" data-testid="menu-plus" role="menu">
-        <span className="dzp-menu__titre">Suivi</span>
+        {(borne || c.trainingsOn || c.emailAllowed) && (
+          <div className="dzp-menu__groupe">
+            {borne && (
+              <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setKioskOpen(true))} title="Tablette de pointage : code pour la relier, état" data-testid="bar-kiosk" data-guide="bureau-nav.borne">Borne<i aria-hidden="true">›</i></button>
+            )}
+            {c.trainingsOn && (
+              <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setTrainingsOpen(true))} onPointerEnter={c.preloadTrainings} onFocus={c.preloadTrainings} data-testid="menu-trainings">Formations<i aria-hidden="true">›</i></button>
+            )}
+            {c.emailAllowed && (
+              <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setEmailOpen(true))} onPointerEnter={c.preloadEmail} onFocus={c.preloadEmail} data-testid="menu-email">Envoyer par e-mail<i aria-hidden="true">›</i></button>
+            )}
+          </div>
+        )}
         <div className="dzp-menu__groupe">
           <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setCostOpen(true))} data-testid="bar-cost" data-guide="bureau-nav.couts">Coût chantiers<i aria-hidden="true">›</i></button>
           {c.versionsOn && c.isAdmin && (
@@ -82,23 +111,12 @@ function MenuPlus({ c, fermer }: { c: PlanningCtx; fermer: () => void }) {
             <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setTracesOpen(true))} data-testid="menu-traces">Interventions supprimées ou décalées<i aria-hidden="true">›</i></button>
           )}
         </div>
-        {(c.trainingsOn || c.emailAllowed) && <span className="dzp-menu__titre">Équipe</span>}
-        {(c.trainingsOn || c.emailAllowed) && (
-          <div className="dzp-menu__groupe">
-            {c.trainingsOn && (
-              <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setTrainingsOpen(true))} onPointerEnter={c.preloadTrainings} onFocus={c.preloadTrainings} data-testid="menu-trainings">Formations<i aria-hidden="true">›</i></button>
-            )}
-            {c.emailAllowed && (
-              <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setEmailOpen(true))} onPointerEnter={c.preloadEmail} onFocus={c.preloadEmail} data-testid="menu-email">Envoyer par e-mail<i aria-hidden="true">›</i></button>
-            )}
-          </div>
-        )}
       </div>
     </>
   );
 }
 
-export function BarreSemaine({ c }: { c: PlanningCtx }) {
+export function BarreSemaine({ c, envoyees, prevues, ouvrirChiffres }: { c: PlanningCtx; envoyees: number; prevues: number; ouvrirChiffres: () => void }) {
   const [plusOuvert, setPlusOuvert] = useState(false);
   // Échap referme « Plus ⋯ » (README du designer : Échap ferme tout).
   useEffect(() => {
@@ -108,47 +126,31 @@ export function BarreSemaine({ c }: { c: PlanningCtx }) {
     return () => window.removeEventListener('keydown', f);
   }, [plusOuvert]);
   const sem = getISOWeek(c.currentWeekStart);
-  const kicker = c.isCurrentWeek ? 'Semaine actuelle' : c.currentWeekStart < c.thisWeekStart ? 'Semaine passée' : 'Semaine à venir';
   return (
     <div className="dzp-semaine" data-testid="barre-semaine">
       <div className="dzp-semaine__g" data-guide="bureau-semaine.nav">
+        <button type="button" className="dzp-carre" aria-label="Semaine précédente" title="Semaine précédente" onClick={() => c.changeWeek(addDays(c.currentWeekStart, -7))}>‹</button>
+        <button type="button" className="dzp-carre" aria-label="Semaine suivante" title="Semaine suivante" onClick={() => c.changeWeek(addDays(c.currentWeekStart, 7))}>›</button>
+        <button type="button" className="dzp-bouton" onClick={() => c.changeWeek(c.thisWeekStart)} aria-disabled={c.isCurrentWeek} data-courante={c.isCurrentWeek ? '' : undefined}
+          title={c.isCurrentWeek ? undefined : 'Revenir à la semaine actuelle'}>Aujourd&apos;hui</button>
         <div className="dzp-semaine__t">
-          <span className="dzp-kicker">{kicker}</span>
-          <div className="dzp-semaine__nb"><span className="dzp-semaine__s">S-{sem}</span><span className="dzp-semaine__p">{periodeSemaine(c.currentWeekStart)}</span></div>
-        </div>
-        <div className="dzp-fleches">
-          <button type="button" className="dzp-rond" aria-label="Semaine précédente" onClick={() => c.changeWeek(addDays(c.currentWeekStart, -7))}>←</button>
-          <button type="button" className="dzp-rond" aria-label="Semaine suivante" onClick={() => c.changeWeek(addDays(c.currentWeekStart, 7))}>→</button>
-          <button type="button" className="dzp-pilule dzp-pilule--noire" onClick={() => c.changeWeek(c.thisWeekStart)} aria-disabled={c.isCurrentWeek} data-courante={c.isCurrentWeek ? '' : undefined}
-            title={c.isCurrentWeek ? undefined : 'Revenir à la semaine actuelle'}>Aujourd&apos;hui</button>
+          <span className="dzp-semaine__p">{periodeSemaine(c.currentWeekStart)}</span>
+          <span className="dzp-semaine__s">Semaine {sem}{envoyees + prevues > 0 && <> · <button type="button" className="dzp-lien" onClick={ouvrirChiffres} data-testid="lien-chiffres" title="Voir les chiffres de la semaine">{dureeFr(envoyees)} envoyées sur {dureeFr(envoyees + prevues)}</button></>}</span>
         </div>
       </div>
       <div className="dzp-semaine__d">
-        <div className="dzp-relatif">
-          <button type="button" className="dzp-pilule" aria-expanded={c.chantierMenuOpen} onClick={() => { c.setChantierMenuOpen(!c.chantierMenuOpen); c.setClientsQuery(''); }} data-guide="bureau-nav.clients">Clients</button>
-        </div>
-        <button type="button" className={`dzp-pilule${c.pendingLeaves + c.pendingInvites > 0 ? ' dzp-pilule--badge' : ''}`} onClick={() => c.setSalariesOpen(true)} data-guide="bureau-nav.salaries">
-          Salariés{c.pendingLeaves + c.pendingInvites > 0 && <span className="dzp-badge" title={`${c.pendingLeaves} demande(s) de congé, ${c.pendingInvites} invitation(s) en attente`}>{c.pendingLeaves + c.pendingInvites}</span>}
-        </button>
-        <button type="button" className={`dzp-pilule${c.openReserves > 0 ? ' dzp-pilule--badge' : ''}`} onClick={() => c.setReservesOpen(true)} title="Réserves de chantier à traiter" data-guide="bureau-nav.reserves">
-          Réserves{c.openReserves > 0 && <span className="dzp-badge" data-ton="rouge">{c.openReserves}</span>}
-        </button>
-        <button type="button" className="dzp-pilule" aria-pressed={c.selectMode} data-testid="bar-select" data-guide="bureau-nav.selection"
+        <button type="button" className="dzp-bouton" aria-pressed={c.selectMode} data-testid="bar-select" data-guide="bureau-nav.selection"
           title={c.selectMode ? 'Terminer la sélection' : 'Cocher des interventions pour les supprimer'} onClick={() => (c.selectMode ? c.exitSelect() : c.enterSelect())}>Sélectionner</button>
-        <span className="dzp-sep" aria-hidden="true" />
         <div className="dzp-relatif">
-          <button type="button" className="dzp-rond dzp-rond--petit" onClick={() => (c.printOpen ? c.closePrintMenu() : c.setPrintOpen(true))} title="Imprimer le planning" aria-label="Imprimer le planning"
-            aria-expanded={c.printOpen} data-testid="bar-print" disabled={c.displayWorkers.length === 0}><Printer className="h-4 w-4" aria-hidden /></button>
+          <button type="button" className="dzp-bouton" onClick={() => (c.printOpen ? c.closePrintMenu() : c.setPrintOpen(true))} title="Imprimer le planning"
+            aria-expanded={c.printOpen} data-testid="bar-print" disabled={c.displayWorkers.length === 0}><Printer className="h-4 w-4" aria-hidden /> Imprimer</button>
           {c.printMenu}
         </div>
-        {c.kioskOn && c.user?.company_id && (
-          <button type="button" className="dzp-pilule" onClick={() => c.setKioskOpen(true)} title="Tablette de pointage : code pour la relier, état" data-testid="bar-kiosk" data-guide="bureau-nav.borne">Borne</button>
-        )}
         <div className="dzp-relatif">
-          <button type="button" className="dzp-pilule" aria-expanded={plusOuvert} aria-haspopup="menu" onClick={() => setPlusOuvert((o) => !o)} data-testid="bar-plus" data-guide="bureau-nav.plus">Plus ⋯</button>
+          <button type="button" className="dzp-bouton" aria-expanded={plusOuvert} aria-haspopup="menu" onClick={() => setPlusOuvert((o) => !o)} data-testid="bar-plus" data-guide="bureau-nav.plus">Plus ⋯</button>
           {plusOuvert && <MenuPlus c={c} fermer={() => setPlusOuvert(false)} />}
         </div>
-        <button type="button" className="dzp-pilule dzp-pilule--jaune" onClick={() => c.setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter">↓ Exporter</button>
+        <button type="button" className="dzp-bouton dzp-bouton--jaune" onClick={() => c.setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter">Exporter</button>
       </div>
     </div>
   );
@@ -162,7 +164,6 @@ function LigneClient({ ws }: { ws: Worksite }) {
   return (
     <div ref={setNodeRef} {...attributes} {...listeners} className={`dzp-client dzp-c${indexCouleur(ws.id, 'x')}`} data-glisse={isDragging ? '' : undefined} title="Glisser sur une case du planning">
       <span className="dzp-client__prise" aria-hidden="true"><i /><i /><i /></span>
-      <span className="dzp-bulle__pastille" aria-hidden="true" />
       <span className="dzp-client__txt"><b>{ws.client_name}</b>{sous ? <span>{sous}</span> : null}</span>
     </div>
   );
@@ -185,10 +186,9 @@ export function TiroirClients({ c }: { c: PlanningCtx }) {
             </div>
           ))}
         </div>
-        <button type="button" className="dzp-pilule dzp-pilule--jaune" onClick={() => { c.setChantierMenuOpen(false); c.setClientOpen(true); }} data-guide="bureau-clients.nouveau">+ Nouveau client</button>
-        <button type="button" className="dzp-pilule" onClick={() => { c.setChantierMenuOpen(false); c.setImportOpen(true); }} data-guide="bureau-clients.importer">Importer (CSV/Excel)</button>
+        <button type="button" className="dzp-bouton dzp-bouton--encre" onClick={() => { c.setChantierMenuOpen(false); c.setClientOpen(true); }} data-guide="bureau-clients.nouveau">+ Nouveau client</button>
+        <button type="button" className="dzp-bouton" onClick={() => { c.setChantierMenuOpen(false); c.setImportOpen(true); }} data-guide="bureau-clients.importer">Importer (CSV/Excel)</button>
       </aside>
     </>
   );
 }
-
