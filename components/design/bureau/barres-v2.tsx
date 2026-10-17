@@ -2,7 +2,7 @@
 
 // Design du bureau (v2) · barre noire, barre de semaine, menus (Plus ⋯, compte) et tiroir Clients.
 // Un seul accès par fonction (README du designer §1) : Formations et « Envoyer par e-mail » sont dans « Plus ⋯ » seulement, Réglages dans le menu du compte.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { addDays, format, getISOWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useDraggable } from '@dnd-kit/core';
@@ -100,6 +100,13 @@ function MenuPlus({ c, fermer }: { c: PlanningCtx; fermer: () => void }) {
 
 export function BarreSemaine({ c }: { c: PlanningCtx }) {
   const [plusOuvert, setPlusOuvert] = useState(false);
+  // Échap referme « Plus ⋯ » (README du designer : Échap ferme tout).
+  useEffect(() => {
+    if (!plusOuvert) return;
+    const f = (e: KeyboardEvent) => { if (e.key === 'Escape') setPlusOuvert(false); };
+    window.addEventListener('keydown', f);
+    return () => window.removeEventListener('keydown', f);
+  }, [plusOuvert]);
   const sem = getISOWeek(c.currentWeekStart);
   const kicker = c.isCurrentWeek ? 'Semaine actuelle' : c.currentWeekStart < c.thisWeekStart ? 'Semaine passée' : 'Semaine à venir';
   return (
@@ -138,7 +145,7 @@ export function BarreSemaine({ c }: { c: PlanningCtx }) {
           <button type="button" className="dzp-pilule" onClick={() => c.setKioskOpen(true)} title="Tablette de pointage : code pour la relier, état" data-testid="bar-kiosk" data-guide="bureau-nav.borne">Borne</button>
         )}
         <div className="dzp-relatif">
-          <button type="button" className="dzp-pilule" aria-expanded={plusOuvert} aria-haspopup="menu" onClick={() => setPlusOuvert((o) => !o)} data-testid="bar-plus">Plus ⋯</button>
+          <button type="button" className="dzp-pilule" aria-expanded={plusOuvert} aria-haspopup="menu" onClick={() => setPlusOuvert((o) => !o)} data-testid="bar-plus" data-guide="bureau-nav.plus">Plus ⋯</button>
           {plusOuvert && <MenuPlus c={c} fermer={() => setPlusOuvert(false)} />}
         </div>
         <button type="button" className="dzp-pilule dzp-pilule--jaune" onClick={() => c.setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter">↓ Exporter</button>

@@ -64,8 +64,7 @@ import { tourIdOf } from '@/supabase/functions/_shared/worker-tours';
 import PendingInvitations from '@/components/pending-invitations';
 import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
-import { useAiEnabled } from '@/lib/real-cost';
-import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+import { useAiEnabled } from '@/lib/real-cost'; import { useBureauUi2 } from '@/lib/use-bureau-ui2';
 import { reloadCompanySettings, useCompanySettings } from '@/lib/company-settings';
 import { useVisiblePoll } from '@/lib/use-visible-poll';
 import { useStaffEmailVisible } from '@/lib/staff-email-flag';
@@ -3389,6 +3388,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   }
 
   const MobileMenu = v2on && v2 ? v2.MenuMobileV2 : AdminMobileMenu;
+  // « Horaire prévu » de la fiche : un seul élément, partagé par la fiche d'avant et celle du design v2 (même ancre de guide).
+  const horaireNode = editing ? <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" onBadChange={setEditTimeBad} guide="bureau-edit.horaire" /> : null;
   const printMenuNode = printOpen ? (
     <>
       <div className="bt-pl-ddbackdrop" onClick={closePrintMenu} />
@@ -3417,7 +3418,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     statPanel, setStatPanel, renderRelanceRows, monthLabel, docListState, docsByChantier, waitingByWorker, openRelance: () => setRelanceOpen(true),
     printOpen, setPrintOpen, closePrintMenu, printMenu: printMenuNode,
     coachHidden, dismissCoach,
-    copyTipDesk: <div className="bt-cp-desk"><CopyTip variant="desk" /></div>, copyTipMobile: <CopyTip variant="mobile" />, copyTipHelpMobile: <CopyTipHelp variant="mobile" />,
+    copyTipDesk: <CopyTip variant="desk" />, copyTipHelpCorner: <CopyTipHelp variant="corner" />, copyTipMobile: <CopyTip variant="mobile" />, copyTipHelpMobile: <CopyTipHelp variant="mobile" />,
   } : null;
 
   return (
@@ -4295,6 +4296,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         onOpenStats={() => setStatsOpen(true)}
         onOpenLeaves={() => setLeaveOpen(true)}
         pendingLeaves={pendingLeaves}
+        pendingInvites={pendingInvites.length}
         onOpenReserves={() => setReservesOpen(true)}
         openReserves={openReserves}
         onOpenKiosk={kioskOn && user?.company_id ? () => setKioskOpen(true) : undefined}
@@ -4887,7 +4889,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         p: editing, worker: workers.find((w) => w.id === editing.user_id), onClose: closeEdit,
         real: editRealAgg, draft: draftForPlanning(editing), docs: docsByWorksite.get(editing.worksite_id || '') || 0, live: liveForBubble(editing), withdrawn: withdrawnIds.has(editing.id),
         emptyDraft: emptyDraftPids.has(editing.id), enRetard: (missingEffective.get(editing.user_id) || []).includes(editing.work_date),
-        horaire: <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" onBadChange={setEditTimeBad} guide="bureau-edit.horaire" />,
+        horaire: horaireNode,
         note: editNote, setNote: setEditNote, dirty: editDirty, saving: savingEdit, deleting: deletingEdit, copyBusy,
         onSave: saveAffectation, onDelete: () => deleteAffectation(), onCopyTo: openCopyTo, onDuplicate: duplicateNextDay,
         onAddTask: missions.tasksOn && !editing.user_id.startsWith('demo-') ? () => {
@@ -4926,7 +4928,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               </div>
 
               {/* Lot 11 : « Horaire prévu : début – fin » (facultatifs), plus de roulette. */}
-              <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" onBadChange={setEditTimeBad} guide="bureau-edit.horaire" />
+              {horaireNode}
 
               {/* Note for the poseur */}
               <div className="space-y-1.5">

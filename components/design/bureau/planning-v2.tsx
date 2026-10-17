@@ -23,6 +23,7 @@ const LEGENDE: { k: string; l: string }[] = [
   { k: 'matin', l: 'Matin (avant 12 h)' }, { k: 'apres-midi', l: 'Après-midi (12 h – 18 h)' }, { k: 'soir', l: 'Soir (après 18 h)' }, { k: 'journee', l: 'Journée entière ou sans horaire' },
   { k: 'prevue', l: 'Prévue (pointillés)' }, { k: 'a-envoyer', l: 'Saisie, à envoyer (ne compte pas)' }, { k: 'envoyee', l: 'Envoyée (compte)' }, { k: 'en-cours', l: 'En direct (pointage en cours)' },
   { k: 'ajoutee', l: 'Ajoutée par le salarié' }, { k: 'retiree', l: 'Retirée par le salarié (barrée)' }, { k: 'reunion', l: 'Réunion (hors heures)' },
+  { k: 'absence', l: 'Absence (rayée)' }, { k: 'clos', l: 'Mois clôturé (CLOS)' }, { k: 'reserve', l: 'Réserve à traiter' },
 ];
 
 function Legende() {
@@ -92,6 +93,14 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     document.documentElement.setAttribute('data-dz-bureau', '');
     return () => document.documentElement.removeAttribute('data-dz-bureau');
   }, []);
+  // Échap ferme les menus, le tiroir Clients et les panneaux de chiffres (les fenêtres, elles, se ferment toutes seules : Radix).
+  const { accountMenuOpen, chantierMenuOpen, statPanel, setAccountMenuOpen, setChantierMenuOpen, setStatPanel } = c;
+  useEffect(() => {
+    if (!accountMenuOpen && !chantierMenuOpen && !statPanel) return;
+    const f = (e: KeyboardEvent) => { if (e.key !== 'Escape') return; setAccountMenuOpen(false); setChantierMenuOpen(false); setStatPanel(null); };
+    window.addEventListener('keydown', f);
+    return () => window.removeEventListener('keydown', f);
+  }, [accountMenuOpen, chantierMenuOpen, statPanel, setAccountMenuOpen, setChantierMenuOpen, setStatPanel]);
   const dates = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const totaux = useMemo(() => {
     const exclure = new Set<string>();
@@ -107,8 +116,8 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
         <BarreSemaine c={c} />
         <Bandeau c={c} chiffres={{ envoyees: totaux.envoyees, aVenir: totaux.aVenir, jours: totaux.jours, relances }} />
         <TiroirClients c={c} />
+        {c.workers.length > 0 && !c.selectMode && <div className="dzp-astuce">{c.copyTipDesk}</div>}
         <div className="dzp-zone">
-          {c.workers.length > 0 && !c.selectMode && c.copyTipDesk}
           <Aide c={c} />
           <Grille c={c} totaux={totaux} />
           <Legende />

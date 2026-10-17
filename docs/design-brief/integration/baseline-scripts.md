@@ -273,3 +273,59 @@ Demandes d'Ergun (elles PRIMENT sur la planche quand elles la contredisent ; la 
 **ADAPTATIONS ajoutées à `ui2-copies.mjs`** (copies seulement) : `guides-lot7` (guide `planning` : barre du bas au lieu du nom + ligne de menu), `formations-lot6` (le titre se lit dans `.bt-phdr-date`, le retour porte maintenant le petit mot jaune au-dessus). Helper `navigation-salarie.mjs` : le bouton du compte se cherche par `aria-label^="Mon compte"` (v1 : « Mon compte et menu », v2 : « Mon compte[, n à voir] ») et `ouvrirVue('Ma semaine' | 'Mon mois' | 'Ma journée')` touche l'onglet du bas quand la barre existe (le menu n'a plus ces lignes). `fidelite-salarie.mjs` : le « Plus en bas » disparaît (barre à 3 onglets, aucune allumée sous « Mon compte », pastille sur l'avatar, 8 entrées de menu attendues et 4 retirées vérifiées, titre « Mon compte »).
 
 **À déployer** : `worker-assistant` seulement (les fiches d'aide de l'Assistant sont dans la consigne du modèle : `worker-tours-v2.ts` → `worker-assistant-core.ts` via `WORKER_GUIDE_V2`) ; aucune autre fonction, aucune migration. Évaluer les phrases d'aide avant mise en ligne. Les guides pas à pas sont servis par le navigateur (déploiement du site).
+
+
+## Après le lot 1 du bureau (planning v2, `/admin?ui=2` : aperçus et local seulement, éteint par défaut)
+
+Dossier du designer : `docs/design-brief/designer-bureau/` (planche de 186 écrans, README, `tokens.css`). Ce lot : le PLANNING (écrans `PL*` et `PM*`) ; Heures et paie (lot 2) et le reste (lot 3) viennent ensuite sur les mêmes bases.
+Méthode du salarié : un interrupteur, des variantes v2 qui réutilisent les gestionnaires existants SANS les modifier, la fidélité vue côte à côte, des scripts rejoués.
+
+### Ce qui existe
+
+| Pièce | Fichier |
+|---|---|
+| Interrupteur du bureau (`?ui=2` sur aperçu / local, mémorisé en session, **jamais par défaut** : `BUREAU_UI2_PAR_DEFAUT = false`, `?ui=1` l'éteint ; séparé de celui du salarié) | `lib/use-bureau-ui2.ts` |
+| Jetons (`.dz-bureau`, `.bt-skin`, `.dz-portail`) + fenêtre / panneau / feuille réutilisables (lots 2 et 3) | `components/design/bureau/bureau-jetons.css`, `fenetres-bureau.css`, `fenetre-bureau.tsx` |
+| Planning v2 : barre noire, barre de semaine, « Plus ⋯ », menu du compte, tiroir Clients, bandeau repliable, grille, bulles, légende, sélection, fiche d'intervention (panneau), téléphone (en-tête, jours, cartes, menu ☰ en feuille du bas) | `components/design/bureau/*-v2.tsx`, `planning-v2.css` |
+| Ce que le planning v2 reçoit de l'écran existant (états + gestionnaires, rien d'autre) | `components/design/bureau/contexte-v2.ts`, branche `ui2` dans `components/admin-planning.tsx` |
+| Règles pures (total d'heures du jour / du salarié / de la semaine, jauge, plage d'une absence, « Bruno ×2, Fanny ×2, Eli ») | `supabase/functions/_shared/bureau-vue.ts` (+ test, `npm run test:bureau-vue` 6/6) |
+| Guides du bureau pour la v2, **ÉTEINTS** (`GUIDES_BUREAU_UI2 = false`) | `guides-bureau-ui2.ts`, `admin-tours-v2.ts`, `docs/design-brief/integration/guides-bureau-v2.md` (tableau cible \| texte v1 \| texte v2) |
+| Preuves | `scripts/tests/fidelite-bureau.mjs` (`npm run test:fidelite-bureau`), `bureau-sim.mjs` (base simulée = données de la planche), `bureau-v1-identique.mjs`, `ui2-bureau-copies.mjs` |
+
+**Le v2 est chargé en différé** (`import()` dans `admin-planning.tsx`, seulement si le drapeau est actif) : 16,0 kB gzip de JavaScript et 10,0 kB gzip de CSS à part, jamais dans le premier chargement.
+
+### Mesures (build de production de la branche, mêmes conditions que la base `origin/claude/bureau-lot1` construite à côté)
+
+| Mesure | Base | Branche |
+|---|---|---|
+| `/admin` First Load JS (max 363) | 360,0 kB | **362,0 kB** (+2,0 : le branchement et le contexte ; **marge 1 kB : les lots 2 et 3 ne doivent rien ajouter au morceau principal**) |
+| `/poseur` (max 280) · `/pointer` (max 151) | 280,0 · 148 | 280,0 · 148 (inchangés) |
+| CSS gzip `/admin` (max 20) | 14,2 | **14,2** (le CSS v2 est dans le morceau différé) |
+| Requêtes au chargement | `requetes-lot29` 79 ✅ / 2 ❌ | **79 / 2** : mêmes lectures, même nombre ; les 2 ❌ sont ceux de la base (partie salarié, hors lot) |
+| HTML de `/admin` SANS `?ui=2` (`bureau-v1-identique.mjs` : planning 1440 / 1024 / 390, menu du compte, liste Clients, fenêtre d'une intervention, menu ☰) | — | **7 / 7 identiques octet pour octet** à la base |
+| 13 scripts du bureau rejoués en v1 (`planning-lot2` 86/0, `planning-lot3` 81/0, `planning-copier` 159/0, `absences-lot2` 25/0, `versions-lot8` 146/0, `traces-lot3` 64/1, `admin-lot9` 39/0, `admin-lot10` 60/0, `admin-lot11` 138/0, `statistiques-lot5` 120/0, `missions-lot4` 144/4, `invitations-admin` 61/0, `requetes-lot29` 79/2) | 1 202 ✅ / 7 ❌ | **1 202 ✅ / 7 ❌** : chaque script donne le nombre de la base (les 7 ❌ sont ceux de la base : `traces-lot3` « lien discret 44 px », `missions-lot4` ×4 et `requetes-lot29` ×2, partie salarié) |
+| `test:registre` | — | **142 / 0** (voir ci-dessous) ; `test:guides-bureau` **28 / 28** ; empreinte `guideForPrompt` du bureau **inchangée** (`5766f6e9…3198`) ; `test:bureau-vue` 6/6 ; `typecheck` vert |
+| `fidelite-bureau.mjs` | — | **118 ✅ / 0 ❌** : 21 images « planche \| implémentation » (`captures-bureau/`), mesures (cibles ≥ 40 px au pointeur / 44 px au toucher, texte ≥ 11 px, contrastes 4,5:1 ou 3:1 en grand texte, contour de focus ≥ 2 px) et 60 contrôles de PARCOURS (menus, fenêtres, écritures du planning, sélection, glisser, téléphone) |
+
+Registre (`npm run test:registre`) : le planning v2 pose les MÊMES ancres de guide que l'ancien (l'écran v2 remplace l'écran v1, jamais les deux) + `bureau-nav.plus` ; le menu ☰ v2 est le même menu (capacité B72) ; « Plus ⋯ » est rangé avec B52. Constantes du scanner mises à jour AVEC leur raison (dialogues 32 → 33, ancres 130/173 → 131/223, gestionnaires 75/605 → 84/699, ancre dynamique du menu ☰ v2) ; `clics.snapshot.json` régénéré par la commande officielle (deux fichiers du salarié étaient déjà en écart sur la base : `assistant-panel.tsx` −1, `worker-multi-card.tsx` +2, non touchés par ce lot).
+
+### Rejeu en `/admin?ui=2` (copies générées `ui2b-…`, jamais les originaux : `node scripts/tests/ui2-bureau-copies.mjs`)
+
+| Script (copie `ui2b-…`) | v1 | `?ui=2` | Adaptations |
+|---|---|---|---|
+| `planning-lot2` (glisser, copier Ctrl / Alt / ⌘, refus, annuler, Assistant) | 86 / 0 | **86 / 0** | repères `bt-pl-*` → `dzp-*` ; écran de test plus haut (lignes plus hautes) ; lecture du glisser (fantôme, pastille « + », curseur « copier », case visée) |
+| `versions-lot8` | 146 / 0 | **144 / 0** | « Versions du planning » est une ligne de « Plus ⋯ » (on ouvre le menu) ; 2 contrôles de géométrie du coin de la grille n'ont plus d'objet |
+| `absences-lot2` | 25 / 0 | **25 / 0** | repères seulement |
+| `traces-lot3` | 64 / 1 | **64 / 1** | repères ; le menu ☰ v2 finit chaque ligne par « › » |
+| `requetes-lot29` | 79 / 2 | **79 / 2** | repères seulement |
+
+Les autres scripts du bureau ne sont **pas rejoués en v2** (liste et raison dans `NON_REJOUES` du générateur) : leurs contrôles sondent la mise en page de l'ANCIEN écran (classes et géométrie du cockpit, bouton « ＋ Tâche » dans chaque case, lignes vides de remplissage, légende en popover). Leur fonction est couverte par les PARCOURS de `fidelite-bureau.mjs`. Ils restent verts en v1 (tableau ci-dessus).
+
+### Écarts à la planche (liste honnête)
+
+**Dessiné par la planche, volontairement PAS fait (nouvelle fonction)** : plein écran ⤢ (PL03 : aucun plein écran n'existe dans le code ; la planche ne le marque pas « NOUVEAU » mais ce serait une nouvelle fonction) ; « Formations : 2 à voir » (le compteur n'existe pas côté bureau) ; SIRET dans le menu du compte (donnée absente) ; « Dina · arrêt maladie, du 12 au 16 » reste calculé sur les lignes de planning lues, rien de plus.
+**Déplacé sans création** : « ＋ Tâche » n'est plus dans chaque case (un seul accès : « Ajouter une tâche à ce créneau » de la fiche, ou la pastille « Tâches » d'une case qui en a) ; « Formations » et « Envoyer par e-mail » sont dans « Plus ⋯ » seulement ; Réglages dans le menu du compte seulement ; « Versions » et « Interventions supprimées ou décalées » dans « Plus ⋯ » ; les invitations en attente sont dans la fenêtre « Salariés » (plus de ligne sous la barre) ; légende sous la grille (« Légende ▾ », ouverte d'office à partir de 1 600 px) et dans le menu ☰ au téléphone.
+**Habillage seulement (contenu d'avant conservé)** : les fenêtres Radix (Ajouter, Copier vers, Supprimer ?, Statut, Absences, Clients / Salariés / Réserves, Imprimer, Exporter, Versions, Traces…) reçoivent les jetons du bureau (liseré jaune 4 px, rayon 20 px, croix 40 / 44 px) mais pas la mise en page dessinée écran par écran (PL13 à PL16, PL20, PL29, PL33 à PL41, PL42 à PL44 : lots suivants si Ergun les veut) ; la ligne « Horaire prévu » de la fiche reprend le composant d'avant (champs + préréglages) au lieu des deux colonnes Début / Fin de PL17 ; la réunion montre titre, lieu ou « toute l'équipe » et heure (pas de nombre de participants : donnée absente).
+**États non redessinés** : chargement (PL07), échec de lecture (PL08), semaine vide (PL10), échec d'enregistrement (PL11) : ils gardent le rendu d'avant ; l'entreprise vide (PL09) a sa carte « Deux étapes » dans la grille ; l'astuce « Copier une case » (PL12) est la carte flottante de la planche avec le texte et les gestes d'avant (« Compris », « ? » dans le coin).
+**Tablette** : sous 1 024 px, la disposition téléphone (PM16 dessine le portrait 834 px avec la même disposition).
+**Mesures de la planche elle-même** : S'abonner (28 px), imprimer (34 px), Replier (24 px), « + ajouter » et « Tâches 1/3 » (24 px) sont dessinés sous 40 px : leur dessin est gardé, leur zone cliquable est de 40 px (44 au toucher) par un pseudo-élément. Le style de certains éléments dépend de la donnée (largeur de la jauge, hauteur des 7 barres) : seuls ces valeurs sont en `style`, tout le reste est en classes `dzp-*`.

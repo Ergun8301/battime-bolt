@@ -373,6 +373,8 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'rpc:my_worksite_labour',
     'ancre:bureau-cout.periodes',
     'ancre:bureau-nav.couts',
+    // Design du bureau v2 : « Coût chantiers » (comme Versions, Interventions supprimées, Formations, Envoyer par e-mail) est une ligne du menu « Plus ⋯ ».
+    'ancre:bureau-nav.plus',
   ],
   // B54 · Registre des réserves : lever, rouvrir
   // La levée avec photo (liftReserve) dépose la photo comme document du chantier puis la retire si la levée est
@@ -505,6 +507,9 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
   // B72 · Téléphone : atteindre depuis un point d'entrée unique toutes les fonctions de la barre du bureau, avec …
   B72: [
     'dialogue:components/admin-mobile-menu#open',
+    // Design du bureau v2 : le MÊME menu ☰, habillé par la planche (components/design/bureau/menu-mobile-v2.tsx) ; les mêmes lignes, les mêmes gestes.
+    'dialogue:components/design/bureau/menu-mobile-v2#open',
+    'ancre-dynamique:components/design/bureau/menu-mobile-v2.tsx:21',
     'ancre:bureau-nav.borne',
     'ancre:bureau-nav.clients',
     'ancre:bureau-nav.couts',

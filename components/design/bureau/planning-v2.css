@@ -15,12 +15,12 @@ html[data-dz-bureau] .bt-admin { background: var(--dz-creme); padding: 0; }
 .dzp-onglets { display: flex; gap: 4px; font-size: var(--dz-fs-14); }
 .dzp-onglet { padding: 8px 12px; min-height: var(--dz-clic); background: none; border: 0; color: rgba(242,237,227,.82); cursor: pointer; font-size: var(--dz-fs-14); display: inline-flex; align-items: center; }
 .dzp-onglet[aria-current="page"] { font-weight: 800; color: var(--dz-jaune); box-shadow: inset 0 -2px 0 var(--dz-jaune); cursor: default; }
-.dzp-essai { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 4px 0 14px; border-radius: var(--dz-r-pill); border: 1px solid rgba(242,237,227,.25); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.dzp-essai { display: flex; align-items: center; gap: 10px; height: var(--dz-clic); padding: 0 4px 0 14px; border-radius: var(--dz-r-pill); border: 1px solid rgba(242,237,227,.25); font-size: 13px; font-weight: 700; white-space: nowrap; }
 .dzp-essai[data-fini] { border-color: var(--dz-erreur-vif); }
 .dzp-essai button, .dzp-menu-essai button { height: 28px; padding: 0 12px; border-radius: var(--dz-r-pill); background: var(--dz-creme); color: var(--dz-encre); border: 0; font-weight: 800; font-size: 13px; cursor: pointer; }
-.dzp-assistant { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: var(--dz-r-pill); background: var(--dz-jaune); color: var(--dz-encre); border: 0; font-size: 13.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.dzp-assistant { display: inline-flex; align-items: center; gap: 8px; height: var(--dz-clic); padding: 0 16px; border-radius: var(--dz-r-pill); background: var(--dz-jaune); color: var(--dz-encre); border: 0; font-size: 13.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .dzp-compte { position: relative; }
-.dzp-compte__btn { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px 0 4px; border-radius: var(--dz-r-pill); background: var(--dz-encre-3); color: var(--dz-creme); border: 0; font-size: 13.5px; font-weight: 700; cursor: pointer; max-width: 260px; }
+.dzp-compte__btn { display: flex; align-items: center; gap: 10px; height: var(--dz-clic); padding: 0 14px 0 4px; border-radius: var(--dz-r-pill); background: var(--dz-encre-3); color: var(--dz-creme); border: 0; font-size: 13.5px; font-weight: 700; cursor: pointer; max-width: 260px; }
 .dzp-compte__btn span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dzp-avatar { width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--dz-creme); color: var(--dz-encre); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 12px; overflow: hidden; }
 .dzp-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -151,7 +151,7 @@ button.dzp-tuile { cursor: pointer; }
 .dzp-td[data-cible="refus"] { box-shadow: var(--dz-cible-refus); }
 .dzp-case { display: flex; flex-direction: column; gap: 5px; height: 100%; min-height: 92px; cursor: pointer; }
 .dzp-case[data-ferme] { cursor: default; }
-.dzp-vide { flex: 1; min-height: 88px; border-radius: var(--dz-r-s); border: 1.5px dashed var(--dz-trait-fort); display: flex; align-items: center; justify-content: center; color: var(--dz-prevu-trait); font-size: 20px; font-weight: 600; }
+.dzp-vide { flex: 1; min-height: 88px; border-radius: var(--dz-r-s); border: 1.5px dashed var(--dz-trait-fort); display: flex; align-items: center; justify-content: center; color: var(--dz-texte-3); font-size: 20px; font-weight: 700; }
 .dzp-case:hover .dzp-vide { background: var(--dz-jaune-pale); }
 .dzp-clos-txt { flex: 1; min-height: 88px; display: flex; align-items: center; justify-content: center; color: var(--dz-texte-2); font-size: var(--dz-fs-12); font-weight: 700; }
 .dzp-ajouter { align-self: flex-end; margin-top: auto; background: none; border: 0; font-size: var(--dz-fs-12); font-weight: 700; color: var(--dz-texte-2); padding: 2px 6px; min-height: 24px; cursor: pointer; }
@@ -366,22 +366,22 @@ button.dzp-tuile { cursor: pointer; }
 .dzp-m-dock .dzp-selbar__n { display: none; }
 .dzp-m-dock__n { font-weight: 800; font-size: var(--dz-fs-15); padding: 0 6px; }
 
-/* Menu ☰ du téléphone (feuille de droite, point d'entrée unique) */
-.dzp-mm { background: var(--dz-creme) !important; padding: 0 !important; display: flex; flex-direction: column; font-family: var(--dz-font-ui); color: var(--dz-encre); border-left: 0 !important; }
-.dzp-mm__tete { flex: none; background: var(--dz-encre); color: var(--dz-creme); padding: 20px 56px 16px 18px; display: flex; flex-direction: column; gap: 12px; }
-.dzp-mm__marque { display: flex; align-items: center; gap: 10px; }
-.dzp-mm__co { font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dzp-mm__u { font-size: var(--dz-fs-12); color: rgba(242,237,227,.75); }
-.dzp-mm-essai { display: flex; align-items: center; gap: 8px; border: 1px solid rgba(242,237,227,.25); border-radius: var(--dz-r-pill); padding: 4px 4px 4px 14px; font-size: 13px; font-weight: 700; }
-.dzp-mm-essai button { margin-left: auto; height: 32px; padding: 0 14px; border-radius: var(--dz-r-pill); border: 0; background: var(--dz-creme); color: var(--dz-encre); font-weight: 800; cursor: pointer; font-family: inherit; }
-.dzp-mm__corps { flex: 1; overflow-y: auto; padding: 12px 12px 24px; display: flex; flex-direction: column; gap: 2px; }
-.dzp-mm__item { width: 100%; min-height: var(--dz-tap); display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: none; border: 0; border-radius: var(--dz-r-s); text-align: left; font-family: inherit; font-size: 15px; font-weight: 800; color: var(--dz-encre); cursor: pointer; }
+/* Menu ☰ du téléphone : feuille du bas (28 px de rayon, liseré jaune), point d'entrée unique */
+.dzp-mm { inset: auto 0 0 0 !important; width: 100% !important; max-width: none !important; height: auto !important; max-height: 92dvh; background: hsl(var(--card)) !important; padding: 0 !important; display: flex; flex-direction: column; font-family: var(--dz-font-ui); color: var(--dz-encre); border: 0 !important; border-top: 4px solid var(--dz-jaune) !important; border-radius: var(--dz-r-sheet) var(--dz-r-sheet) 0 0; box-shadow: var(--dz-ombre-fenetre); }
+.dzp-mm__tete { flex: none; padding: var(--dz-sp-7) 72px var(--dz-sp-4) var(--dz-sp-8); text-align: left; }
+.dzp-mm__titre { margin: 0; font-weight: var(--dz-fw-titre); font-size: var(--dz-fs-24); letter-spacing: var(--dz-tracking-titre); color: var(--dz-encre); }
+.dzp-mm__corps { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--dz-sp-7) var(--dz-sp-8); display: flex; flex-direction: column; gap: var(--dz-sp-5); }
+.dzp-mm__groupe { border: 1px solid var(--dz-trait); border-radius: var(--dz-r-s); overflow: hidden; background: var(--dz-carte); }
+.dzp-mm__item { width: 100%; min-height: var(--dz-tap); display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: transparent; border: 0; border-top: 1px solid var(--dz-trait-doux); text-align: left; font-family: inherit; font-size: var(--dz-fs-15); font-weight: 800; color: var(--dz-encre); cursor: pointer; }
+.dzp-mm__item:first-child { border-top: 0; }
 .dzp-mm__item:hover { background: var(--dz-jaune-pale); }
 .dzp-mm__item[data-ton="danger"] { color: var(--dz-erreur-texte); }
-.dzp-mm__pic { width: 30px; height: 30px; flex: none; border-radius: 9px; background: var(--dz-carte); border: 1px solid var(--dz-trait); display: inline-flex; align-items: center; justify-content: center; }
-.dzp-mm__item span:nth-child(2) { flex: 1; }
-.dzp-mm__sep { height: 1px; background: var(--dz-trait); margin: 8px; }
-.dzp-mm__legende { margin: 8px 12px; padding: 12px; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); display: flex; flex-direction: column; gap: 8px; font-size: var(--dz-fs-125); }
+.dzp-mm__txt { flex: 1; min-width: 0; }
+.dzp-mm__badge { flex: none; font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-13); font-weight: 700; color: var(--dz-erreur-texte); }
+.dzp-mm__item i { flex: none; font-style: normal; color: var(--dz-texte-2); font-weight: 700; }
+.dzp-mm__legende { padding: 12px 14px; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-s); display: flex; flex-direction: column; gap: 8px; font-size: var(--dz-fs-125); }
+/* la croix de la feuille (Radix) : un rond de 44 px */
+.dzp-mm > button { width: var(--dz-tap); height: var(--dz-tap); right: 16px; top: 16px; border-radius: 50%; border: 1px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); opacity: 1; display: inline-flex; align-items: center; justify-content: center; }
 
 /* ── Fenêtres existantes (Radix, rendues dans <body>) : habillage v2 sous le drapeau ── */
 html[data-dz-bureau] .bt-skin[role="dialog"], html[data-dz-bureau] .bt-skin[role="alertdialog"] { font-family: var(--dz-font-ui); border-top: 4px solid var(--dz-jaune); border-radius: var(--dz-r-dialog); box-shadow: var(--dz-ombre-fenetre); }
@@ -441,3 +441,52 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
 .dzp-client__txt span { font-size: var(--dz-fs-12); color: var(--dz-texte-2); }
 .dzp-client__prise { display: grid; grid-template-columns: 4px 4px; gap: 2px; opacity: .45; }
 .dzp-client__prise i { width: 4px; height: 4px; border-radius: 50%; background: var(--dz-encre); }
+
+/* Zone de toucher : les petits boutons dessinés par la planche (S'abonner 28 px, imprimer 34 px, Replier 24 px) gardent leur dessin ;
+   leur zone cliquable est de 40 px (44 px au toucher) par un pseudo-élément. */
+.dzp-essai button, .dzp-rond--petit, .dzp-replier, .dzp-deplier, .dzp-mm-essai button { position: relative; }
+.dzp-replier { position: absolute; }
+.dzp-essai button::after, .dzp-rond--petit::after, .dzp-replier::after, .dzp-deplier::after, .dzp-mm-essai button::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, var(--dz-clic)); height: var(--dz-clic); transform: translate(-50%, -50%);
+}
+@media (pointer: coarse) { .dzp-essai button::after, .dzp-rond--petit::after, .dzp-replier::after, .dzp-deplier::after, .dzp-mm-essai button::after { width: max(100%, var(--dz-tap)); height: var(--dz-tap); } }
+
+/* Astuce « Copier une case » : la carte de la planche (PL12), fermable, mémorisée (même composant et mêmes gestes qu'avant) */
+.dzp-astuce { position: fixed; right: 24px; bottom: 24px; z-index: 35; width: min(340px, calc(100vw - 32px)); }
+.dzp-astuce .bt-cp-tip { display: block; position: relative; margin: 0; padding: 14px 16px 14px; background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); box-shadow: var(--dz-ombre-menu); color: var(--dz-texte-note); font-family: var(--dz-font-ui); font-size: var(--dz-fs-14); font-weight: 400; line-height: 1.5; }
+.dzp-astuce .bt-cp-tip::before { content: 'ASTUCE'; display: block; margin-bottom: 6px; font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); letter-spacing: var(--dz-tracking-etiquette); color: var(--dz-texte-2); font-weight: 700; }
+.dzp-astuce .bt-cp-tip p { margin: 0; }
+.dzp-astuce .bt-cp-tip span[aria-hidden] { display: none; }
+.dzp-astuce .bt-cp-tip-ok { margin-top: 10px; min-height: var(--dz-clic); padding: 0 16px; border-radius: var(--dz-r-pill); border: 1.5px solid var(--dz-encre); background: var(--dz-carte); font-family: inherit; font-size: var(--dz-fs-13); font-weight: 800; }
+@media (max-width: 1023px) { .dzp-astuce { display: none; } }
+.dzp-th-nom { position: relative; }
+.dzp-th-nom .bt-cp-help--corner { left: auto; right: 10px; bottom: 8px; }
+.dzp-m-corps .bt-cp-tip--m { border-radius: var(--dz-r-m); background: var(--dz-jaune-pale); border: 1px solid var(--dz-jaune); font-family: var(--dz-font-ui); }
+.dzp-m-corps .bt-cp-tip-ok { min-height: var(--dz-tap); border-radius: var(--dz-r-pill); border: 1.5px solid var(--dz-encre); background: var(--dz-carte); font-family: inherit; font-weight: 800; }
+
+.dzp-nom-btn { min-height: var(--dz-clic); }
+.dzp-ajouter { position: relative; }
+.dzp-ajouter::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--dz-clic)); height: var(--dz-clic); transform: translate(-50%, -50%); }
+
+/* Fiche : les contrôles repris tels quels (horaire prévu, préréglages) respectent la cible de 40 px (44 px au toucher). */
+.dzp-fiche button { min-height: var(--dz-clic); min-width: var(--dz-clic); }
+.dzp-fiche .dzp-fiche__lien { min-width: 0; }
+@media (pointer: coarse) { .dzp-fiche button { min-height: var(--dz-tap); min-width: var(--dz-tap); } }
+
+.dzp-m-co button { position: relative; }
+.dzp-m-co button::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--dz-tap)); height: var(--dz-tap); transform: translate(-50%, -50%); }
+@media (pointer: coarse) { .dzp-pilule { height: var(--dz-tap); } }
+@media (pointer: coarse) { html[data-dz-bureau] .bt-skin[role="dialog"] > button[class*="absolute"] { width: var(--dz-tap); height: var(--dz-tap); } }
+.dzp-taches { position: relative; }
+.dzp-taches::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--dz-clic)); height: var(--dz-clic); transform: translate(-50%, -50%); }
+@media (pointer: coarse) { .dzp-taches::after { height: var(--dz-tap); } }
+
+/* Copier (Ctrl, Alt, ⌘ tenu) : le curseur dit « copier » sur le fantôme, comme avant. */
+.bt-pl--copying .dzp-fantome { cursor: copy; }
+
+.dzp-pastille[data-k="absence"] { border: 0; background: repeating-linear-gradient(135deg, var(--dz-conge-a) 0 6px, var(--dz-conge-b) 6px 12px); }
+.dzp-pastille[data-k="clos"] { background: var(--dz-cloture-fond); border-style: solid; border-color: var(--dz-trait-fort); }
+.dzp-pastille[data-k="reserve"] { background: var(--dz-erreur-fond); border-style: solid; border-color: var(--dz-erreur); }
+
+/* Copier : la bulle d'origine reste pleine (seul un déplacement l'estompe à 45 %) */
+.bt-pl--copying .dzp-bulle-wrap[data-glisse] { opacity: 1; outline: none; }

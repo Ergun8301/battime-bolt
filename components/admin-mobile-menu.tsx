@@ -56,6 +56,8 @@ export interface AdminMobileMenuProps {
   onOpenStats?: () => void;
   onOpenLeaves: () => void;
   pendingLeaves?: number;
+  /** Design du bureau (v2) : invitations en attente, ajoutées au badge de « Salariés ». Absent de l'ancien menu. */
+  pendingInvites?: number;
   onOpenReserves: () => void;
   openReserves?: number;
   /** Formations (lot 6) : seulement quand la migration est passée. */

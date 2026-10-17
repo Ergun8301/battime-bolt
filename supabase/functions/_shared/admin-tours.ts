@@ -17,6 +17,9 @@
 // liste (accepter un congé, relancer, lever une réserve, rouvrir un mois…) n'est jamais
 // entouré : l'ancre est sur la LISTE et la phrase dit de choisir la bonne ligne.
 
+import { GUIDES_BUREAU_UI2 } from './guides-bureau-ui2.ts';
+import { ficheV2 } from './admin-tours-v2.ts';
+
 /**
  * L'écran à préparer avant l'étape. Seulement de la NAVIGATION (menus, fenêtres de
  * lecture) : jamais la borne, les statistiques, un salarié ou un client précis, un
@@ -65,7 +68,7 @@ const RUB_NOTIF: AdminStep = { ecran: 'reglages', cible: 'bureau-reglages.rub-no
  * Les 48 fiches. Les écrans (`ecran`) servent aux étapes qu'on ne peut pas atteindre autrement ;
  * une étape sans `ecran` ne ferme et n'ouvre rien (le patron vient peut-être d'ouvrir la fenêtre lui-même).
  */
-export const ADMIN_TOURS: AdminTour[] = [
+const ADMIN_TOURS_V1: AdminTour[] = [
   { id: 'ajouter_salarie', etapes: [
     NAV_SAL,
     { ecran: 'salaries', cible: 'bureau-salaries.nouveau', texte: 'Cliquez sur « Nouveau salarié ».' },
@@ -293,6 +296,9 @@ export const ADMIN_TOURS: AdminTour[] = [
     { cible: 'bureau-nav.assistant', texte: 'Cliquez sur « Assistant BEMEXO » (l’étoile ✨) pour lui parler.' },
   ] },
 ];
+
+/** Les fiches de guide : celles d'avant, ou — seulement quand GUIDES_BUREAU_UI2 est `true` (jamais avant la bascule du bureau) — celles du planning v2. */
+export const ADMIN_TOURS: AdminTour[] = GUIDES_BUREAU_UI2 ? ADMIN_TOURS_V1.map(ficheV2) : ADMIN_TOURS_V1;
 
 /** Recherche STRICTE par égalité dans le tableau : jamais ADMIN_TOURS[id] (guide:constructor, guide:__proto__). */
 export const findAdminTour = (id: string): AdminTour | null => ADMIN_TOURS.find((t) => t.id === id) ?? null;

@@ -79,7 +79,7 @@ export function CaseCoche({ sel, classe = 'dzp-bulle__case' }: { sel: SelState; 
 export function CarteBulle({ d, sel, grand, raison }: { d: DonneesBulle; sel?: SelState; grand?: boolean; raison?: string | null }) {
   const b = lireBulle(d);
   return (
-    <div className={`dzp-bulle dzp-c${b.couleur}`} data-etat={b.etat} data-creneau={b.creneau} data-grand={grand ? '' : undefined} data-testid="bubble">
+    <div className={`dzp-bulle dzp-c${b.couleur}`} data-etat={b.etat} data-creneau={b.creneau} data-grand={grand ? '' : undefined} data-withdrawn={b.etat === 'retiree' ? '1' : undefined} data-testid="bubble">
       <span className="dzp-bulle__bande" aria-hidden="true" />
       <div className="dzp-bulle__tete">
         <span className="dzp-bulle__pastille" aria-hidden="true" />

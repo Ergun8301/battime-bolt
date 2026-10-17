@@ -6,7 +6,6 @@ import type { PlanningWithWorksite, User, Worksite } from '@/lib/types';
 import type { EntryRow, RealAgg } from '@/lib/planning-cells';
 import type { DayTask, Meeting, MissionsState } from '@/lib/missions';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Fn = (...args: any[]) => any;
 
 export interface SelState { on: boolean; lock: string | null }
@@ -52,7 +51,7 @@ export interface PlanningCtx {
   // imprimer
   printOpen: boolean; setPrintOpen: (o: boolean) => void; closePrintMenu: () => void; printMenu: ReactNode;
   // coach, astuce
-  coachHidden: boolean; dismissCoach: () => void; copyTipDesk: ReactNode;
+  coachHidden: boolean; dismissCoach: () => void; copyTipDesk: ReactNode; copyTipHelpCorner: ReactNode;
   // téléphone
   copyTipMobile: ReactNode; copyTipHelpMobile: ReactNode;
 }

@@ -79,7 +79,7 @@ export function Grille({ c, totaux }: { c: PlanningCtx; totaux: TotauxSemaine })
         <colgroup><col /><col /><col /><col /><col /><col /><col /><col /></colgroup>
         <thead>
           <tr>
-            <th className="dzp-th-nom" scope="col">Salarié · heures S-{format(c.currentWeekStart, 'I')}</th>
+            <th className="dzp-th-nom" scope="col">Salarié · heures S-{format(c.currentWeekStart, 'I')}{c.workers.length > 0 && c.copyTipHelpCorner}</th>
             {c.weekDays.map((day, i) => {
               const d = dates[i];
               const auj = d === c.todayStr;
