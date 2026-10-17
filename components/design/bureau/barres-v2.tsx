@@ -57,6 +57,12 @@ function MenuPlus({ c, fermer, legende }: { c: PlanningCtx; fermer: () => void; 
             <button type="button" onClick={go(() => c.onSubscribe?.())} data-guide="bureau-nav.abonner">S&apos;abonner</button>
           </div>
         )}
+        {/* Tablette (768 à 1 023 px) : la barre n'a pas la place de Clients, Salariés et Sélectionner ; ils passent ici (cachés au-delà : ils sont dans la barre). */}
+        <div className="dzp-menu__groupe dzp-menu__tablette">
+          <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => { c.setChantierMenuOpen(true); c.setClientsQuery(''); })} data-testid="menu-clients">Clients<i aria-hidden="true">›</i></button>
+          <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setSalariesOpen(true))} data-testid="menu-salaries">Salariés{c.pendingLeaves + c.pendingInvites > 0 ? <small>{c.pendingLeaves + c.pendingInvites}</small> : <i aria-hidden="true">›</i>}</button>
+          <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => (c.selectMode ? c.exitSelect() : c.enterSelect()))} data-testid="menu-select">{c.selectMode ? 'Terminer la sélection' : 'Sélectionner'}<i aria-hidden="true">›</i></button>
+        </div>
         <span className="dzp-menu__titre">Chantiers</span>
         <div className="dzp-menu__groupe">
           <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setReservesOpen(true))} title="Réserves de chantier à traiter" data-guide="bureau-nav.reserves" data-testid="menu-reserves">Réserves{c.openReserves > 0 ? <small>{c.openReserves}</small> : <i aria-hidden="true">›</i>}</button>
@@ -173,10 +179,10 @@ export function BarreUnique({ c, recherche, setRecherche, pleinEcran, legende }:
       <span className="dzp-b-espace" />
       <div className="dzp-b-actions">
         <Loupe q={recherche} setQ={setRecherche} />
-        <button type="button" className="dzp-b-pilule" aria-expanded={c.chantierMenuOpen} onClick={() => { c.setChantierMenuOpen(!c.chantierMenuOpen); c.setClientsQuery(''); }} data-guide="bureau-nav.clients">Clients</button>
-        <button type="button" className="dzp-b-pilule" onClick={() => c.setSalariesOpen(true)} data-guide="bureau-nav.salaries"
+        <button type="button" className="dzp-b-pilule" data-tablette-cache="" aria-expanded={c.chantierMenuOpen} onClick={() => { c.setChantierMenuOpen(!c.chantierMenuOpen); c.setClientsQuery(''); }} data-guide="bureau-nav.clients">Clients</button>
+        <button type="button" className="dzp-b-pilule" data-tablette-cache="" onClick={() => c.setSalariesOpen(true)} data-guide="bureau-nav.salaries"
           title={c.pendingLeaves + c.pendingInvites > 0 ? `${c.pendingLeaves} demande(s) de congé, ${c.pendingInvites} invitation(s) en attente` : undefined}>Salariés</button>
-        <button type="button" className="dzp-b-pilule" aria-pressed={c.selectMode} data-testid="bar-select" data-guide="bureau-nav.selection"
+        <button type="button" className="dzp-b-pilule" data-tablette-cache="" aria-pressed={c.selectMode} data-testid="bar-select" data-guide="bureau-nav.selection"
           title={c.selectMode ? 'Terminer la sélection' : 'Cocher des interventions pour les supprimer'} onClick={() => (c.selectMode ? c.exitSelect() : c.enterSelect())}>Sélectionner</button>
         <div className="dzp-relatif">
           <button type="button" className="dzp-b-pilule" aria-expanded={plusOuvert} aria-haspopup="menu" onClick={() => setPlusOuvert((o) => !o)} data-testid="bar-plus" data-guide="bureau-nav.plus">Plus ⋯</button>

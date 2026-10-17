@@ -509,7 +509,7 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'dialogue:components/admin-mobile-menu#open',
     // Design du bureau v2 : le MÊME menu ☰, habillé par la planche (components/design/bureau/menu-mobile-v2.tsx) ; les mêmes lignes, les mêmes gestes.
     'dialogue:components/design/bureau/menu-mobile-v2#open',
-    'ancre-dynamique:components/design/bureau/menu-mobile-v2.tsx:21',
+    'ancre-dynamique:components/design/bureau/menu-mobile-v2.tsx:28',
     'ancre:bureau-nav.borne',
     'ancre:bureau-nav.clients',
     'ancre:bureau-nav.couts',

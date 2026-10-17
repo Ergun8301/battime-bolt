@@ -1,7 +1,10 @@
 // Rendu de la maquette 2a (« Bureau · barre unique + plein écran ») de la planche d'essai du designer :
 // docs/design-brief/designer-essai/Essai nouveau design Bemexo.dc.html (moteur dc : support.js, React/ReactDOM 18.3.1).
 //   LIBS_DIR=<dossier> node scripts/tests/planche-essai-2a.mjs <dossier-de-sortie> [--plein-ecran]
+//   LIBS_DIR=<dossier> node scripts/tests/planche-essai-2a.mjs <dossier-de-sortie> --telephone
 // Écrit <sortie>/planche-2a-1440.png (la maquette 1440 × 900 découpée) et <sortie>/planche-2a-mesures.json (boîtes de la barre, des en-têtes, de la 1re ligne).
+// --telephone : découpe les deux téléphones du TOUR 2 (cadre de 390 × 844, coque comprise) : planche-2b-jour.png (2b « Bureau · téléphone », vue Jour),
+// planche-2b-semaine.png (la même après « Semaine »), planche-2c.png (2c « Panneau sous 1024 px ») et planche-2b-mesures.json (boîtes de l'écran 2b et de la feuille 2c).
 // Réseau fermé : React 18.3.1, ReactDOM 18.3.1 et Babel 7.29.0 (demandés par support.js à unpkg.com) sont servis depuis LIBS_DIR
 // (`npm pack react@18.3.1 react-dom@18.3.1 @babel/standalone@7.29.0` puis extraire : react.production.min.js, react-dom.production.min.js, babel.min.js).
 // Les polices Google (Archivo, JetBrains Mono) sont remplacées par les MÊMES fichiers, auto-hébergés dans public/fonts : la comparaison porte aussi sur le dessin des lettres.
@@ -18,6 +21,7 @@ if (!LIBS) { console.error('LIBS_DIR manquant (voir l’en-tête du script)'); p
 const args = process.argv.slice(2);
 const sortie = args.find((a) => !a.startsWith('--')) || 'planche-2a';
 const plein = args.includes('--plein-ecran');
+const telephone = args.includes('--telephone');
 const PORT = Number(process.env.PORT_PLANCHE || 4998);
 const T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2' };
 const srv = http.createServer((q, r) => {
@@ -38,6 +42,34 @@ await pg.route(/unpkg\.com/, (r) => { const n = r.request().url().split('/').pop
 await pg.goto(`http://localhost:${PORT}/`, { waitUntil: 'load', timeout: 120000 });
 await pg.waitForFunction(() => !!document.querySelector('#\\32 a table tbody tr'), null, { timeout: 120000 });
 await pg.evaluate(() => document.fonts.ready);
+if (telephone) {
+  // Le cadre du téléphone : le premier <div> de 390 × 844 de la zone (coque noire de 10 px comprise, écran de 370 × 824).
+  const cadre = (id) => pg.evaluate((id) => {
+    const z = document.getElementById(id);
+    const d = [...z.querySelectorAll('div')].find((e) => { const r = e.getBoundingClientRect(); return Math.round(r.width) === 390 && Math.round(r.height) === 844; });
+    const r = d.getBoundingClientRect();
+    return { x: r.x + scrollX, y: r.y + scrollY, width: 390, height: 844 };
+  }, id);
+  const mesurer = (id) => pg.evaluate((id) => {
+    const z = document.getElementById(id);
+    const d = [...z.querySelectorAll('div')].find((e) => { const r = e.getBoundingClientRect(); return Math.round(r.width) === 390 && Math.round(r.height) === 844; });
+    const o = d.firstElementChild.getBoundingClientRect();
+    const box = (e) => { const r = e.getBoundingClientRect(); return { t: (e.innerText || e.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 40), x: Math.round(r.x - o.x), y: Math.round(r.y - o.y), w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 }; };
+    return { ecran: { w: o.width, h: o.height }, boutons: [...d.querySelectorAll('button')].map(box), dialogue: [...d.querySelectorAll('[role=dialog]')].map(box) };
+  }, id);
+  await pg.waitForTimeout(800);
+  await pg.screenshot({ path: path.join(sortie, 'planche-2b-jour.png'), clip: await cadre('2b'), fullPage: true });
+  const m2b = await mesurer('2b');
+  await pg.locator('#\\32 b').getByRole('button', { name: 'Semaine', exact: true }).click();
+  await pg.waitForTimeout(600);
+  await pg.screenshot({ path: path.join(sortie, 'planche-2b-semaine.png'), clip: await cadre('2b'), fullPage: true });
+  const m2bs = await mesurer('2b');
+  await pg.screenshot({ path: path.join(sortie, 'planche-2c.png'), clip: await cadre('2c'), fullPage: true });
+  const m2c = await mesurer('2c');
+  fs.writeFileSync(path.join(sortie, 'planche-2b-mesures.json'), JSON.stringify({ jour: m2b, semaine: m2bs, feuille: m2c }, null, 1));
+  console.log(`planche 2b / 2c : ${m2b.boutons.length} boutons (Jour), ${m2bs.boutons.length} (Semaine), feuille ${JSON.stringify(m2c.dialogue[0] || null)}`);
+  await b.close(); srv.close(); process.exit(0);
+}
 if (plein) { await pg.locator('#\\32 a').getByRole('button', { name: 'Plein écran', exact: true }).first().click(); }
 await pg.waitForTimeout(1200);
 const mesures = await pg.evaluate(() => {

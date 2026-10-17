@@ -365,70 +365,215 @@ button.dzp-b-actuelle { background: transparent; border: 1px solid #FFC21A; colo
 .dzp-aide__etape small { color: var(--dz-texte-2); font-size: var(--dz-fs-125); }
 .dzp-vide-semaine { padding: 40px; text-align: center; color: var(--dz-texte-2); font-size: 16px; }
 
-/* ── Téléphone et tablette (< 1 024 px) ── */
+/* ── TÉLÉPHONE (< 768 px) : planche d'essai 2b « Bureau · téléphone ». Valeurs copiées du HTML de 2b et du script (`mDays`, `mRows`, `styleItem`, `wkHead`, `blk`).
+   La tablette (768 px et plus) garde la grille de l'ordinateur. ── */
 .dzp-mobile { display: none; }
-@media (max-width: 1023px) {
+@media (max-width: 767px) {
   .dzp-bureau-desk { display: none; }
   .dzp-mobile { display: flex; flex-direction: column; min-height: 100vh; }
 }
-.dzp-m-tete { position: sticky; top: 0; z-index: 30; background: var(--dz-encre); color: var(--dz-creme); padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
-.dzp-m-ligne { display: flex; align-items: center; gap: 8px; }
-.dzp-m-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.dzp-m-id .dzp-logo { font-size: 18px; }
-.dzp-m-co { font-size: var(--dz-fs-125); color: rgba(242,237,227,.82); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dzp-m-co button { background: none; border: 0; padding: 0; color: var(--dz-jaune); font-weight: 700; font-family: inherit; font-size: inherit; cursor: pointer; }
-.dzp-m-rond { width: var(--dz-tap); height: var(--dz-tap); flex: none; border-radius: 50%; border: 1.5px solid rgba(242,237,227,.35); background: transparent; color: var(--dz-creme); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; position: relative; cursor: pointer; }
-.dzp-m-rond[data-ton="jaune"] { background: var(--dz-jaune); border-color: var(--dz-jaune); color: var(--dz-encre); font-size: 17px; font-weight: 900; }
-.dzp-m-rond[data-ton="fleche"] { background: var(--dz-encre-3); border-color: var(--dz-encre-3); font-size: 16px; font-weight: 700; }
-.dzp-m-badge { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: var(--dz-r-pill); background: var(--dz-erreur); color: #fff; font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid var(--dz-encre); }
-.dzp-m-sem { flex: 1; display: flex; flex-direction: column; align-items: center; }
-.dzp-m-sem b { font-weight: 900; font-size: 20px; letter-spacing: -.02em; }
-.dzp-m-sem span { font-size: var(--dz-fs-125); color: rgba(242,237,227,.82); }
-.dzp-m-jours { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.dzp-m-jour { min-height: 52px; border-radius: 14px; background: var(--dz-encre-3); color: var(--dz-creme); border: 1.5px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer; font-family: inherit; padding: 0; }
-.dzp-m-jour[aria-pressed="true"] { background: var(--dz-jaune); color: var(--dz-encre); }
-.dzp-m-jour[data-auj] { border-color: var(--dz-jaune); }
-.dzp-m-jour[data-clos]::after { content: 'CLOS'; font-family: var(--dz-font-chiffres); font-size: 9px; }
-.dzp-m-jour span:first-child { font-size: var(--dz-fs-12); font-weight: 700; }
-.dzp-m-jour span:nth-child(2) { font-weight: 900; font-size: 16px; }
-.dzp-m-corps { flex: 1; padding: 12px 14px 120px; display: flex; flex-direction: column; gap: 10px; background: var(--dz-creme); }
-.dzp-m-compteurs { display: flex; gap: 6px; }
-.dzp-m-compteur { flex: 1; min-height: var(--dz-tap); border-radius: 14px; border: 1px solid var(--dz-trait); background: var(--dz-carte); color: var(--dz-encre); display: flex; align-items: center; justify-content: center; gap: 5px; font-family: inherit; font-size: 13px; font-weight: 700; padding: 0 6px; cursor: pointer; }
-.dzp-m-compteur b { font-family: var(--dz-font-chiffres); font-size: 15px; }
-.dzp-m-compteur[data-ton="relance"] { background: var(--dz-erreur-fond); border: 1.5px solid var(--dz-erreur); color: var(--dz-erreur-texte); }
-.dzp-m-compteur[data-ton="direct"] { background: var(--dz-en-cours-fond); border: 1.5px solid var(--dz-en-cours); color: var(--dz-en-cours-texte); }
-.dzp-m-titre-jour { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-12); letter-spacing: .14em; color: var(--dz-titre-section); margin-top: 2px; text-transform: uppercase; }
-.dzp-m-outils { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dzp-m-cartes { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: start; }
-@media (min-width: 700px) { .dzp-m-cartes { grid-template-columns: 1fr 1fr; } }
-.dzp-m-carte { background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: var(--dz-r-l); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.dzp-m-carte[data-live] { background: var(--dz-en-cours-fond); border-color: var(--dz-en-cours); }
-.dzp-m-haut { display: flex; align-items: center; gap: 10px; min-height: var(--dz-tap); background: none; border: 0; padding: 0; width: 100%; text-align: left; font-family: inherit; color: inherit; cursor: pointer; }
-.dzp-m-haut .dzp-avatar { width: 40px; height: 40px; font-size: 13px; background: var(--dz-sable); }
-.dzp-m-haut .dzp-nom { font-weight: 900; font-size: var(--dz-fs-15); }
-.dzp-m-statut { flex: none; font-family: var(--dz-font-chiffres); font-size: 11.5px; font-weight: 700; padding: 4px 7px; border-radius: 6px; background: var(--dz-verrou-fond); color: var(--dz-texte-note); text-transform: uppercase; }
-.dzp-m-statut[data-ton="direct"] { background: var(--dz-vert-plein); color: #fff; }
-.dzp-m-absence { min-height: 52px; border-radius: var(--dz-r-s); display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--dz-texte-note); }
-.dzp-m-absence b { font-family: var(--dz-font-chiffres); letter-spacing: .08em; }
-.dzp-m-absence[data-type="conge"] { background: repeating-linear-gradient(135deg, var(--dz-conge-a) 0 9px, var(--dz-conge-b) 9px 18px); }
-.dzp-m-absence[data-type="maladie"] { background: repeating-linear-gradient(135deg, var(--dz-maladie-a) 0 9px, var(--dz-maladie-b) 9px 18px); }
-.dzp-m-absence[data-type="intemperie"] { background: repeating-linear-gradient(135deg, var(--dz-intemperie-a) 0 9px, var(--dz-intemperie-b) 9px 18px); }
-.dzp-m-absence[data-type="repos"] { background: repeating-linear-gradient(135deg, var(--dz-repos-a) 0 9px, var(--dz-repos-b) 9px 18px); }
-.dzp-m-bulle { border-radius: 14px; cursor: pointer; background: none; border: 0; padding: 0; text-align: left; width: 100%; font-family: inherit; }
-.dzp-bulle[data-grand] { border-radius: 14px; padding: 9px 12px 10px 16px; gap: 3px; }
-.dzp-bulle[data-grand] .dzp-bulle__pastille { width: 9px; height: 9px; margin-top: 5px; }
-.dzp-bulle[data-grand] .dzp-bulle__titre { font-weight: 900; font-size: var(--dz-fs-15); line-height: 1.2; }
-.dzp-bulle[data-grand] .dzp-bulle__sous { font-size: var(--dz-fs-13); }
-.dzp-bulle[data-grand] .dzp-bulle__heure { font-size: var(--dz-fs-13); }
-.dzp-bulle[data-grand] .dzp-etiquette { font-size: 11.5px; padding: 3px 6px; border-radius: 6px; }
-.dzp-bulle[data-grand] .dzp-bulle__case { width: 26px; height: 26px; border-radius: 7px; }
-.dzp-m-ajout { display: flex; gap: 6px; }
-.dzp-m-ajout button { min-height: var(--dz-tap); border-radius: var(--dz-r-s); border: 1.5px dashed var(--dz-prevu-trait); background: transparent; font-family: inherit; font-size: var(--dz-fs-14); font-weight: 800; color: var(--dz-encre); cursor: pointer; }
-.dzp-m-ajout button:first-child { flex: 1; }
-.dzp-m-ajout button:last-child { padding: 0 14px; border: 1.5px solid var(--dz-trait-fort); }
-.dzp-m-noadd { font-size: var(--dz-fs-125); color: var(--dz-texte-2); }
-.dzp-m-case { flex: none; width: 26px; height: 26px; border-radius: 7px; border: 2px solid var(--dz-encre); background: var(--dz-carte); font-size: 13px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--dz-encre); }
-.dzp-m-case[data-on] { background: var(--dz-jaune); }
+.dzp-m2 { background: #F2EDE3; color: #15120F; }
+/* En-tête sombre : la planche réserve 44 px en haut pour la barre d'état du téléphone dessiné ; ici, la vraie zone sûre du téléphone (encoche) + 16 px. */
+.dzp-m2-tete { position: sticky; top: 0; z-index: 30; background: #15120F; color: #F2EDE3; padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 14px; display: flex; flex-direction: column; gap: 12px; }
+.dzp-m2-ligne { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.dzp-m2-tete .dzp-logo { font-weight: 800; font-size: 20px; letter-spacing: 0; }
+.dzp-m2-ronds { display: flex; gap: 8px; }
+.dzp-m2-rond { position: relative; width: 44px; height: 44px; flex: none; border-radius: 50%; border: 1px solid rgba(242,237,227,.25); background: transparent; color: #F2EDE3; font-size: 18px; font-family: inherit; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+.dzp-m2-rond[data-ton="jaune"] { border: 0; background: #FFC21A; color: #15120F; font-size: 16px; font-weight: 900; }
+.dzp-m2-sem { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
+.dzp-m2-sem b { font-weight: 900; font-size: 28px; letter-spacing: -.03em; line-height: 1.2; }
+.dzp-m2-sem span { font-family: var(--dz-font-chiffres); font-size: 11px; color: rgba(242,237,227,.65); }
+.dzp-m2-bascule { flex: none; display: flex; background: #25201B; border-radius: 999px; padding: 3px; }
+.dzp-m2-bascule button { position: relative; border: 0; height: 38px; padding: 0 14px; border-radius: 999px; font-family: inherit; font-size: 13px; font-weight: 800; background: transparent; color: #F2EDE3; cursor: pointer; }
+.dzp-m2-bascule button[aria-pressed="true"] { background: #FFC21A; color: #15120F; }
+/* 38 px dessinés, 44 px au doigt (la pilule de 3 px autour) : zone de toucher prolongée par un pseudo-élément. */
+.dzp-m2-bascule button::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.dzp-m2-jours { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.dzp-m2 .dzp-m-jour { height: 52px; min-height: 0; border-radius: 14px; border: 0; background: #25201B; color: #F2EDE3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; font-family: inherit; cursor: pointer; }
+.dzp-m2 .dzp-m-jour[data-auj] { background: #3A3129; }
+.dzp-m2 .dzp-m-jour[aria-pressed="true"] { background: #FFC21A; color: #15120F; }
+.dzp-m2 .dzp-m-jour span:first-child { font-size: 10.5px; font-weight: 700; opacity: .8; }
+.dzp-m2 .dzp-m-jour span:nth-child(2) { font-weight: 900; font-size: 16px; }
+.dzp-m2 .dzp-m-jour[data-clos]::after { content: none; }
+.dzp-m-badge { position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; background: #E53935; color: #fff; font-family: var(--dz-font-chiffres); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid #15120F; }
+
+/* Jour : une carte par salarié */
+.dzp-m2-corps { flex: 1; padding: 12px 16px 20px; display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; gap: 10px; }
+.dzp-m2-filtre { font-family: var(--dz-font-chiffres); font-size: 11px; font-weight: 700; letter-spacing: .08em; color: #5B534A; text-transform: uppercase; }
+.dzp-m2 .dzp-m-carte { background: #FFFDF8; border: 1px solid #E3DACB; border-radius: 18px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.dzp-m2 .dzp-m-carte[data-live] { background: #FFFDF8; border-color: #E3DACB; }
+.dzp-m2 .dzp-m-haut { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: -2px 0; background: none; border: 0; padding: 0; width: 100%; text-align: left; font-family: inherit; color: inherit; cursor: pointer; }
+.dzp-m2 .dzp-m-haut .dzp-avatar { width: 34px; height: 34px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 12px; color: #15120F; }
+.dzp-m-nom { flex: 1; min-width: 0; font-weight: 800; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dzp-m-etat { flex: none; font-family: var(--dz-font-chiffres); font-size: 10.5px; font-weight: 700; color: #17663F; }
+.dzp-m-etat[data-ton="attente"] { color: #C2410C; }
+/* Avatars : les huit teintes de la planche (`av`), une par salarié (même hachage qu'à l'ordinateur). */
+.dzp-m2 .dzp-avatar[data-teinte="0"] { background: #FFE9A8; } .dzp-m2 .dzp-avatar[data-teinte="1"] { background: #DCEFE4; }
+.dzp-m2 .dzp-avatar[data-teinte="2"] { background: #F6DDE8; } .dzp-m2 .dzp-avatar[data-teinte="3"] { background: #DDE7F6; }
+.dzp-m2 .dzp-avatar[data-teinte="4"] { background: #EDE3F8; } .dzp-m2 .dzp-avatar[data-teinte="5"] { background: #FFE1CC; }
+.dzp-m2 .dzp-avatar[data-teinte="6"] { background: #E2F0D9; } .dzp-m2 .dzp-avatar[data-teinte="7"] { background: #E6DDCD; }
+/* Absence : 48 px, rayures 135° de 9 px, libellé mono capitales */
+.dzp-m2 .dzp-m-absence { height: 48px; min-height: 0; width: 100%; border: 0; border-radius: 12px; display: flex; align-items: center; justify-content: center; padding: 0 12px; font-family: inherit; color: #3A332B; cursor: pointer; }
+.dzp-m2 .dzp-m-absence b { font-family: var(--dz-font-chiffres); font-weight: 700; letter-spacing: .14em; font-size: 11px; }
+.dzp-m2 .dzp-m-absence[data-type="conge"] { background: repeating-linear-gradient(135deg, #EFE6D2 0 9px, #E4D6B8 9px 18px); }
+.dzp-m2 .dzp-m-absence[data-type="maladie"] { background: repeating-linear-gradient(135deg, #F1E2E2 0 9px, #E7D2D2 9px 18px); }
+.dzp-m2 .dzp-m-absence[data-type="intemperie"] { background: repeating-linear-gradient(135deg, #DCE6EE 0 9px, #CBD9E4 9px 18px); }
+.dzp-m2 .dzp-m-absence[data-type="repos"] { background: repeating-linear-gradient(135deg, var(--dz-repos-a) 0 9px, var(--dz-repos-b) 9px 18px); }
+/* Carte d'intervention (planche 2b) : 50 px au moins, liseré de 5 px, titre 800 14 px à gauche, horaire mono 11,5 px à droite ; couleurs = `styleItem` (envoyées sombres). */
+.dzp-m2 .dzp-m-bulle { display: block; width: 100%; padding: 0; border: 0; background: none; border-radius: 12px; text-align: left; font-family: inherit; color: inherit; cursor: pointer; }
+.dzp-mc { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 50px; padding: 8px 12px 8px 16px; border-radius: 12px; overflow: hidden;
+  background: #FFFFFF; border: 1.5px dashed #9C907E; color: #15120F; --c-lisere: #15120F; --c-heure: #5B534A; }
+.dzp-mc[data-creneau="matin"] { background: #DDEBFA; --c-lisere: #4A8FE0; }
+.dzp-mc[data-creneau="apres-midi"] { background: #FCE3CF; --c-lisere: #EE8A43; }
+.dzp-mc[data-creneau="soir"] { background: #E8DCF6; --c-lisere: #9A6FD6; }
+.dzp-mc[data-creneau="journee"] { background: #FFFFFF; --c-lisere: #15120F; }
+.dzp-mc__lisere { position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c-lisere); }
+.dzp-mc__titre { min-width: 0; font-weight: 800; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dzp-mc__heure { flex: none; max-width: 130px; font-family: var(--dz-font-chiffres); font-size: 11.5px; font-weight: 700; color: var(--c-heure); text-align: right; }
+.dzp-mc[data-etat="a-envoyer"] { border: 1.5px solid #15120F; --c-heure: #15120F; }
+.dzp-mc[data-etat="envoyee"] { background: #15120F; border: 1.5px solid #15120F; color: #F2EDE3; --c-heure: #FFC21A; }
+.dzp-mc[data-etat="en-cours"] { background: #E7F6EE; border: 1.5px solid #2FA36B; --c-lisere: #2FA36B; --c-heure: #17663F; }
+.dzp-mc[data-etat="retiree"] { background: #EFE9DE; border: 1.5px solid #D6CBB7; }
+.dzp-mc[data-etat="retiree"] .dzp-mc__titre { text-decoration: line-through; }
+.dzp-mc[data-etat="ajoutee"] { background: #FFFDF8; border: 1.5px dashed #D9480F; --c-lisere: #D9480F; }
+.dzp-mc[data-etat="reunion"] { background: #FBE0EA; border: 1.5px solid #D6457A; --c-lisere: #D6457A; --c-heure: #15120F; }
+.dzp-mc__case { position: static; flex: none; width: 26px; height: 26px; border-radius: 7px; }
+.dzp-m2 .dzp-m-bulle[data-sel="on"] .dzp-mc { box-shadow: 0 0 0 3px #FFC21A; }
+.dzp-m2 .dzp-m-bulle[data-sel="lock"] .dzp-mc { opacity: .55; }
+.dzp-m-ajouter { height: 44px; width: 100%; border-radius: 12px; border: 1.5px dashed #D6CBB7; background: transparent; font-family: inherit; font-size: 13px; font-weight: 800; color: #5B534A; cursor: pointer; }
+.dzp-m-noadd { font-size: 12.5px; color: var(--dz-texte-2); }
+.dzp-m2 .dzp-taches { min-height: 44px; padding: 0 14px; font-size: 13px; }
+.dzp-m2 .bt-pl-livechip { border-radius: 12px; min-height: 44px; background: #E7F6EE; border: 1.5px solid #2FA36B; font-family: inherit; }
+.dzp-m2 .bt-cp-tip--m { border-radius: 18px; background: #FFFDF8; border: 1px solid #E3DACB; font-family: var(--dz-font-ui); }
+.dzp-m2 .bt-cp-tip-ok { min-height: 44px; border-radius: 999px; border: 1.5px solid #15120F; background: #FFFDF8; font-family: inherit; font-weight: 800; }
+/* Imprimer (ouvert par le menu ☰) : le menu d'options d'avant, posé en bas de l'écran. */
+.dzp-m-imprimer .bt-pl-pr { position: fixed; left: 8px; right: 8px; bottom: 8px; top: auto; z-index: 60; width: auto; max-height: 86dvh; overflow-y: auto; }
+.dzp-m-imprimer .bt-pl-ddbackdrop { position: fixed; inset: 0; z-index: 59; background: rgba(21,18,15,.45); }
+
+/* Semaine : la mosaïque (une pastille par intervention) ; toucher une colonne ouvre ce jour */
+.dzp-m2-corps--semaine { display: block; padding: 12px 12px 20px; }
+.dzp-mos { display: grid; grid-template-columns: 92px repeat(7, minmax(0, 1fr)); gap: 4px; align-items: stretch; }
+.dzp-mos__ligne { display: contents; }
+.dzp-mos__tete { height: 44px; min-width: 0; border-radius: 10px; border: 0; background: #FFFDF8; color: #15120F; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; font-family: inherit; cursor: pointer; }
+.dzp-mos__tete[data-auj] { background: #FFC21A; }
+.dzp-mos__tete span { font-size: 10px; font-weight: 700; }
+.dzp-mos__tete b { font-weight: 900; font-size: 14px; }
+.dzp-mos__nom { display: flex; flex-direction: column; justify-content: center; min-height: 64px; padding-right: 4px; min-width: 0; }
+.dzp-mos__nom b { font-weight: 800; font-size: 12.5px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dzp-mos__nom span { font-family: var(--dz-font-chiffres); font-size: 9.5px; font-weight: 700; color: #17663F; }
+.dzp-mos__nom span[data-ton="attente"] { color: #C2410C; }
+.dzp-mos__case { min-height: 64px; min-width: 0; border-radius: 10px; background: #FFFDF8; border: 1px solid #E3DACB; padding: 4px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; font-family: inherit; }
+.dzp-mos__case[data-auj] { background: #FFF6DB; }
+.dzp-mos__p { flex: 1; min-height: 12px; border-radius: 5px; background: #FFFFFF; border: 1px dashed #9C907E; }
+.dzp-mos__legende i { flex: none; width: 12px; height: 12px; border-radius: 3px; background: #FFFFFF; border: 1px dashed #9C907E; }
+.dzp-mos__p[data-creneau="matin"], .dzp-mos__legende i[data-creneau="matin"] { background: #DDEBFA; }
+.dzp-mos__p[data-creneau="apres-midi"], .dzp-mos__legende i[data-creneau="apres-midi"] { background: #FCE3CF; }
+.dzp-mos__p[data-creneau="soir"] { background: #E8DCF6; }
+.dzp-mos__p[data-etat="a-envoyer"] { border: 1.5px solid #15120F; }
+.dzp-mos__p[data-etat="envoyee"], .dzp-mos__legende i[data-etat="envoyee"] { background: #15120F; border: 0; }
+.dzp-mos__p[data-etat="en-cours"], .dzp-mos__legende i[data-etat="en-cours"] { background: #2FA36B; border: 0; }
+.dzp-mos__p[data-etat="retiree"] { background: #E6DDCD; border: 0; }
+.dzp-mos__p[data-etat="reunion"] { background: #FBE0EA; border: 1px solid #D6457A; }
+.dzp-mos__p[data-etat="absence"] { background: repeating-linear-gradient(135deg, #EFE6D2 0 3px, #D9C9A6 3px 6px); border: 0; }
+.dzp-mos__legende i[data-etat="absence"] { background: repeating-linear-gradient(135deg, #EFE6D2 0 3px, #D9C9A6 3px 6px); border: 0; }
+.dzp-mos__legende { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 14px; font-size: 11.5px; color: #5B534A; }
+.dzp-mos__legende span { display: flex; align-items: center; gap: 5px; }
+
+/* ── TABLETTE (768 à 1 023 px) : la grille de l'ordinateur. Clients, Salariés et Sélectionner passent de la barre à « Plus ⋯ » (tout le reste est identique). ── */
+.dzp-menu__tablette { display: none; }
+@media (min-width: 768px) and (max-width: 1023px) {
+  .dzp-b-pilule[data-tablette-cache] { display: none; }
+  .dzp-menu__tablette { display: block; margin-bottom: 4px; }
+  /* Colonnes de ~90 px : la charge du jour passe sous le numéro, et les textes des cartes vont à la ligne au lieu d'être coupés (aucun débord de page). */
+  .dzp-zone { padding: 12px 10px 14px; }
+  .dzp-th-jour { overflow: hidden; padding: 8px 6px; }
+  .dzp-jour { flex-wrap: wrap; column-gap: 5px; row-gap: 0; }
+  .dzp-jour__h { margin-left: 0; flex-basis: 100%; }
+  .dzp-td { padding: 4px; }
+  .dzp-carte { padding: 6px 6px 7px 10px; }
+  .dzp-carte__titre, .dzp-carte__heure { white-space: normal; overflow-wrap: break-word; hyphens: auto; }
+  .dzp-carte__titre { font-size: 12px; }
+  .dzp-carte__heure { font-size: 10.5px; }
+  .dzp-carte__tag { white-space: normal; }
+}
+
+/* ── Menu ☰ du téléphone, ajouts de la planche 2b : semaine, recherche, chiffres (tuiles du 1a), pièces jointes ── */
+.dzp-mm__co { font-size: 13px; color: var(--dz-texte-2); }
+.dzp-mm__corps > * { flex: none; }
+.dzp-mm .dzp-menu-essai button { position: relative; }
+.dzp-mm .dzp-menu-essai button::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.dzp-mm__semaine { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 16px; background: #15120F; color: #F2EDE3; }
+.dzp-mm__fleche { width: 44px; height: 44px; flex: none; border-radius: 50%; border: 1px solid rgba(242,237,227,.25); background: transparent; color: #F2EDE3; font-size: 15px; cursor: pointer; }
+.dzp-mm__sem { flex: 1; min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 8px; white-space: nowrap; }
+.dzp-mm__sem b { font-weight: 900; font-size: 22px; letter-spacing: -.03em; }
+.dzp-mm__sem span { font-family: var(--dz-font-chiffres); font-size: 11px; color: rgba(242,237,227,.65); }
+.dzp-mm__actuelle { flex: none; height: 44px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 999px; border: 0; background: #25201B; color: #FFC21A; font-family: var(--dz-font-chiffres); font-size: 10px; font-weight: 700; letter-spacing: .1em; }
+button.dzp-mm__actuelle { background: #FFC21A; color: #15120F; cursor: pointer; }
+.dzp-mm__recherche { display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 6px 0 14px; border-radius: 999px; border: 1px solid #D6CBB7; background: #FFFFFF; color: #5B534A; }
+.dzp-mm__recherche input { flex: 1; min-width: 0; align-self: stretch; height: auto; border: 0; background: transparent; font-family: inherit; font-size: 15px; font-weight: 600; color: #15120F; outline: none; }
+.dzp-mm__recherche input::-webkit-search-cancel-button { display: none; }
+.dzp-mm__recherche .dzp-loupe__x { width: 36px; height: 36px; background: #EFE7D9; color: #15120F; }
+.dzp-mm__chiffres { display: flex; flex-direction: column; gap: 10px; }
+.dzp-mm__compteurs { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px 14px; border-radius: 16px; border: 1px solid #E3DACB; background: #FFFDF8; font-family: inherit; color: #15120F; text-align: left; cursor: pointer; }
+.dzp-mm__compteurs-t { flex: none; font-family: var(--dz-font-chiffres); font-size: 10.5px; font-weight: 700; letter-spacing: .14em; color: #5B534A; text-transform: uppercase; width: 92px; line-height: 1.3; }
+.dzp-mm__compteurs-l { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.dzp-mm__compteurs i { flex: none; font-style: normal; color: var(--dz-texte-2); font-weight: 700; }
+.dzp-mm__compteur { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 9px; border-radius: 999px; background: #EFE7D9; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.dzp-mm__compteur b { font-weight: 900; }
+.dzp-mm__compteur[data-ton="relance"] { background: #FCE4E1; color: #8E1B14; }
+/* Les quatre tuiles du 1a, empilées dans le menu */
+.dzp-mm .dzp-chiffres { position: static; display: flex; flex-direction: column; gap: 10px; padding: 0; background: transparent; border: 0; box-shadow: none; }
+.dzp-mm .dzp-tuile--sombre { flex-direction: column; gap: 12px; }
+.dzp-mm .dzp-tuile__liste { max-height: none; }
+.dzp-mm__pieces .dzp-panneau-stat { position: static; width: auto; max-width: none; box-shadow: none; }
+@media (pointer: coarse) { .dzp-mm .bt-pl-sp-act, .dzp-mm .bt-pl-sp-who, .dzp-mm .bt-pl-sp-grp { min-height: 44px; } }
+
+/* ── Planche 2c « Panneau sous 1024 px » : la fiche d'une intervention en feuille du bas (fenetres-bureau.css donne la forme : 92 %, poignée, voile) ── */
+.dzp-feuille .dz-fenetre__tete { padding: 10px 20px 14px; gap: 12px; border-bottom: 1px solid #EFE7D9; }
+.dzp-feuille .dz-fenetre__titres { gap: 6px; }
+.dzp-feuille .dz-fenetre__kicker { font-size: 10px; letter-spacing: .14em; color: #5B534A; font-weight: 400; }
+.dzp-feuille .dz-fenetre__titre { font-weight: 900; font-size: 26px; letter-spacing: -.03em; line-height: 1; color: #15120F; }
+.dzp-feuille .dz-fenetre__sous { font-size: 13.5px; color: #5B534A; }
+.dzp-feuille .dz-fenetre__fermer { width: 44px; height: 44px; border: 1px solid #D6CBB7; background: transparent; }
+.dzp-feuille .dz-fenetre__corps { padding: 16px 20px; color: #15120F; }
+.dzp-feuille .dz-fenetre__pied { display: block; padding: 12px 20px calc(22px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid #EFE7D9; }
+.dzp-feuille__ok { width: 100%; height: 52px; border-radius: 999px; border: 0; background: #FFC21A; color: #15120F; font-family: inherit; font-size: 15px; font-weight: 800; box-shadow: inset 0 -3px 0 #D9A200; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.dzp-feuille__ok:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; cursor: not-allowed; }
+.dzp-feuille__corps { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; gap: 14px; }
+.dzp-feuille__onglets { display: flex; gap: 8px; }
+.dzp-feuille__onglets button { flex: 1; height: 44px; border-radius: 999px; border: 1px solid #D6CBB7; background: transparent; font-family: inherit; font-size: 14px; font-weight: 700; color: #15120F; cursor: pointer; }
+.dzp-feuille__heures { border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; background: #F2EDE3; color: #15120F; }
+.dzp-feuille__heures b { font-weight: 900; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; }
+.dzp-feuille__heures > span:last-child { font-size: 12.5px; }
+.dzp-feuille__k { font-family: var(--dz-font-chiffres); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.dzp-feuille__heures[data-ton="envoyee"] { background: #15120F; color: #F2EDE3; }
+.dzp-feuille__heures[data-ton="a-envoyer"] { background: #FFE1CC; color: #7A2A0A; }
+.dzp-feuille__heures[data-ton="en-cours"] { background: #E7F6EE; color: #17663F; }
+/* « Horaire prévu » : le composant d'avant (mêmes champs, mêmes préréglages), dessiné comme la planche 2c */
+.dzp-feuille__horaire > div { display: grid; gap: 10px; }
+.dzp-feuille__horaire > div > :first-child { gap: 4px; }
+.dzp-feuille__horaire label { font-weight: 800; font-size: 14px; color: #15120F; }
+.dzp-feuille__horaire > div > :first-child > span { font-size: 14px; font-weight: 500; color: #8A7F70; }
+.dzp-feuille__horaire > div > :nth-child(2) { gap: 8px; }
+.dzp-feuille__horaire > div > :nth-child(2) > span[aria-hidden] { display: none; }
+.dzp-feuille__horaire input { height: 48px; border-radius: 12px; border: 1px solid #D6CBB7; background: #FFFFFF; padding: 0 14px; font-family: var(--dz-font-chiffres); font-weight: 700; font-size: 16px; color: #15120F; }
+.dzp-feuille__horaire input { border-radius: 12px 0 0 12px; border-right: 0; }
+.dzp-feuille__horaire input:only-child { border-radius: 12px; border-right: 1px solid #D6CBB7; }
+.dzp-feuille__horaire button[data-testid$="-list"] { height: 48px; width: 44px; border: 1px solid #D6CBB7; border-left: 0; background: #FFFFFF; border-radius: 0 12px 12px 0; color: #8A7F70; }
+.dzp-feuille__horaire button[aria-label^="Plus d"] { position: relative; }
+.dzp-feuille__horaire button[aria-label^="Plus d"]::after { content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
+.dzp-feuille__horaire input::placeholder { color: #8A7F70; font-weight: 400; }
+.dzp-feuille__horaire > div > :nth-child(3) { gap: 6px; }
+.dzp-feuille__horaire > div > :nth-child(3) > button[data-testid$="-preset"] { height: 44px; padding: 0 14px; border-radius: 999px; border: 1.5px solid #D6CBB7; font-family: inherit; font-size: 13px; font-weight: 800; }
+.dzp-feuille__horaire > div > :nth-child(3) > button[data-testid$="-preset"] > span { display: none; }
+.dzp-feuille__horaire > div > :nth-child(3) > button:not([data-testid]) { min-height: 44px; }
+.dzp-feuille__note { width: 100%; min-height: 64px; border-radius: 12px; border: 1px solid #D6CBB7; background: #FFFFFF; padding: 12px 14px; font-family: inherit; font-size: 14px; color: #15120F; resize: vertical; }
+.dzp-feuille__note::placeholder { color: #8A7F70; }
+.dzp-feuille__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dzp-feuille__actions button { min-height: 48px; border-radius: 14px; border: 1px solid #D6CBB7; background: transparent; padding: 6px 12px; font-family: inherit; font-size: 12.5px; font-weight: 700; color: #15120F; text-align: left; line-height: 1.25; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.dzp-feuille__actions button[data-ton="supprimer"] { border-color: #F0B8AE; background: #FCE4E1; color: #8E1B14; font-weight: 800; }
+.dzp-feuille__actions button:disabled { color: var(--dz-inactif-texte); cursor: not-allowed; }
+
 .dzp-m-dock { position: fixed; left: 10px; right: 10px; bottom: 14px; z-index: 30; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 22px; background: var(--dz-encre); color: var(--dz-creme); box-shadow: var(--dz-ombre-flottant); }
 .dzp-m-dock .dzp-selbar { padding: 0; background: transparent; box-shadow: none; flex-wrap: nowrap; }
 .dzp-m-dock .dzp-selbar button { height: var(--dz-tap-main); flex: 1; padding: 0 10px; }
@@ -474,8 +619,8 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
 .dzp-m-haut .dzp-nom-txt { flex: 1; }
 .dzp-case .bt-pl-livechip { border-radius: var(--dz-r-bulle); background: var(--dz-en-cours-fond); border: 1.5px solid var(--dz-en-cours); font-family: inherit; }
 .dzp-case .bt-pl-addtask { align-self: flex-start; min-height: 24px; border-radius: var(--dz-r-pill); border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); font-family: inherit; font-size: var(--dz-fs-12); font-weight: 700; color: var(--dz-encre); cursor: pointer; padding: 0 8px; }
-/* Dock : en bas au centre sur ordinateur, pleine largeur au téléphone (le bouton « jour » remplace le bouton « semaine ») */
-@media (max-width: 1023px) {
+/* Dock : en bas au centre sur ordinateur et tablette, pleine largeur au téléphone (le bouton « jour » remplace le bouton « semaine ») */
+@media (max-width: 767px) {
   .dzp-dock { left: 10px; right: 10px; bottom: 14px; transform: none; align-items: stretch; }
   .dzp-selbar { flex-wrap: wrap; padding: 10px; border-radius: 22px; box-shadow: var(--dz-ombre-flottant); }
   .dzp-selbar__n { flex: 1 0 100%; margin: 0 0 0 6px; }
@@ -526,7 +671,7 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
 .dzp-astuce .bt-cp-tip p { margin: 0; }
 .dzp-astuce .bt-cp-tip span[aria-hidden] { display: none; }
 .dzp-astuce .bt-cp-tip-ok { margin-top: 10px; min-height: var(--dz-clic); padding: 0 16px; border-radius: var(--dz-r-pill); border: 1.5px solid var(--dz-encre); background: var(--dz-carte); font-family: inherit; font-size: var(--dz-fs-13); font-weight: 800; }
-@media (max-width: 1023px) { .dzp-astuce { display: none; } }
+@media (max-width: 767px) { .dzp-astuce { display: none; } }
 .dzp-th-nom { position: relative; }
 .dzp-th-nom .bt-cp-help--corner { left: auto; right: 10px; bottom: 8px; }
 .dzp-m-corps .bt-cp-tip--m { border-radius: var(--dz-r-m); background: var(--dz-jaune-pale); border: 1px solid var(--dz-jaune); font-family: var(--dz-font-ui); }

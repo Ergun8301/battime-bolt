@@ -13,6 +13,7 @@ import { BarreUnique, PastillePleinEcran, TiroirClients } from './barres-v2';
 import { ListePieces, PanneauChiffres } from './bandeau-v2';
 import { chargeJours, Grille } from './grille-v2';
 import { Mobile } from './mobile-v2';
+import { publierPont, useLargeur, REQ_TELEPHONE } from './pont-v2';
 import type { PlanningCtx } from './contexte-v2';
 
 export { default as MenuMobileV2 } from './menu-mobile-v2';
@@ -93,10 +94,10 @@ const dansUnChamp = (t: EventTarget | null) => {
 };
 
 /** Recherche : même règle que les listes « Clients » et « Salariés » d'aujourd'hui (minuscules, « contient ») ; un salarié reste si son nom OU un chantier de sa semaine correspond. */
-function filtrer(c: PlanningCtx, q: string, dates: string[]) {
+function filtrer(c: PlanningCtx, q: string, dates: string[], liste = c.displayWorkers) {
   const t = q.trim().toLowerCase();
-  if (!t) return c.displayWorkers;
-  return c.displayWorkers.filter((w) => `${w.first_name} ${w.last_name}`.toLowerCase().includes(t)
+  if (!t) return liste;
+  return liste.filter((w) => `${w.first_name} ${w.last_name}`.toLowerCase().includes(t)
     || c.planning.some((p) => p.user_id === w.id && dates.includes(p.work_date) && (p.worksite?.client_name || '').toLowerCase().includes(t)));
 }
 
@@ -140,6 +141,18 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [c.displayWorkers, c.planning, recherche, dates.join('|')]);
   const cGrille = visibles === c.displayWorkers ? c : { ...c, displayWorkers: visibles };
+  // Téléphone (planche 2b) : la même recherche (elle se tape dans le menu ☰) filtre les cartes et la mosaïque ; la liste du téléphone reste `workers` (comme avant).
+  const telephone = useLargeur(REQ_TELEPHONE);
+  const gens = useMemo(() => filtrer(c, recherche, dates, c.workers),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [c.workers, c.planning, recherche, dates.join('|')]);
+  const nbRecherche = recherche.trim() ? `${gens.length} salarié${gens.length > 1 ? 's' : ''} pour « ${recherche.trim()} »` : '';
+  const chiffres = { envoyees: totaux.envoyees, aVenir: totaux.aVenir, charge: chargeJours(c, dates, totaux), relances };
+  // Le menu ☰ (rendu par admin-planning.tsx) reçoit le même contexte, en lecture seule, pour offrir au téléphone tout ce que la barre et « Plus ⋯ » offrent.
+  // Après CHAQUE rendu (pas de liste : le contexte change à chaque rendu de l'écran) ; rien n'est appelé ici, setRecherche est seulement prêté au menu.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { publierPont({ c, recherche, setRecherche, chiffres, legende: () => setLegende(true) }); });
+  useEffect(() => () => publierPont(null), []);
   return (
     <>
       <div className="dzp-bureau-desk" data-plein-ecran={pleinEcran ? '' : undefined}>
@@ -147,9 +160,9 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           ? <PastillePleinEcran c={c} quitter={() => setPleinEcran(false)} />
           : (
             <div className="dzp-haut">
-              <BarreUnique c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} legende={() => setLegende(true)} />
-              {c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={{ envoyees: totaux.envoyees, aVenir: totaux.aVenir, charge: chargeJours(c, dates, totaux), relances }} fermer={() => setStatPanel(null)} />}
-              {c.statPanel === 'docs' && <ListePieces c={c} />}
+              <BarreUnique c={telephone ? { ...c, printMenu: null } : c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} legende={() => setLegende(true)} />
+              {!telephone && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
+              {!telephone && c.statPanel === 'docs' && <ListePieces c={c} />}
             </div>
           )}
         <TiroirClients c={c} />
@@ -160,7 +173,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           <Legende ouverte={legende} fermer={() => setLegende(false)} />
         </div>
       </div>
-      <Mobile c={c} />
+      <Mobile c={c} gens={gens} nbRecherche={nbRecherche} />
       <Dock c={c} />
     </>
   );

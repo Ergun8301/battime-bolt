@@ -14,7 +14,7 @@ const check = (c, m) => { if (c) { ok++; console.log('✅', m); } else { ko++; c
 const sim = await demarrer({ out: OUT, port: Number(PORT), base: BASE, jeu: '2a' });
 const ouvrir = async (largeur, hauteur, opts = {}) => {
   sim.reinitialiser(); if (opts.avant) opts.avant(sim.D);
-  const r = await sim.page({ ui: 2, largeur, hauteur, hasTouch: !!opts.tactile, attente: largeur < 1024 ? '.dzp-m-carte' : '.dzp-table .dzp-carte' });
+  const r = await sim.page({ ui: 2, largeur, hauteur, hasTouch: !!opts.tactile, attente: largeur < 768 ? '.dzp-m-carte' : '.dzp-table .dzp-carte' });
   // L'astuce « Copier une case » (carte flottante du lot 1, mémorisée une fois « Compris ») : on la referme pour que les captures montrent le planning.
   const compris = r.page.getByRole('button', { name: 'Compris', exact: true });
   if (await compris.count()) { await compris.first().click().catch(() => {}); await r.page.waitForTimeout(200); }
@@ -157,7 +157,7 @@ const retours = (page, sel, sauf = null) => page.evaluate(([s, sauf]) => {
   await ctx.close();
 }
 
-// ── Téléphone (étape suivante) : seulement « pas cassé » ─────────────────────────────────────────
+// ── Téléphone et tablette : seulement « pas cassé » (le détail est dans planning-2b-controles.mjs) ─────────────────────────────────────────
 {
   const { page, ctx } = await ouvrir(390, 844, { tactile: true });
   const hScroll = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -167,7 +167,7 @@ const retours = (page, sel, sauf = null) => page.evaluate(([s, sauf]) => {
 {
   const { page, ctx } = await ouvrir(834, 1112, { tactile: true });
   const hScroll = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  check(hScroll <= 0 && await page.locator('.dzp-m-carte').count() > 0, `834 (tablette) : la disposition téléphone s'affiche, pas de défilement horizontal (${hScroll} px)`);
+  check(hScroll <= 0 && await page.locator('.dzp-table').isVisible(), `834 (tablette) : la grille de l'ordinateur s'affiche (étape téléphone + tablette), pas de défilement horizontal (${hScroll} px)`);
   await ctx.close();
 }
 
