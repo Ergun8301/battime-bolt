@@ -66,8 +66,7 @@ export const WORKER_TOURS_V2: WorkerTourV2[] = [
     { ecran: 'semaine', cible: 'semaine.jour', texte: 'Touchez un jour pour voir son détail.', texteTr: 'Ayrıntısını görmek için bir güne dokunun.' },
   ] },
   { id: 'historique', etapes: [
-    MENU,
-    { ecran: 'menu', cible: 'menu.historique', texte: 'Dans « Mon compte », touchez « Historique ».', texteTr: '« Mon compte » sayfasında « Historique » satırına dokunun.' },
+    { ecran: 'mois', cible: 'menu.historique', texte: 'En bas de « Mois », touchez « Historique ».', texteTr: '« Mois » sayfasının altında « Historique » düğmesine dokunun.' },
     { ecran: 'historique', cible: 'historique.jour', texte: 'Vos anciennes heures, jour par jour. Faites défiler pour remonter dans le temps.', texteTr: 'Eski saatleriniz gün gün listelenir. Geçmişe gitmek için kaydırın.' },
   ] },
   { id: 'copier-journee', etapes: [
@@ -173,8 +172,8 @@ export const WORKER_GUIDE_V2: FicheV2[] = [
     etapes: ['Barre du bas : « Semaine » ou « Mois ».', 'Touchez un jour pour le détail.'],
     etapesTr: ['Alt çubuk: « Semaine » ya da « Mois ».', 'Ayrıntı için bir güne dokunun.'] },
   { id: 'historique', titreTr: 'Eski saatlerinizi bulmak',
-    etapes: ['« Mon compte » → « Historique ».', 'Faites défiler : un bloc par jour. « PDF » enregistre vos heures envoyées.'],
-    etapesTr: ['« Mon compte » → « Historique ».', 'Kaydırın: her gün için bir blok. « PDF » gönderdiğiniz saatleri kaydeder.'] },
+    etapes: ['« Mois » → « Historique » (en bas).', 'Faites défiler : un bloc par jour. « PDF » enregistre vos heures envoyées.'],
+    etapesTr: ['« Mois » → « Historique » (altta).', 'Kaydırın: her gün için bir blok. « PDF » gönderdiğiniz saatleri kaydeder.'] },
   { id: 'copier-journee', titreTr: 'Bir günü kopyalamak',
     etapes: ['Barre du bas : « Journée ».', '« Copier la journée d’hier » ou « Dupliquer cette journée ».'],
     etapesTr: ['Alt çubuk: « Journée ».', '« Copier la journée d’hier » ya da « Dupliquer cette journée ».'] },

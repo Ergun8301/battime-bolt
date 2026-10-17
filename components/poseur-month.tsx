@@ -84,7 +84,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
           {resume.paniers > 0 && <div className="bt-stat dz-compteur" data-testid="mois-paniers"><span className="dz-compteur-cle">Paniers</span><span className="bt-stat-n">{resume.paniers}</span></div>}
           {resume.conges > 0 && <div className="bt-stat dz-compteur" data-testid="mois-conges"><span className="dz-compteur-cle">Congés</span><span className="bt-stat-n">{resume.conges}</span></div>}
           {resume.absences > 0 && <div className="bt-stat dz-compteur" data-testid="mois-absences"><span className="dz-compteur-cle">Absences</span><span className="bt-stat-n">{resume.absences}</span></div>}
-          <div className="bt-stat dz-compteur" data-testid="mois-a-envoyer" data-ton={resume.aEnvoyerJours > 0 ? 'a-preciser' : undefined}><span className="dz-compteur-cle">À envoyer</span><span className="bt-stat-n">{resume.aEnvoyerJours}</span></div>
+          <div className="bt-stat dz-compteur" data-testid="mois-a-envoyer" data-ton={resume.aEnvoyerJours > 0 ? 'a-envoyer' : undefined}><span className="dz-compteur-cle">À envoyer</span><span className="bt-stat-n">{resume.aEnvoyerJours}</span></div>
         </div>
         {dayKeys.length === 0 ? (
           <p className="dz-vide">Aucune affectation ce mois-ci.</p>
@@ -101,7 +101,8 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
             : absence && dEnt.length === 0 ? { t: (ABS[absence] || absence).toUpperCase(), e: 'absence' } // un congé n'est pas « À déclarer » : la même pastille que la Semaine
             : { t: hasDraft ? 'À envoyer' : 'À déclarer', e: hasDraft ? 'a-envoyer' : 'prevu' };
           return (
-            <button key={d} type="button" onClick={() => onSelectDay?.(d)} className={`dz-sem-jour${isToday ? ' is-today' : ''}`}>
+            // Couleur de la carte : un jour passé encore « à déclarer » demande un geste (comme « à envoyer ») ; seul un jour à venir est « prévu » (violet).
+            <button key={d} type="button" onClick={() => onSelectDay?.(d)} className={`dz-sem-jour${isToday ? ' is-today' : ''}`} data-carte={pastille.e === 'prevu' && d < todayStr ? 'a-envoyer' : pastille.e}>
               <span className="dz-sem-ligne">
                 <span className="dz-sem-centre">
                   <span className="dz-sem-nom capitalize">{format(parseISO(d), 'EEEE d MMMM', { locale: fr })}</span>

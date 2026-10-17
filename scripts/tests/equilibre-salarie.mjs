@@ -226,7 +226,7 @@ const aller = {
   journee: async () => {},
   semaine: async (p) => { await p.locator('[data-testid=dz-onglet-week]').click(); await p.waitForTimeout(1500); },
   mois: async (p) => { await p.locator('[data-testid=dz-onglet-month]').click(); await p.waitForTimeout(1500); },
-  historique: async (p) => { await p.locator('button[aria-label^="Mon compte"]').click(); await p.waitForTimeout(500); await p.locator('[data-guide="menu.historique"]').click(); await p.waitForTimeout(1800); },
+  historique: async (p) => { await p.locator('[data-testid=dz-onglet-month]').click(); await p.waitForTimeout(800); await p.locator('[data-testid=lien-historique]').click(); await p.waitForTimeout(1800); },
   menu: async (p) => { await p.locator('button[aria-label^="Mon compte"]').click(); await p.waitForTimeout(800); },
 };
 const fond = (p, sel) => p.locator(sel).first().evaluate((e) => getComputedStyle(e).backgroundColor);
@@ -255,9 +255,9 @@ const controles = {
   },
   menu: async (p, l) => {
     const noms = (await p.locator('[role=menu] [role=menuitem]').allInnerTexts()).map((x) => x.replace(/\s+/g, ' ').trim());
-    const attendu = ['Historique', 'Réserves à lever', 'Formations à voir', 'Mes congés', ...(ROLE === 'lead' ? ['Mon équipe'] : []), 'Changer ma photo', 'Informations', 'Activer les notifications', 'Déconnexion'];
+    const attendu = ['Réserves à lever', 'Formations à voir', 'Mes congés', ...(ROLE === 'lead' ? ['Mon équipe'] : []), 'Changer ma photo', 'Informations', 'Activer les notifications', 'Déconnexion'];
     verifie(attendu.every((n) => noms.some((x) => x.startsWith(n))) && noms.length === attendu.length, `Menu ${l} : exactement ${attendu.length} lignes (${noms.join(' | ')})`);
-    verifie(!noms.some((x) => /^(Ma journée|Ma semaine|Mon mois|Assistant)/.test(x)), `Menu ${l} : ni Journée/Semaine/Mois ni Assistant (doublons)`);
+    verifie(!noms.some((x) => /^(Ma journée|Ma semaine|Mon mois|Historique|Assistant)/.test(x)), `Menu ${l} : ni Journée/Semaine/Mois/Historique ni Assistant (doublons)`);
     verifie(((await p.locator('.bt-phdr-date').first().textContent()) || '') === 'Mon compte', `Menu ${l} : titre « Mon compte »`);
   },
 };
@@ -265,7 +265,8 @@ for (const [l, h] of [[390, 844], [360, 640]]) for (const nom of ['journee', 'se
   const { p, ctx } = await prise(nom, l, h, aller[nom]);
   const lab = `${l}×${h}`;
   verifie((await p.locator('.dz-onglet').allTextContents()).join('|') === 'Journée|Semaine|Mois', `${nom} ${lab} : barre du bas = Journée · Semaine · Mois (plus de « Plus »)`);
-  verifie((await p.locator('.dz-assistant').count()) === 1 && (await p.locator('.dz-assistant').evaluate((e) => { const r = e.getBoundingClientRect(); return r.width >= 44 && r.height >= 44 && r.right <= innerWidth && getComputedStyle(e).backgroundColor === 'rgb(255, 194, 26)'; })), `${nom} ${lab} : le ✦ jaune (assistant) est visible dans l’en-tête, 44 px`);
+  const flottant = ['journee', 'semaine', 'mois'].includes(nom);
+  verifie(flottant ? ((await p.locator('.dz-assistant').count()) === 1 && (await p.locator('.dz-assistant').evaluate((e) => { const r = e.getBoundingClientRect(), b = document.querySelector('.dz-onglets').getBoundingClientRect(); return r.width >= 44 && r.height >= 44 && r.right <= innerWidth - 8 && r.bottom <= b.top && getComputedStyle(e).backgroundColor === 'rgb(255, 194, 26)' && !document.querySelector('.bt-phdr .dz-assistant'); }))) : (await p.locator('.dz-assistant').count()) === 0, `${nom} ${lab} : ✦ jaune rond flottant en bas à droite au-dessus de la barre (Journée, Semaine, Mois seulement)`);
   verifie(((await p.locator('.dz-avatar-badge').textContent()) || '') === '2', `${nom} ${lab} : pastille rouge « 2 à voir » sur l’avatar`);
   verifie(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), `${nom} ${lab} : aucun défilement horizontal`);
   await controles[nom](p, lab);
@@ -276,8 +277,6 @@ for (const [l, h] of [[390, 844], [360, 640]]) for (const nom of ['journee', 'se
   const { p, ctx } = await prise('acces', 390, 844, aller.menu);
   const ligne = (n) => p.getByRole('menuitem', { name: n });
   const rouvrir = async () => { if (!(await p.locator('[data-testid=dz-plus]').count())) { await p.locator('button[aria-label^="Mon compte"]').click(); await p.waitForTimeout(500); } };
-  await ligne('Historique').click(); await p.waitForTimeout(1200);
-  verifie((await p.locator('.dz-histo').count()) === 1, 'Accès : « Historique » s’ouvre depuis Mon compte'); await rouvrir();
   await ligne('Réserves à lever').click(); await p.waitForTimeout(1200);
   verifie((await p.locator('[data-testid=reserves-dialog]').count()) === 1, 'Accès : « Réserves à lever » ouvre la liste des réserves'); await p.keyboard.press('Escape'); await p.waitForTimeout(400); await rouvrir();
   await ligne('Formations à voir').click(); await p.waitForTimeout(1200);

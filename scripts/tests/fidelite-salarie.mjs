@@ -292,8 +292,9 @@ const pE05 = await photographierPlanche('E05', 390, 844);
 let r = await photographierImplementation('E05', 390, 844, semaineE05);
 verifie((await r.p.locator('.bt-total-big').textContent()) === '6:42', 'E05 : total 6:42 (4:00 notées + 2:42 de pointage depuis 12:30)');
 verifie((await r.p.locator('.bt-lt .dz-pointage-temps').textContent()) === '2:42', 'E05 : chrono 2:42');
-verifie((await r.p.locator('.dz-assistant').count()) === 1 && ((await r.p.locator('.dz-assistant').boundingBox())?.x ?? 0) > 230, 'E05 : le ✦ jaune rond est en haut à droite');
-verifie(await r.p.evaluate(() => { const a = document.querySelector('.dz-assistant').getBoundingClientRect(), v = document.querySelector('.bt-phdr-id').getBoundingClientRect(); return a.right <= v.left + 0.5 && v.left - a.right < 16 && Math.abs(a.top - v.top) < 2; }), 'E05 : le ✦ est juste à gauche de l’avatar, à la même hauteur');
+// Arbitrage du 17 oct. : le ✦ jaune est un bouton rond FLOTTANT, en bas à droite, au-dessus de la barre du bas (plus dans l'en-tête).
+verifie((await r.p.locator('.dz-assistant').count()) === 1 && ((await r.p.locator('.dz-assistant').boundingBox())?.x ?? 0) > 230 && ((await r.p.locator('.dz-assistant').boundingBox())?.y ?? 0) > 400, 'E05 : le ✦ jaune rond est flottant, en bas à droite');
+verifie(await r.p.evaluate(() => { const a = document.querySelector('.dz-assistant').getBoundingClientRect(), b = document.querySelector('.dz-onglets').getBoundingClientRect(); return a.bottom <= b.top && a.right <= innerWidth - 8 && a.width >= 44 && a.height >= 44 && !document.querySelector('.bt-phdr .dz-assistant'); }), 'E05 : le ✦ est au-dessus de la barre du bas, hors de l’en-tête, 44 px au moins');
 verifie((await r.p.locator('.bt-total').evaluate((e) => getComputedStyle(e).backgroundColor)) !== 'rgb(21, 18, 15)', 'E05 : la carte Total n’est pas noire');
 verifie((await r.p.locator('.dz-barre-jour').count()) === 7, 'E05 : sept barres dans la carte Total');
 verifie(((await r.p.locator('.dz-total-detail').first().textContent()) || '').includes('2 chantiers · semaine '), 'E05 : « 2 chantiers · semaine … »');
@@ -364,7 +365,7 @@ verifie((await r.p.locator('.dz-sem-jour').count()) === 7, 'E25 : sept jours dan
 verifie(((await r.p.locator('.bt-phdr-date').first().textContent()) || '').includes('Ma semaine'), 'E25 : l’en-tête garde « Ma semaine » (décision du patron)');
 verifie((await r.p.locator('[aria-label="Semaine précédente"], [aria-label="Semaine suivante"]').count()) === 2, 'E25 : les deux flèches de semaine sont gardées');
 verifie((await r.p.locator('.dz-sem-carte .dz-barre-jour').count()) === 7, 'E25 : la carte de la Semaine porte les 7 barres');
-verifie((await r.p.locator('.dz-assistant').count()) === 1, 'E25 : ✦ présent dans l’en-tête de la Semaine');
+verifie((await r.p.locator('.dz-assistant').count()) === 1, 'E25 : ✦ flottant présent sur la Semaine');
 await r.p.locator('.dz-sem-jour').nth(1).click(); await r.p.waitForSelector('.bt-phdr-back', { timeout: 10000 });
 verifie(((await r.p.locator('.bt-phdr-date').first().textContent()) || '').toLowerCase().includes('13 octobre'), 'E25 : toucher une ligne ouvre la journée de ce jour');
 await r.ctx.close();
@@ -828,7 +829,7 @@ await ecranVue('37-E25-mois-390x844', 'Mois', 'E25 (Semaine, même carte et mêm
 }, { planche: 'E25' });
 
 // ── Historique ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-await ecranVue('38-E25-historique-390x844', 'Historique', 'E25 (cartes) · Historique · 390 × 844', historique, viaPlus('Historique'), async (p) => {
+await ecranVue('38-E25-historique-390x844', 'Historique', 'E25 (cartes) · Historique · 390 × 844', historique, async (p) => { await p.locator('[data-testid=dz-onglet-month]').click(); await p.waitForTimeout(800); await p.locator('[data-testid=lien-historique]').click(); await p.waitForTimeout(1200); }, async (p) => {
   verifie((await p.locator('[data-guide="historique.jour"]').count()) >= 4, 'Historique : une carte par jour (historique.jour)');
   verifie(((await p.locator('.dz-histo-tete button').textContent()) || '').includes('PDF') && (await p.locator('.dz-histo-tete button').boundingBox())?.height >= 43.5, 'Historique : le bouton « PDF » est gardé (44 px)');
   const t = (await p.locator('.dz-histo').textContent()) || '';
@@ -837,8 +838,8 @@ await ecranVue('38-E25-historique-390x844', 'Historique', 'E25 (cartes) · Histo
 
 // ── E26 · « Mon compte » (ex-« Plus ») : le menu du compte en page, ouvert par l'avatar seulement ; Journée / Semaine / Mois et Assistant n'y sont plus (doublons de la barre du bas et du ✦ de l'en-tête) ──
 // (avant :) E26 · « Plus » : le menu du compte en page ──────────────────────────────────────────────────────────────────────────
-const ATTENDU_MENU = ['Historique', 'Réserves à lever', 'Formations à voir', 'Mes congés', 'Mon équipe', 'Changer ma photo', 'Informations', 'Déconnexion'];
-const RETIRES_MENU = ['Ma journée', 'Ma semaine', 'Mon mois', 'Assistant BEMEXO'];
+const ATTENDU_MENU = ['Réserves à lever', 'Formations à voir', 'Mes congés', 'Mon équipe', 'Changer ma photo', 'Informations', 'Déconnexion'];
+const RETIRES_MENU = ['Ma journée', 'Ma semaine', 'Mon mois', 'Historique', 'Assistant BEMEXO'];
 for (const [fichier, w, h] of [['39-E26-plus-390x844', 390, 844], ['40-E26-plus-360x640', 360, 640]]) {
   await ecranVue(fichier, 'E26', `E26 · Plus (menu du compte) · ${w} × ${h}`, chef, ouvrirMenuPlus, async (p) => {
     const noms = (await p.locator('[role=menu] [role=menuitem]').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
@@ -846,15 +847,15 @@ for (const [fichier, w, h] of [['39-E26-plus-390x844', 390, 844], ['40-E26-plus-
     verifie(RETIRES_MENU.every((n) => !noms.some((x) => x.startsWith(n))), `E26 ${w}×${h} : plus de doublon avec la barre du bas ni avec le ✦ (retirés : ${RETIRES_MENU.join(', ')})`);
     verifie((await p.locator('[data-testid=dz-plus][role=menu]').count()) === 1 && (await p.locator('[role=menu] [role=menuitem]').count()) === noms.length, 'E26 : role=menu et role=menuitem gardés');
     verifie(((await p.locator('[data-testid=dz-kicker-plus]').textContent()) || '') === 'SAM · CHEF D’ÉQUIPE' && ((await p.locator('.bt-phdr-date').first().textContent()) || '') === 'Mon compte', 'E26 : petit mot jaune (prénom · rôle) et titre « Mon compte » dans l’en-tête, sans bouton de retour (ADAPTATION demandée par Ergun : le titre était le nom)');
-    verifie((await p.locator('.bt-phdr-back').count()) === 0 && (await p.locator('.dz-assistant').count()) === 1, 'E26 : ✦ et avatar dans l’en-tête, pas de flèche de retour');
+    verifie((await p.locator('.bt-phdr-back').count()) === 0 && (await p.locator('.dz-assistant').count()) === 0, 'E26 : avatar dans l’en-tête, pas de flèche de retour, pas de ✦ flottant sur « Mon compte »');
     verifie((await p.locator('[data-testid=menu-reserves-compteur]').textContent()) === '1' && (await p.locator('[data-testid=menu-formations-badge]').textContent()) === '2', 'E26 : compteurs « Réserves à lever » 1 et « Formations à voir » 2');
-    verifie(['menu.historique', 'menu.conges', 'menu.photo', 'menu.infos'].every((g) => p.locator(`[data-guide="${g}"]`).count().then((n) => n === 1)) || true, 'E26 : repères de guide gardés');
-    const guides = await Promise.all(['menu.historique', 'menu.conges', 'menu.photo', 'menu.infos', 'menu.compte'].map((g) => p.locator(`[data-guide="${g}"]`).count()));
-    verifie(guides.every((n) => n === 1), `E26 : les 5 repères de guide du menu (data-guide) existent une fois (${guides.join(',')})`);
+    verifie(['menu.conges', 'menu.photo', 'menu.infos'].every((g) => p.locator(`[data-guide="${g}"]`).count().then((n) => n === 1)) || true, 'E26 : repères de guide gardés');
+    const guides = await Promise.all(['menu.conges', 'menu.photo', 'menu.infos', 'menu.compte'].map((g) => p.locator(`[data-guide="${g}"]`).count()));
+    verifie(guides.every((n) => n === 1), `E26 : les 4 repères de guide du menu (data-guide) existent une fois (${guides.join(',')})`);
     verifie(await p.evaluate(() => [...document.querySelectorAll('.dz-onglet')].length === 3 && document.querySelectorAll('.dz-onglet[aria-current=page]').length === 0), 'E26 : la barre du bas n’a que 3 onglets (Journée · Semaine · Mois) et aucun n’est allumé quand « Mon compte » est ouvert (ADAPTATION : « Plus » n’y est plus)');
     // clavier : flèche bas passe à la ligne suivante
     await p.locator('[role=menuitem]').first().focus(); await p.keyboard.press('ArrowDown');
-    verifie(await p.evaluate(() => document.activeElement?.textContent?.startsWith('Réserves')), 'E26 : la flèche bas passe à la ligne suivante (comme l’ancien menu)');
+    verifie(await p.evaluate(() => document.activeElement?.textContent?.startsWith('Formations')), 'E26 : la flèche bas passe à la ligne suivante (comme l’ancien menu)');
     const rg = await anneau(p, '.dz-ligne-menu', 4);
     verifie(!!rg && rg !== 'none', `E26 : focus visible sur une ligne (${rg})`);
   }, { w, h, planche: 'E26' });
