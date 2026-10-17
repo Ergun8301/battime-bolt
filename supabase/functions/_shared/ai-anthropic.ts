@@ -31,9 +31,15 @@
 //     stricts, puis 24 h de cache) contre 2,8 s sans strict, donc la requête dépassait le plafond de temps et partait au secours.
 //     Le code qui lit l'appel revérifie de toute façon chaque argument (noms autorisés, types, valeurs).
 //
-// PAS de cache_control pour l'instant (étape ultérieure) : la requête est rangée dans l'ordre du cache
-// (tools, puis system, puis messages), la consigne stable est dans `system` (un tableau de blocs, où un
-// cache_control s'ajoutera en un champ) ; le prompt de l'appelant, qui mélange consigne et données, reste dans le message.
+// CACHE D'INVITES (prompt caching) : l'API relit à tarif réduit un PRÉFIXE identique octet pour octet, dans l'ordre
+// tools → system → messages. Ici, deux points de cache (cache_control {type:'ephemeral'}, durée par défaut 5 minutes, renouvelée à chaque lecture) :
+//   1. à la fin de `system` : couvre les outils + la consigne système (identiques tant que la liste d'outils du domaine de la demande est la même) ;
+//   2. à la fin du bloc `stable` du message (la consigne + le guide de l'appelant), SEULEMENT s'il n'y a pas de fichier joint (un fichier vient avant le
+//      texte et varie : le cacher serait payer l'écriture pour rien). Tout ce qui varie (date, calendrier, salariés, chantiers, snapshot, historique,
+//      question) vient APRÈS, dans un second bloc de texte sans marqueur. L'appelant garantit que `stable` est un début EXACT de `prompt` et ne contient rien de variable
+//      (prouvé par les tests : deux appels avec des données différentes donnent le même préfixe). Sinon (pas de `stable`, ou pas un début de `prompt`) : requête
+//      d'avant, sans bloc coupé en deux. Seuil minimal : 512 jetons pour Sonnet 5.5 (en dessous, l'API ignore le marqueur sans erreur) ; l'usage rendu par l'API
+//      (cache_creation_input_tokens / cache_read_input_tokens) est lu par usageDe() et journalisé en nombres seulement.
 //
 // PAS de « server-side fallback » de l'API (fallbacks: 'default') : le secours inter-fournisseurs
 // (avecSecours, ai-provider.ts) joue ce rôle, et il couvre aussi les pannes, que le fallback serveur ne couvre pas.
@@ -174,12 +180,35 @@ const SYSTEME_OUTILS = 'Réponds UNIQUEMENT en appelant une des fonctions fourni
 const SYSTEME_UN_SEUL = ' Appelle UNE seule fonction.';
 const SYSTEME_JSON = 'Réponds UNIQUEMENT par l’objet JSON demandé, conforme au schéma, sans texte autour.';
 
-/** Le message utilisateur : le fichier d'abord (recommandé par la doc), puis la consigne et les données. */
-function messageUtilisateur(prompt: string, bloc: Json | null): Json {
+/** Marqueur de cache. 5 minutes (défaut de l'API, écriture à 1,25x) ; '1h' = écriture à 2x, à choisir si le trafic est plus espacé que 5 minutes. */
+export const CACHE_TTL: '5m' | '1h' = '5m';
+export const MARQUEUR_CACHE: Json = CACHE_TTL === '5m' ? { type: 'ephemeral' } : { type: 'ephemeral', ttl: CACHE_TTL };
+
+/**
+ * Le message utilisateur : le fichier d'abord (recommandé par la doc), puis la consigne et les données. Avec `stable` (début exact du prompt) et sans fichier :
+ * deux blocs de texte, le premier marqué pour le cache. Un fichier joint : pas de marqueur (le préfixe commencerait par un document qui change).
+ */
+export function messageUtilisateur(prompt: string, bloc: Json | null, stable?: string): Json {
+  if (stable && !bloc && prompt.length > stable.length && prompt.startsWith(stable)) {
+    return { role: 'user', content: [{ type: 'text', text: stable, cache_control: MARQUEUR_CACHE }, { type: 'text', text: prompt.slice(stable.length) }] };
+  }
   return { role: 'user', content: [...(bloc ? [bloc] : []), { type: 'text', text: prompt }] };
 }
 
-export interface EntreeOutils { model: string; effort: Effort; prompt: string; functions: readonly Decl[]; file?: Fichier; maxCalls: number }
+/** Bloc `system` : le marqueur à sa fin couvre aussi les outils (ils le précèdent dans l'ordre du cache). */
+export const blocSysteme = (text: string): Json[] => [{ type: 'text', text, cache_control: MARQUEUR_CACHE }];
+
+// ── Usage rendu par l'API (nombres seulement) ───────────────────────────────
+export interface UsageClaude { input: number; cacheEcrit: number; cacheLu: number; sortie: number }
+const nb = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : 0);
+/** `usage` de la réponse : jetons non cachés, écrits au cache, relus du cache, sortie. null si la réponse n'en porte pas. */
+export function usageDe(body: unknown): UsageClaude | null {
+  if (!isObj(body) || !isObj(body.usage)) return null;
+  const u = body.usage;
+  return { input: nb(u.input_tokens), cacheEcrit: nb(u.cache_creation_input_tokens), cacheLu: nb(u.cache_read_input_tokens), sortie: nb(u.output_tokens) };
+}
+
+export interface EntreeOutils { model: string; effort: Effort; prompt: string; /** Début exact de `prompt` qui ne varie jamais (cache d'invites). */ stable?: string; functions: readonly Decl[]; file?: Fichier; maxCalls: number }
 /** Corps de l'appel de fonctions ; null si le fichier joint n'est pas lisible par Claude. */
 export function corpsOutils(i: EntreeOutils): Json | null {
   const bloc = i.file ? blocFichier(i.file) : null;
@@ -188,8 +217,8 @@ export function corpsOutils(i: EntreeOutils): Json | null {
     model: i.model,
     max_tokens: MAX_TOKENS[i.effort],
     output_config: { effort: i.effort },
-    system: [{ type: 'text', text: SYSTEME_OUTILS + (i.maxCalls === 1 ? SYSTEME_UN_SEUL : '') }],
-    messages: [messageUtilisateur(i.prompt, bloc)],
+    system: blocSysteme(SYSTEME_OUTILS + (i.maxCalls === 1 ? SYSTEME_UN_SEUL : '')),
+    messages: [messageUtilisateur(i.prompt, bloc, i.stable)],
     tools: outilsClaude(i.functions),
     tool_choice: i.maxCalls === 1 ? { type: 'auto', disable_parallel_tool_use: true } : { type: 'auto' },
   };
@@ -233,6 +262,11 @@ export function lireReponseClaude(body: unknown): LectureClaude {
 
 // ── Appel HTTP ──────────────────────────────────────────────────────────────
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+/** Une ligne de NOMBRES par appel (modèle + jetons), lue dans les journaux de la fonction pour mesurer le cache : jamais de contenu. */
+function journaliserUsage(model: string, body: unknown): void {
+  const u = usageDe(body);
+  if (u) console.log(`[ai] usage ${model} entree=${u.input} cache_ecrit=${u.cacheEcrit} cache_lu=${u.cacheLu} sortie=${u.sortie}`);
+}
 export type BrutClaude = { ok: true; body: unknown } | { ok: false; reason: 'provider_error' | 'bad_response'; lent: boolean };
 /**
  * UN appel à l'API Messages : plafond de temps par AbortController, jamais de contenu dans les logs (seulement le code
@@ -263,7 +297,9 @@ export async function appelClaude(model: string, key: string, corps: Json, timeo
       return { ok: false, reason: 'provider_error', lent: res.status === 408 || res.status === 429 || res.status === 404 || res.status >= 500 };
     }
     try {
-      return { ok: true, body: await res.json() };
+      const body = await res.json();
+      journaliserUsage(model, body);
+      return { ok: true, body };
     } catch {
       return ctl.signal.aborted ? { ok: false, reason: 'provider_error', lent: true } : { ok: false, reason: 'bad_response', lent: false };
     }

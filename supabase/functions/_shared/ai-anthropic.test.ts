@@ -3,15 +3,18 @@
 // Tout est simulé (fetch injecté) : aucun appel réseau, aucune vraie clé.   npm run test:ai-anthropic
 import {
   aiDisponible, callFunction, cleDe, DELAIS, DELAIS_ANTHROPIC, extractJson, libelleModele, modeleServi, MODELES_PAR_DEFAUT, PLAFONDS_ESSAI,
-  PROFIL_LONG, PROFIL_LONG_ANTHROPIC, readConfig, REPOS_MS, reposReinit, type ToolsResult,
+  PROFIL_LONG, PROFIL_LONG_ANTHROPIC, readConfig, REPOS_MS, reposReinit, usageServi, type ToolsRequest, type ToolsResult,
 } from './ai-provider.ts';
+import { actionPromptParts, buildActionContext, guideForPrompt, type ActionContext } from './assistant-actions-core.ts';
+import { runWorkerTurn } from './worker-turn.ts';
+import { ADMIN_RAW, WORKER_LIVE, WORKER_RAW, ME } from '../assistant-eval/cases.ts';
 import { ASSISTANT_FUNCTIONS, functionsFor } from './assistant-outils.ts';
 import {
   ANTHROPIC_AUTORISES, ANTHROPIC_URL, ANTHROPIC_VERSION, appelClaude, blocFichier, corpsOutils, coutStrict, IMAGE_MAX_BASE64, LIMITES_STRICT, MAX_TOKENS, outilsClaude, refusModeleAnthropic,
-  STRICT_ACTIF, versSchemaClaude,
+  STRICT_ACTIF, versSchemaClaude, messageUtilisateur, usageDe,
 } from './ai-anthropic.ts';
 import { PAYSLIP_SCHEMA } from './payslip-core.ts';
-import { WORKER_SCHEMA } from './worker-assistant-core.ts';
+import { buildWorkerSnapshot, WORKER_SCHEMA, type WorkerLive } from './worker-assistant-core.ts';
 import { WORKER_FUNCTIONS, workerFunctionsFor } from './worker-outils.ts';
 import { DECLARER_HEURES_LONG, NOUVEAU_CHANTIER_LONG, WORKER_FUNCTIONS_LONG, workerFunctionsForLong } from './worker-multi-prompt.ts';
 
@@ -83,7 +86,7 @@ Deno.test('Requête Claude : adresse, en-têtes, modèle, system / user séparé
   if (JSON.stringify(b.tools[0].input_schema) !== '{"type":"object","properties":{"reponse":{"type":"string","description":"x"}},"required":["reponse"],"additionalProperties":false}') throw new Error(JSON.stringify(b.tools[0].input_schema));
 });
 
-Deno.test('Requête Claude : jamais temperature / top_p / top_k / budget_tokens / thinking, ni tool_choice forcé, ni cache_control, ni stream — dans AUCUN cas', async () => {
+Deno.test('Requête Claude : jamais temperature / top_p / top_k / budget_tokens / thinking, ni tool_choice forcé, ni stream — dans AUCUN cas ; cache_control seulement sur `system` (jamais sur les outils, ni sur un fichier)', async () => {
   const cas: { nom: string; run: (fetchImpl: (u: string, i: RequestInit) => Promise<Response>) => Promise<unknown>; reply?: () => Response }[] = [
     { nom: 'rapide', run: (fi) => callFunction({ prompt: 'x', functions: FN }, env(E), fi) },
     { nom: 'plusieurs appels', run: (fi) => callFunction({ prompt: 'x', functions: FN, maxCalls: 4 }, env(E), fi) },
@@ -96,8 +99,10 @@ Deno.test('Requête Claude : jamais temperature / top_p / top_k / budget_tokens 
     await c.run(f.fetchImpl);
     const q = f.claude()[0];
     if (!q) throw new Error(`${c.nom} : aucun appel`);
-    if (/temperature|top_?p|top_?k|budget_tokens|"thinking"|cache_control|"stream"|"any"|"type":"tool"|fallbacks|betas/i.test(q.raw.replace(/"top_p_doc"/, ''))) throw new Error(`${c.nom} : ${q.raw.slice(0, 400)}`);
+    if (/temperature|top_?p|top_?k|budget_tokens|"thinking"|"stream"|"any"|"type":"tool"|fallbacks|betas/i.test(q.raw.replace(/"top_p_doc"/, ''))) throw new Error(`${c.nom} : ${q.raw.slice(0, 400)}`);
     if (q.body.tool_choice && q.body.tool_choice.type !== 'auto') throw new Error(`${c.nom} : tool_choice forcé`);
+    if (q.body.tools?.some((t: Json) => 'cache_control' in t)) throw new Error(`${c.nom} : le marqueur de system couvre déjà les outils`);
+    if (JSON.stringify(q.body.messages).includes('cache_control')) throw new Error(`${c.nom} : sans \`stable\` ni sur un fichier, aucun marqueur dans les messages`);
     if (q.body.thinking !== undefined) throw new Error(`${c.nom} : thinking omis (réflexion adaptative)`);
     if (!['low', 'medium', 'high'].includes(q.body.output_config.effort)) throw new Error(`${c.nom} : effort`);
   }
@@ -681,4 +686,168 @@ Deno.test('Documentation : les réglages Claude de docs/ia-v2.md (recommandé et
   if (!prudent) throw new Error('variante prudente introuvable');
   const { out: p, logs: l2 } = await logged(() => readConfig(env({ AI_CONFIG: prudent[1] })));
   if (l2.length || libelleModele(p.rapide) !== 'anthropic:claude-sonnet-5-5' || libelleModele(p.documents) !== 'gemini:gemini-3.8-flash') throw new Error('variante prudente valide');
+});
+
+
+// ── Cache d'invites (prompt caching) ────────────────────────────────────────
+// Ordre du cache de l'API : tools → system → messages. Le préfixe (outils + consigne + guide) doit être identique OCTET POUR OCTET d'un appel à l'autre,
+// quelles que soient les données ; tout ce qui varie vient APRÈS le dernier marqueur. Sinon le cache ne s'active jamais (aucune erreur, juste zéro jeton relu).
+const MARQUEUR = { type: 'ephemeral' };
+const nbMarqueurs = (x: unknown) => (JSON.stringify(x).match(/cache_control/g) ?? []).length;
+
+Deno.test('Cache : avec `stable`, cache_control à la fin de `system` ET à la fin du bloc stable du message ; le bloc variable n’en porte pas ; la concaténation redonne le prompt', () => {
+  const stable = 'CONSIGNE… GUIDE…\n';
+  const variable = 'CALENDRIER … DONNÉES … DEMANDE : combien ?';
+  const b = corpsOutils({ model: 'claude-sonnet-5-5', effort: 'low', prompt: stable + variable, stable, functions: FN, maxCalls: 1 })!;
+  const sys = b.system as Json[], msg = (b.messages as Json[])[0].content as Json[];
+  if (JSON.stringify(sys[0].cache_control) !== JSON.stringify(MARQUEUR)) throw new Error('system : marqueur (couvre aussi les outils, qui le précèdent)');
+  if (msg.length !== 2 || msg[0].text !== stable || JSON.stringify(msg[0].cache_control) !== JSON.stringify(MARQUEUR)) throw new Error(`bloc stable : ${JSON.stringify(msg)}`);
+  if ('cache_control' in msg[1] || msg[1].text !== variable) throw new Error('le bloc variable ne porte AUCUN marqueur (il changerait à chaque appel)');
+  if (msg.map((m) => m.text).join('') !== stable + variable) throw new Error('le modèle lit exactement le même texte qu’avant');
+  if ((b.tools as Json[]).some((t) => 'cache_control' in t)) throw new Error('pas de marqueur sur les outils');
+  if (nbMarqueurs(b) !== 2) throw new Error(`${nbMarqueurs(b)} marqueurs (2 attendus, 4 permis au plus)`);
+});
+
+Deno.test('Cache : `stable` absent, vide, égal au prompt entier ou qui n’est PAS un début du prompt → un seul bloc, aucun marqueur dans le message (jamais un préfixe faux)', () => {
+  for (const [nom, stable] of [['absent', undefined], ['vide', ''], ['tout le prompt', 'ABC DEF'], ['pas un début', 'XYZ']] as const) {
+    const m = messageUtilisateur('ABC DEF', null, stable);
+    if (JSON.stringify(m) !== JSON.stringify({ role: 'user', content: [{ type: 'text', text: 'ABC DEF' }] })) throw new Error(`${nom} : ${JSON.stringify(m)}`);
+  }
+});
+
+Deno.test('Cache : avec un FICHIER joint, aucun marqueur dans le message (le préfixe commencerait par un document qui change) ; le marqueur de `system` reste', async () => {
+  const f = faux();
+  await callFunction({ prompt: 'STABLE|VARIABLE', stable: 'STABLE|', functions: FN, file: PDF }, env(E), f.fetchImpl);
+  const b = f.claude()[0].body;
+  if (JSON.stringify(b.messages).includes('cache_control')) throw new Error('fichier : pas de marqueur dans messages');
+  if (b.messages[0].content[0].type !== 'document' || b.messages[0].content.length !== 2) throw new Error('fichier avant le texte, un seul bloc de texte');
+  if (!b.system[0].cache_control) throw new Error('system marqué');
+});
+
+Deno.test('Cache : la sortie structurée (bulletin de paie, avec fichier) n’est PAS marquée — le fichier précède tout texte et change à chaque appel', async () => {
+  const f = faux({}, { anthropic: () => message([{ type: 'text', text: '{}' }], 'end_turn') });
+  await extractJson({ prompt: 'x', schema: { type: 'object' }, file: PDF }, env(E), f.fetchImpl);
+  if (f.claude()[0].raw.includes('cache_control')) throw new Error('corpsJson : aucun marqueur');
+});
+
+Deno.test('Cache : Gemini (niveau ou secours) reçoit le MÊME texte, sans aucun champ de cache ; le champ `stable` ne part jamais chez lui', async () => {
+  const cfg = '{"formule":"payant","rapide":"gemini:gemini-3.5-flash-lite","secours":"anthropic:claude-haiku-5-5"}';
+  const f = faux();
+  await callFunction({ prompt: 'STABLE|VARIABLE', stable: 'STABLE|', functions: FN }, env({ ...E, AI_CONFIG: cfg }), f.fetchImpl);
+  const g = f.gemini()[0];
+  if (g.body.contents[0].parts[0].text !== 'STABLE|VARIABLE' || /cache|stable/i.test(g.raw.replace('STABLE|VARIABLE', ''))) throw new Error(g.raw);
+});
+
+// Données de deux entreprises / deux jours très différents : rien de ceci ne doit se retrouver dans le préfixe.
+const variante = <T,>(x: T, sous: [string, string][]): T => { let j = JSON.stringify(x); for (const [a, b] of sous) j = j.replaceAll(a, b); return JSON.parse(j); };
+const SOUS: [string, string][] = [['2026-10-01', '2027-03-09'], ['2026-09-30', '2027-03-08'], ['Karim', 'Zoé'], ['Benali', 'Quentin'], ['Sofiane', 'Ines'], ['Merabet', 'Lacombe'], ['Kevin', 'Aziz'], ['Roussel', 'Petit'], ['Villa Dupont', 'Hôtel Lumière'], ['Bureau Martin', 'Atelier Garnier'], ['Lyon', 'Brest'], ['Villeurbanne', 'Quimper'], ['Pizzeria Exemple', 'Boulangerie Soleil']];
+// Les valeurs de la VARIANTE : introuvables dans un texte fixe (les noms d'origine, eux, figurent dans des exemples de la consigne et des outils :
+// ils sont prouvés fixes par l'égalité des préfixes entre les deux jeux de données, qui diffèrent partout).
+const SECRETS = ['2027-03-09', '2027-03-08', 'Zoé', 'Quentin', 'Ines', 'Lacombe', 'Aziz', 'Petit', 'Hôtel Lumière', 'Atelier Garnier', 'Brest', 'Quimper', 'Boulangerie'];
+const QUESTIONS_BUREAU = ['Combien d’heures a fait Karim sur Villa Dupont cette semaine ?', 'Quelle est l’heure de fin de Zoé jeudi à Brest ?'];
+type Vue = { body: Json; raw: string };
+/** Le préfixe LOGIQUE de la requête, dans l'ordre du cache de l'API : outils, system, début du message jusqu'au marqueur. */
+const prefixeDe = (b: Json, avecOutils = true) => JSON.stringify({ model: b.model, effort: b.output_config, tools: avecOutils ? b.tools : undefined, tool_choice: b.tool_choice, system: b.system, stable: b.messages[0].content[0] });
+/** Ce que la production envoie au bureau (assistant/index.ts) : consigne en deux parties + outils du domaine + un seul appel. */
+async function appelBureau(raw: typeof ADMIN_RAW, question: string, ouvrir = false): Promise<{ vue: Vue; prefixe: string; stable: string; ctx: ActionContext }> {
+  const ctx = buildActionContext(raw as never) as ActionContext;
+  ctx.me = ME; ctx.demande = question;
+  if (ouvrir) ctx.ouvrir = (() => null) as never;
+  const pp = actionPromptParts(ctx, JSON.stringify({ today: raw.today, chantiers: raw.worksites.length }), guideForPrompt(), question);
+  const f = faux();
+  await callFunction({ prompt: pp.stable + pp.variable, stable: pp.stable, functions: functionsFor(false, question, ctx.historique), tier: 'rapide' } as ToolsRequest, env(E), f.fetchImpl);
+  const b = f.claude()[0];
+  return { vue: { body: b.body, raw: b.raw }, prefixe: prefixeDe(b.body), stable: pp.stable, ctx };
+}
+
+Deno.test('Cache BUREAU : le préfixe (outils + consigne + guide) est identique OCTET POUR OCTET entre deux entreprises, deux jours, deux questions du même domaine — rien de variable avant le marqueur', async () => {
+  const autre = variante(ADMIN_RAW, SOUS);
+  const a = await appelBureau(ADMIN_RAW, QUESTIONS_BUREAU[0]);
+  const b = await appelBureau(autre, QUESTIONS_BUREAU[1]);
+  if (a.prefixe !== b.prefixe) throw new Error('le préfixe a changé : le cache ne s’activera jamais');
+  // Les corps entiers diffèrent bien (les données, elles, varient) — c’est le préfixe seul qui est figé.
+  if (JSON.stringify(a.vue.body.messages) === JSON.stringify(b.vue.body.messages)) throw new Error('les données auraient dû changer le bloc variable');
+  for (const x of [a, b]) {
+    const m = (x.vue.body.messages as Json[])[0].content as Json[];
+    if (m.length !== 2 || !m[0].cache_control || m[1].cache_control) throw new Error('marqueur sur le bloc stable seulement');
+    for (const secret of SECRETS) if (JSON.stringify({ t: x.vue.body.tools, s: x.vue.body.system, p: m[0] }).includes(secret)) throw new Error(`« ${secret} » dans le préfixe`);
+    if (/\b20\d\d-\d\d-\d\d\b/.test(m[0].text as string)) throw new Error('une date dans le préfixe');
+    if (/\bu-[a-z]+\b|[0-9a-f]{8}-[0-9a-f]{4}-/.test(m[0].text as string)) throw new Error('un identifiant dans le préfixe');
+    // Le variable, lui, porte bien les données : calendrier, salariés, chantiers, snapshot, demande.
+    for (const mot of ['CALENDRIER :', 'SALARIÉS :', 'CHANTIERS :', 'DONNÉES :', 'DEMANDE :']) if (!(m[1].text as string).includes(mot)) throw new Error(`« ${mot} » doit être après le marqueur`);
+  }
+  // Taille : bien au-dessus du seuil de 512 jetons de Sonnet 5.5 (4 caractères par jeton, hypothèse basse pour du français)
+  const m = (a.vue.body.messages as Json[])[0].content as Json[];
+  const taille = JSON.stringify(a.vue.body.tools).length + JSON.stringify(a.vue.body.system).length + (m[0].text as string).length;
+  console.log(`  préfixe bureau : ~${Math.round(taille / 4)} jetons au moins (${taille} caractères)`);
+  if (taille / 4 < 2048) throw new Error(`préfixe trop court pour être sûr de dépasser le seuil : ~${Math.round(taille / 4)} jetons`);
+});
+
+Deno.test('Cache BUREAU : l’interrupteur `ouvrir` change le préfixe (consigne + guide) pour TOUTE l’entreprise, pas d’une question à l’autre', async () => {
+  const a = await appelBureau(ADMIN_RAW, 'Combien d’heures a fait Karim ?', false);
+  const b = await appelBureau(ADMIN_RAW, 'Combien d’heures a fait Karim ?', true);
+  if (a.stable === b.stable) throw new Error('ouvrir allumé : la consigne change');
+  const c = await appelBureau(ADMIN_RAW, 'Quelle est la fin de Sofiane demain ?', true);
+  if (b.stable !== c.stable) throw new Error('même réglage → même consigne stable');
+});
+
+async function tourSalarie(raw: typeof WORKER_RAW, text: string): Promise<Json> {
+  const f = faux();
+  await runWorkerTurn({ text, snapshot: buildWorkerSnapshot(raw as never), live: WORKER_LIVE as WorkerLive, tier: 'rapide', call: (r) => callFunction(r, env(E), f.fetchImpl), iaDisponible: true, multiOk: true });
+  return f.claude()[0].body;
+}
+
+Deno.test('Cache SALARIÉ (profil court) : préfixe identique octet pour octet entre deux salariés, deux jours, deux messages ; la date et le calendrier sont APRÈS le marqueur', async () => {
+  const a = await tourSalarie(WORKER_RAW, 'ce matin 7h30 12h villa dupont et aprem 13h 16h30 bureau martin');
+  const b = await tourSalarie(variante(WORKER_RAW, SOUS), 'ce matin 8h 12h hôtel lumière et aprem 13h 17h atelier garnier');
+  if (prefixeDe(a) !== prefixeDe(b)) throw new Error('le préfixe salarié a changé');
+  const m = a.messages[0].content as Json[];
+  if (m.length !== 2 || !m[0].cache_control || m[1].cache_control) throw new Error('un marqueur, sur le bloc stable');
+  if (!/^Aujourd'hui : \d{4}-\d{2}-\d{2}\.\nCALENDRIER :/.test(m[1].text)) throw new Error('la date du jour ouvre le bloc variable');
+  if (/Aujourd'hui : \d|^CALENDRIER :$|^DONNÉES : \{|^MESSAGE : /m.test(m[0].text)) throw new Error('rien de variable dans le bloc stable');
+  if (!m[0].text.includes('GUIDE :') || !m[0].text.startsWith("Tu es l'Assistant BEMEXO d'un salarié")) throw new Error('la consigne et le guide sont dans le stable');
+  for (const secret of SECRETS) if (JSON.stringify({ t: a.tools, s: a.system, p: m[0] }).includes(secret)) throw new Error(`« ${secret} » dans le préfixe salarié`);
+  const taille = JSON.stringify(a.tools).length + JSON.stringify(a.system).length + m[0].text.length;
+  console.log(`  préfixe salarié (court) : ~${Math.round(taille / 4)} jetons au moins (${taille} caractères)`);
+});
+
+Deno.test('Cache SALARIÉ (profil long, phrase libre ou turc) : même garantie, et le préfixe contient les règles HEURES / PAUSE / LANGUE', async () => {
+  const longue = 'Bonjour, hier j’ai fait de 8h à midi puis de 13h à 17h chez Dupont et aujourd’hui de 7h30 à 12h, avec une demi-heure de pause, et ensuite je rentre';
+  const a = await tourSalarie(WORKER_RAW, longue);
+  const b = await tourSalarie(variante(WORKER_RAW, SOUS), longue.replace('Dupont', 'Brest'));
+  const tr = await tourSalarie(variante(WORKER_RAW, SOUS), 'Yarın sabah 8’den öğlene kadar Brest şantiyesinde, sonra 13’ten 17’ye kadar çalışacağım, bir de mola var');
+  if (a.max_tokens !== MAX_TOKENS.medium || b.max_tokens !== MAX_TOKENS.medium || tr.max_tokens !== MAX_TOKENS.medium) throw new Error('profil long attendu');
+  if (prefixeDe(a) !== prefixeDe(b)) throw new Error('le préfixe du profil long a changé');
+  // Français → turc : les OUTILS suivent le domaine de la phrase (ils peuvent différer), mais la consigne et le guide, eux, restent identiques.
+  if (prefixeDe(a, false) !== prefixeDe(tr, false) && JSON.stringify(a.tools) === JSON.stringify(tr.tools)) throw new Error('consigne + guide identiques en turc');
+  if (JSON.stringify((a.messages as Json[])[0].content[0]) !== JSON.stringify((tr.messages as Json[])[0].content[0]) || JSON.stringify(a.system) !== JSON.stringify(tr.system)) throw new Error('le bloc stable et le system ne dépendent pas de la langue');
+  const t = (a.messages[0].content as Json[])[0].text as string;
+  if (!/HEURES :/.test(t) || !/PAUSE :/.test(t) || !/LANGUE :/.test(t) || !/GUIDE :/.test(t)) throw new Error('règles et guide dans le stable');
+  if (/Aujourd'hui : \d|^CALENDRIER :$|^DONNÉES : \{|^MESSAGE : /m.test(t)) throw new Error('rien de variable dans le stable');
+});
+
+Deno.test('Usage : usageDe lit input / cache écrit / cache lu / sortie ; le résultat les porte à part (usageServi), secours Claude compris ; une ligne de NOMBRES par appel, jamais de contenu', async () => {
+  const rep = (u: Json | undefined) => () => new Response(JSON.stringify({ content: [tool('repondre', { reponse: 'ok' })], stop_reason: 'tool_use', ...(u ? { usage: u } : {}) }), { status: 200 });
+  const ecrit = { input_tokens: 50, cache_creation_input_tokens: 2400, cache_read_input_tokens: 0, output_tokens: 12 };
+  const f = faux({}, { anthropic: rep(ecrit) });
+  const { out: r, logs } = await logged(() => callFunction({ prompt: 'question secrète de Karim', functions: FN }, env(E), f.fetchImpl));
+  if (!r.ok) throw new Error(JSON.stringify(r));
+  if (JSON.stringify(usageServi(r)) !== '{"input":50,"cacheEcrit":2400,"cacheLu":0,"sortie":12}') throw new Error(JSON.stringify(usageServi(r)));
+  const u = logs.filter((l) => l.startsWith('[ai] usage'));
+  if (u.length !== 1 || u[0] !== '[ai] usage claude-sonnet-5-5 entree=50 cache_ecrit=2400 cache_lu=0 sortie=12') throw new Error(logs.join('|'));
+  if (logs.join('').includes('secrète') || logs.join('').includes('Karim')) throw new Error('aucun contenu');
+  // 2e appel : l'API relit le cache
+  const f2 = faux({}, { anthropic: rep({ input_tokens: 40, cache_creation_input_tokens: 0, cache_read_input_tokens: 2400, output_tokens: 9 }) });
+  const r2 = await callFunction({ prompt: 'x', functions: FN }, env(E), f2.fetchImpl);
+  if (!r2.ok || usageServi(r2)?.cacheLu !== 2400) throw new Error('cache lu');
+  // Secours Claude (Gemini en panne) : l'usage suit le résultat copié
+  const cfg = '{"formule":"payant","rapide":"gemini:gemini-3.5-flash-lite","secours":"anthropic:claude-haiku-5-5"}';
+  const f3 = faux({ gemini: { status: 503 } }, { anthropic: rep(ecrit) });
+  const r3 = await callFunction({ prompt: 'x', functions: FN }, env({ ...E, AI_CONFIG: cfg }), f3.fetchImpl);
+  if (!r3.ok || r3.secours !== true || usageServi(r3)?.cacheEcrit !== 2400) throw new Error('usage du secours');
+  // Réponse sans usage, ou usage illisible : null / zéros, jamais d'exception ni de ligne
+  if (usageDe({}) !== null || usageDe({ usage: 'x' }) !== null || JSON.stringify(usageDe({ usage: { input_tokens: 'a' } })) !== '{"input":0,"cacheEcrit":0,"cacheLu":0,"sortie":0}') throw new Error('usageDe robuste');
+  const f4 = faux({}, { anthropic: rep(undefined) });
+  const { logs: l4 } = await logged(() => callFunction({ prompt: 'x', functions: FN }, env(E), f4.fetchImpl));
+  if (l4.some((l) => l.startsWith('[ai] usage'))) throw new Error('pas de ligne sans usage');
 });

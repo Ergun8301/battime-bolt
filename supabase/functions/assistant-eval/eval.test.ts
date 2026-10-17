@@ -881,3 +881,37 @@ Deno.test('Ouvrir : une sortie plausible du modèle passe, une mauvaise échoue 
   const explique = async () => ({ ok: true as const, call: { name: 'repondre', args: { reponse: 'Cet écran est réservé au bureau : demandez à votre responsable.' } } });
   if (await jouer('or12', explique)) throw new Error('or12 : expliquer doit passer');
 });
+
+// Cache d'invites : le banc expose les jetons écrits / relus du cache (nombres seulement) pour mesurer le gain sur le vrai modèle.
+Deno.test('Banc : le résumé du cache compte les jetons relus / écrits / non cachés et la part relue ; null sans essai servi par Claude', async () => {
+  const { resumeCache } = await import('./run.ts');
+  if (resumeCache([{}, {}]) !== null) throw new Error('aucun essai Claude : null');
+  const r = resumeCache([
+    { cache: { input: 100, cacheEcrit: 2000, cacheLu: 0, sortie: 10 } },
+    { cache: { input: 100, cacheEcrit: 0, cacheLu: 2000, sortie: 12 } },
+    { cache: { input: 100, cacheEcrit: 0, cacheLu: 2000, sortie: 8 } },
+    {},
+  ]);
+  if (JSON.stringify(r) !== JSON.stringify({ essais: 3, essaisAvecLecture: 2, essaisAvecEcriture: 1, jetons: { entree: 6300, nonCaches: 300, cacheEcrit: 2000, cacheLu: 4000, sortie: 30 }, partLue: 63.5 })) throw new Error(JSON.stringify(r));
+  // Un banc sans Claude (appel simulé) : la clé `cache` existe et vaut null
+  const run = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), ['b01']);
+  if (!('cache' in run) || run.cache !== null) throw new Error('cache: null sans Claude');
+});
+
+Deno.test('Banc de bout en bout : avec Claude simulé, la réponse de runEval porte le cache (écrit, relu, part) de chaque essai servi par Claude', async () => {
+  reposReinit();
+  const cfg: Record<string, string> = { AI_CONFIG: '{"formule":"payant","rapide":"anthropic:claude-sonnet-5-5","documents":"anthropic:claude-sonnet-5-5","secours":"gemini:gemini-3.1-flash-lite"}', ANTHROPIC_API_KEY: 'sk-ant-test-cle' };
+  const env = { get: (k: string) => cfg[k] };
+  let n = 0;
+  const fetchImpl = (_u: string, init: RequestInit) => {
+    n++;
+    const corps = JSON.parse(String(init.body)) as { messages: { content: { cache_control?: unknown }[] }[] };
+    const marque = corps.messages[0].content.some((b) => b.cache_control);
+    return Promise.resolve(new Response(JSON.stringify({ content: [{ type: 'tool_use', id: 't', name: 'repondre', input: { reponse: 'ok' } }], stop_reason: 'tool_use', usage: { input_tokens: 80, cache_creation_input_tokens: n === 1 && marque ? 3000 : 0, cache_read_input_tokens: n > 1 && marque ? 3000 : 0, output_tokens: 7 } }), { status: 200 }));
+  };
+  const ids = ANCIENS.filter((c) => c.cote === 'bureau').slice(0, 12).map((c) => c.id);
+  const r = await runEval('v2', (req) => callFunction(req, env, fetchImpl), ids, 1, 0);
+  if (!r.cache || r.cache.essais < 2) throw new Error(`cache : ${JSON.stringify(r.cache)}`);
+  if (r.cache.jetons.cacheEcrit !== 3000 || r.cache.essaisAvecLecture !== r.cache.essais - 1) throw new Error(`une seule écriture puis des lectures : ${JSON.stringify(r.cache)}`);
+  if (!(r.cache.partLue! > 0)) throw new Error('part lue');
+});

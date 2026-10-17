@@ -9,9 +9,10 @@
 //     épuisé → `null` : l'appelant refait la demande par le chemin d'avant (`callFunction`), sans aucun résultat lu ;
 //   · `teinte` = au moins une lecture a eu lieu : les textes libres lus (noms de chantier, observations) peuvent contenir une consigne piégée venue d'un salarié.
 //     L'appelant ne laisse alors AUCUNE action s'exécuter sans clic (carte), voir assistant/index.ts ;
-//   · le cache de l'API (cache_control) porte sur les outils et la consigne : les appels 2 et suivants relisent ce préfixe au lieu de le payer.
+//   · cache d'invites (cache_control, 5 min) : (1) fin de `system` = outils + consigne système ; (2) fin du bloc `req.stable` (consigne + guide, jamais de donnée) = relu aussi
+//     d'une DEMANDE à l'autre (même texte pour tout le monde) ; (3) fin du bloc variable du message = relu aux appels 2 et suivants de la même boucle. Trois marqueurs sur quatre permis.
 // Aucun console.* avec du contenu (ni question, ni résultat) : seulement des nombres dans `trace`.
-import { appelClaude, effortDe, outilsClaude, type Effort } from './ai-anthropic.ts';
+import { appelClaude, blocSysteme, effortDe, MARQUEUR_CACHE, outilsClaude, type Effort } from './ai-anthropic.ts';
 import { choisirAppels, cleDe, readConfig, tierFor, type ToolsRequest, type ToolsResult } from './ai-provider.ts';
 import { ERREUR_LECTURE, type ContexteLecture, type ResultatLecture } from './lectures/lecteur.ts';
 import type { CacheLecture, OutilLecture } from './lectures/bureau.ts';
@@ -87,9 +88,12 @@ export async function boucleOutils(i: ReqBoucle): Promise<ResultatBoucle | null>
     const lecturesParNom = new Map(lectures.map((l) => [l.name, l]));
     // Outils : ceux de la demande, puis les lectures — ordre FIXE pour que le préfixe soit identique d'un appel à l'autre (cache).
     const outils = outilsClaude([...req.functions, ...lectures.map((l) => ({ name: l.name, description: l.description, parameters: l.parameters }))]);
-    if (outils.length) (outils[outils.length - 1] as unknown as Json).cache_control = { type: 'ephemeral' };
-    const system = [{ type: 'text', text: SYSTEME + (max === 1 ? SYSTEME_UN_SEUL : ''), cache_control: { type: 'ephemeral' } }];
-    const messages: Json[] = [{ role: 'user', content: [{ type: 'text', text: req.prompt, cache_control: { type: 'ephemeral' } }] }];
+    // Le marqueur de `system` couvre aussi les outils (ils le précèdent dans l'ordre du cache : tools, system, messages).
+    const system = blocSysteme(SYSTEME + (max === 1 ? SYSTEME_UN_SEUL : ''));
+    const stable = req.stable && req.prompt.length > req.stable.length && req.prompt.startsWith(req.stable) ? req.stable : undefined;
+    const messages: Json[] = [{ role: 'user', content: stable
+      ? [{ type: 'text', text: stable, cache_control: MARQUEUR_CACHE }, { type: 'text', text: req.prompt.slice(stable.length), cache_control: MARQUEUR_CACHE }]
+      : [{ type: 'text', text: req.prompt, cache_control: MARQUEUR_CACHE }] }];
 
     const trace: TraceBoucle = { appels: 0, usage: [], lectures: [] };
     const cache: CacheLecture = {};

@@ -15,10 +15,10 @@
 import type { AiFile, Tier, ToolsRequest, ToolsResult } from './ai-provider.ts';
 import type { ResultatBoucle } from './ai-boucle.ts';
 import { WORKER_TEXT_MAX, profilSaisie } from './saisie-profil.ts';
-import { fromWorkerCall, handleWorkerLocally, workerFunctionPrompt, type WorkerFullReply, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { fromWorkerCall, handleWorkerLocally, workerFunctionPromptParts, type WorkerFullReply, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
 import { workerFunctionsFor, type OptionsOutilsSalarie } from './worker-outils.ts';
 import { buildLongReply, type LongLegacy, type WorkerMultiReply } from './worker-multi.ts';
-import { workerFunctionsForLong, workerMultiPrompt } from './worker-multi-prompt.ts';
+import { workerFunctionsForLong, workerMultiPromptParts } from './worker-multi-prompt.ts';
 
 export type { WorkerMultiReply } from './worker-multi.ts';
 
@@ -71,14 +71,16 @@ export async function runWorkerTurn(i: WorkerTurnInput): Promise<WorkerTurnOut> 
 
   if (profil === 'court') {
     // Exactement l'ancien appel : seulement les outils du domaine de la phrase, UN appel.
-    const req: ToolsRequest = { prompt: workerFunctionPrompt(i.snapshot, i.live, text), functions: workerFunctionsFor(!!i.file, text, i.snapshot.historique, i.etape3), file: i.file, tier: i.tier };
+    const p = workerFunctionPromptParts(i.snapshot, i.live, text);
+    const req: ToolsRequest = { prompt: p.stable + p.variable, stable: p.stable, functions: workerFunctionsFor(!!i.file, text, i.snapshot.historique, i.etape3), file: i.file, tier: i.tier };
     const b = i.boucle && !i.file ? await i.boucle(req) : null;
     const r = b ?? await i.call(req);
     if (!r.ok) return { via: 'erreur', profil, raison: r.reason };
     return { via: 'ia', profil, reply: fromWorkerCall(r.call.name, r.call.args, i.snapshot, i.live), appels: 1, ...(r.secours ? { secours: true as const } : {}), ...(b?.teinte ? { teinte: true as const } : {}) };
   }
 
-  const reqLong: ToolsRequest = { prompt: workerMultiPrompt(i.snapshot, i.live, text), functions: workerFunctionsForLong(text, i.snapshot.historique, i.etape3), tier: i.tier, profil: 'long', maxCalls: 4 };
+  const pl = workerMultiPromptParts(i.snapshot, i.live, text);
+  const reqLong: ToolsRequest = { prompt: pl.stable + pl.variable, stable: pl.stable, functions: workerFunctionsForLong(text, i.snapshot.historique, i.etape3), tier: i.tier, profil: 'long', maxCalls: 4 };
   const b = i.boucle ? await i.boucle(reqLong) : null;
   const r = b ?? await i.call(reqLong);
   if (!r.ok) return { via: 'erreur', profil, raison: r.reason };

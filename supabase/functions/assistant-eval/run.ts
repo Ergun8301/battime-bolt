@@ -8,7 +8,7 @@
 // Suites de conversation (étape 2) : un cas qui porte `history` la passe EXACTEMENT comme les vraies fonctions
 // (assistant : ctx.historique ; worker-assistant : snapshot.historique, après nettoyerHistorique et sansDemandeRecollee) : même consigne,
 // même choix des outils, et le lecteur local s'efface pour une relance. La version v1 (copie figée d'avant le lot 7) ignore `history`.
-import { modeleServi, tierFor, type ToolsRequest, type ToolsResult } from '../_shared/ai-provider.ts';
+import { modeleServi, tierFor, usageServi, type ToolsRequest, type ToolsResult } from '../_shared/ai-provider.ts';
 import * as A2 from '../_shared/assistant-actions-core.ts';
 import { functionsFor } from '../_shared/assistant-outils.ts';
 import { nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
@@ -39,6 +39,8 @@ export interface CaseResult {
   boucle?: TraceBoucle;
   /** 3c : la boucle a rendu `null` (panne, budget…) : le cas est passé par le chemin d'avant. */
   repli?: boolean;
+  /** Cache d'invites : jetons d'entrée non cachés / écrits au cache / relus du cache et de sortie, sur les appels Claude du cas (nombres seulement). Absent si Claude n'a pas répondu. */
+  cache?: { input: number; cacheEcrit: number; cacheLu: number; sortie: number };
 }
 
 type AnyReply = { answer?: string; links?: { action: string }[]; action?: { draft: { type: string }; problems: string[] }; auto?: boolean };
@@ -76,7 +78,10 @@ function fromWorker(r: AnyWorker | null): Outcome {
 async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3Env, env?: Env): Promise<CaseResult> {
   // Chaque cas note quel modèle a servi (le dernier appel), pour que le rapport dise Claude ou secours.
   let servi: string | undefined;
-  const call: Call = async (req) => { const r = await appel(req); servi = modeleServi(r) ?? servi; return r; };
+  const cache = { input: 0, cacheEcrit: 0, cacheLu: 0, sortie: 0 };
+  let cacheVu = false;
+  const noter = (u?: { input: number; cacheEcrit: number; cacheLu: number; sortie: number }) => { if (!u) return; cacheVu = true; cache.input += u.input; cache.cacheEcrit += u.cacheEcrit; cache.cacheLu += u.cacheLu; cache.sortie += u.sortie; };
+  const call: Call = async (req) => { const r = await appel(req); servi = modeleServi(r) ?? servi; noter(usageServi(r)); return r; };
   const base = { id: c.id, cote: c.cote, categorie: c.categorie, phrase: c.phrase };
   const t0 = Date.now();
   const file = c.file ? FILES[c.file] : undefined;
@@ -105,8 +110,11 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3
       if (local) out = fromAdmin(local as AnyReply);
       else {
         via = 'ia';
+        // v2 : le prompt est rendu en deux parties (cache d'invites : `stable` = consigne + guide) comme en production ; v1 reste le prompt d'avant.
+        const pp = version === 'v2' ? A2.actionPromptParts(ctx, '{}', ouvrirOn ? A2.guideForPrompt('etape3', ctx.guideLiens) : A2.guideForPrompt(), c.phrase) : null;
         const requete = {
-          prompt: A.actionPrompt(ctx as never, '{}', ouvrirOn ? A2.guideForPrompt('etape3', ctx.guideLiens) : A.guideForPrompt(), c.phrase),
+          prompt: pp ? pp.stable + pp.variable : A.actionPrompt(ctx as never, '{}', ouvrirOn ? A2.guideForPrompt('etape3', ctx.guideLiens) : A.guideForPrompt(), c.phrase),
+          ...(pp ? { stable: pp.stable } : {}),
           functions: version === 'v2' ? (optsOutils ? functionsFor(!!file, c.phrase, ctx.historique, optsOutils) : functionsFor(!!file, c.phrase, ctx.historique)) : A1.ASSISTANT_FUNCTIONS, file,
         };
         const r = (boucle && await boucle(requete)) || await call(requete);
@@ -132,11 +140,12 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3
         out = r.ok ? fromWorker(W1.fromWorkerCall(r.call.name, r.call.args, snap as never, live as never) as AnyWorker) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     }
+    if (bouclee) for (const u of (bouclee as ResultatBoucle).trace.usage) noter(u);
     if (ouvrirOn) out = { ...out, etape3: true };
     if (boucleOn) out = { ...out, lectures: bouclee ? (bouclee as ResultatBoucle).trace.lectures.map((l) => l.nom) : [], teinte: !!(bouclee && (bouclee as ResultatBoucle).teinte) };
     const why = c.check(out);
     // Diagnostic : pour un échec, ce que l'assistant a réellement préparé (jeu fictif, rien d'une vraie entreprise).
-    return { ...base, ok: !why, why, via, ms: Date.now() - t0, ...suite, ...(servi ? { modele: servi } : {}), ...(bouclee ? { boucle: (bouclee as ResultatBoucle).trace } : {}), ...(bouclePasse && !bouclee ? { repli: true } : {}), ...(why ? { sortie: out } : {}) };
+    return { ...base, ok: !why, why, via, ms: Date.now() - t0, ...suite, ...(servi ? { modele: servi } : {}), ...(cacheVu ? { cache } : {}), ...(bouclee ? { boucle: (bouclee as ResultatBoucle).trace } : {}), ...(bouclePasse && !bouclee ? { repli: true } : {}), ...(why ? { sortie: out } : {}) };
   } catch (e) {
     return { ...base, ok: false, why: `erreur : ${(e as Error).message}`, via: 'erreur', ...(servi ? { modele: servi } : {}) };
   }
@@ -189,7 +198,25 @@ export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], 
     profils,
     // 3c : la boucle, mesurée — appels (médiane, max), lectures, latence, cache (part des jetons d'entrée relus au cache aux appels 2+), replis (la boucle a rendu null).
     boucle: resumeBoucle(results),
+    // Cache d'invites : jetons relus / écrits / non cachés sur les essais servis par Claude (nombres seulement), pour mesurer le gain.
+    cache: resumeCache(results),
     modeles: Array.from(compte.entries()).map(([modele, n]) => ({ modele, n })),
+  };
+}
+
+/**
+ * Cache d'invites, sur les essais où Claude a répondu : `partLue` = part des jetons d'entrée relus du cache (0 à 100), `essaisAvecLecture` = essais qui ont relu au moins un jeton.
+ * Les essais d'une même passe partagent le même préfixe : la 1re écriture crée l'entrée, les suivantes la lisent (dans les 5 minutes). null = aucun essai servi par Claude.
+ */
+export function resumeCache(results: { cache?: { input: number; cacheEcrit: number; cacheLu: number; sortie: number } }[]) {
+  const rs = results.filter((r) => r.cache);
+  if (!rs.length) return null;
+  const somme = (k: 'input' | 'cacheEcrit' | 'cacheLu' | 'sortie') => rs.reduce((s, r) => s + r.cache![k], 0);
+  const entree = somme('input') + somme('cacheEcrit') + somme('cacheLu');
+  return {
+    essais: rs.length, essaisAvecLecture: rs.filter((r) => r.cache!.cacheLu > 0).length, essaisAvecEcriture: rs.filter((r) => r.cache!.cacheEcrit > 0).length,
+    jetons: { entree, nonCaches: somme('input'), cacheEcrit: somme('cacheEcrit'), cacheLu: somme('cacheLu'), sortie: somme('sortie') },
+    partLue: entree ? Math.round((somme('cacheLu') / entree) * 1000) / 10 : null,
   };
 }
 

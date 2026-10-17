@@ -477,6 +477,20 @@ Captures : `docs/captures-assistant-historique/` (dont `1280-6-action-en-cours`,
 
 **Mise en ligne** : redéployer `assistant` et `worker-assistant` (et `assistant-eval` pour mesurer). Aucune migration, aucun secret. Tant que les fonctions ne sont pas redéployées, elles ignorent la clé `history` : rien ne casse.
 
+## J · Cache d'invites Anthropic (prompt caching)
+
+**Pourquoi** : l'assistant du bureau, celui du salarié (profils court et long) et la boucle de lectures envoient à chaque question une longue partie identique (outils + consigne + guide, de 2 300 à 6 000 jetons) puis les données du moment. L'API relit à tarif réduit (0,1x, soit 0,20 $/M au lieu de 2 $/M sur Sonnet 5.5) un préfixe identique octet pour octet ; l'écriture coûte 1,25x la première fois.
+
+**Comment** (code : `_shared/ai-anthropic.ts`, `messageUtilisateur`, `blocSysteme`) : ordre du cache de l'API = outils, puis `system`, puis messages. Deux marqueurs `cache_control: {type: 'ephemeral'}` (5 minutes, renouvelées à chaque lecture) : fin de `system` (couvre aussi les outils) et fin du bloc `stable` du message. `stable` = début EXACT du prompt, rendu par `actionPromptParts` (bureau), `workerFunctionPromptParts` (salarié court) et `workerMultiPromptParts` (salarié long) : consigne + règles + GUIDE, sans date, sans nom, sans donnée. Ce qui varie (date du jour, calendrier, salariés, chantiers, snapshot, historique, question) vient après, dans un second bloc sans marqueur. Un fichier joint : pas de marqueur dans le message (le fichier précède le texte et change). Le prompt est le même texte qu'avant, seulement réordonné : consigne et GUIDE d'abord, puis la date, le calendrier et les données (avant : le calendrier venait avant le GUIDE, et la date ouvrait la consigne du salarié). Gemini reçoit le même texte, sans champ de cache.
+
+**Seuil** : 512 jetons minimum pour Sonnet 5.5 (en dessous l'API ignore le marqueur sans erreur) ; les préfixes réels font environ 2 300 (salarié court) à 6 000 (bureau) jetons. **Durée** : 5 minutes par défaut ; `CACHE_TTL = '1h'` (ai-anthropic.ts) passe à 1 heure (écriture à 2x), utile seulement si le trafic est plus espacé que 5 minutes. Le préfixe est le même pour toutes les entreprises (aucune donnée dedans) : le trafic de tous les clients entretient la même entrée de cache.
+
+**Mesurer** : (1) journaux des fonctions `assistant` / `worker-assistant` : une ligne par appel `[ai] usage claude-sonnet-5-5 entree=… cache_ecrit=… cache_lu=… sortie=…` (nombres seulement) ; (2) réponse de `assistant-eval` : `cache` = `{essais, essaisAvecLecture, jetons: {entree, nonCaches, cacheEcrit, cacheLu, sortie}, partLue}` ; (3) console Anthropic : usage par clé, colonnes « cache read » / « cache write ». Bon signe : `cache_lu` élevé dès la 2e demande dans les 5 minutes, `partLue` de 70 % ou plus en régime continu.
+
+**Test** : `npm run test:ai-anthropic` (préfixe identique octet pour octet entre deux entreprises, deux jours, deux questions ; rien de variable avant le marqueur ; fichier = pas de marqueur ; usage lu et journalisé), `test:boucle`, `test:worker-turn`. L'étalon `registre/avant-3b1.snapshot.json` a vu ses empreintes `prompt` recalculées (réordonnancement) ; ses empreintes d'outils, de réponses et de GUIDE (bureau `5766f6e9…3198`) sont inchangées.
+
+**Mise en ligne** : redéployer `assistant`, `worker-assistant` et `assistant-eval`. Aucune migration, aucun secret.
+
 ## Prod
 
 Lot 7 : migrations `20261001090000_lot7_assistant_journal.sql`, `20261001100000_lot7_collegues_documents.sql`, puis `assistant` et `worker-assistant`.

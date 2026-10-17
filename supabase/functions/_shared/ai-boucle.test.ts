@@ -197,10 +197,11 @@ Deno.test('Boucle : lecture puis réponse — préfixe mis en cache, un tool_res
   egal(r!.trace.appels, 2, '2 appels');
   egal(r!.trace.usage[1].cacheLu, 2100, 'cache lu à l’appel 2');
   egal(r!.trace.lectures.map((l) => l.nom), ['lire_heures'], 'trace');
-  // 1er corps : outils = ceux de la demande puis les 8 lectures, cache sur le dernier outil, la consigne et le message
+  // 1er corps : outils = ceux de la demande puis les 8 lectures ; le cache est marqué sur la consigne (qui couvre les outils : ils la précèdent) et sur le message (sans `stable` : un seul bloc)
   const b1 = c.corps[0] as { tools: { name: string; cache_control?: unknown }[]; system: { cache_control?: unknown }[]; messages: { content: Bloc[] }[]; output_config: { effort: string }; tool_choice: unknown };
   egal(b1.tools.map((t) => t.name), ['repondre', 'poser_absence', ...LECTURES_BUREAU.map((l) => l.name)], 'ordre fixe des outils');
-  vrai(b1.tools[b1.tools.length - 1].cache_control && b1.system[0].cache_control && b1.messages[0].content[0].cache_control, 'cache_control posé');
+  vrai(b1.system[0].cache_control && b1.messages[0].content[0].cache_control, 'cache_control posé');
+  vrai(!b1.tools.some((t) => t.cache_control), 'pas de marqueur sur les outils : celui de `system` les couvre déjà (ordre du cache : tools, system, messages)');
   egal(b1.output_config.effort, 'low', 'effort bas'); egal(b1.tool_choice, { type: 'auto' }, 'jamais de tool_choice forcé (400 sur Sonnet 5.5)');
   // 2e corps : le message du modèle est rejoué tel quel, suivi d'UN tool_result pour t1
   const b2 = c.corps[1] as { messages: { role: string; content: Bloc[] }[] };
@@ -208,6 +209,24 @@ Deno.test('Boucle : lecture puis réponse — préfixe mis en cache, un tool_res
   const tr = b2.messages[2].content[0] as { type: string; tool_use_id: string; content: string };
   egal([tr.type, tr.tool_use_id], ['tool_result', 't1'], 'tool_result');
   vrai(tr.content.includes('"total_heures":8') && tr.content.includes('non_fiable'), 'le résultat lu contient le total et le rappel non_fiable');
+});
+
+Deno.test('Boucle + cache d\'invites : avec `stable`, le message est coupé en deux blocs marqués (consigne + guide | données) ; sans début valide, un seul bloc', async () => {
+  const stable = 'Tu es l’Assistant. GUIDE : …\n';
+  const variable = 'DONNÉES : jeudi 15 octobre\nDEMANDE : combien d’heures ?';
+  const c = claude([reponse([tu('t1', 'repondre', { reponse: 'x' })])]);
+  await boucleOutils(requete(baseFictive(TABLES()), { req: { prompt: stable + variable, stable, functions: FN } }, c.fetchImpl));
+  const m = (c.corps[0] as { messages: { content: { text: string; cache_control?: unknown }[] }[] }).messages[0].content;
+  egal(m.map((b) => b.text), [stable, variable], 'deux blocs dont la concaténation est le prompt');
+  vrai(m[0].cache_control && m[1].cache_control, 'le bloc stable est marqué (partagé entre demandes), le variable aussi (relu aux appels 2+ de la boucle)');
+  // `stable` qui n'est pas un début du prompt : ignoré, requête d'avant (un bloc)
+  const d = claude([reponse([tu('t1', 'repondre', { reponse: 'x' })])]);
+  await boucleOutils(requete(baseFictive(TABLES()), { req: { prompt: 'AUTRE TEXTE', stable, functions: FN } }, d.fetchImpl));
+  const m2 = (d.corps[0] as { messages: { content: { text: string }[] }[] }).messages[0].content;
+  egal(m2.map((b) => b.text), ['AUTRE TEXTE'], 'un seul bloc');
+  // Au plus 4 marqueurs de cache par requête (limite de l'API) : ici system + 2 blocs = 3
+  const n = (JSON.stringify(c.corps[0]).match(/cache_control/g) ?? []).length;
+  vrai(n <= 4, `${n} marqueurs (max 4)`);
 });
 
 Deno.test('Boucle : un appel terminal tout de suite = 1 appel, aucune teinte', async () => {
