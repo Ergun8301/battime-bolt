@@ -63,10 +63,10 @@ export function OngletsBas({ actif, onGo }: { actif: OngletBas | null; onGo: (o:
   );
 }
 
-/** Le bouton ✦ rond jaune de l'en-tête : ouvre l'assistant existant (même repère que l'ancien bouton de la barre du bas, que les guides et les scripts visent). */
-export function BoutonAssistant({ onClick }: { onClick: () => void }) {
+/** Le bouton ✦ rond jaune, FLOTTANT en bas à droite au-dessus de la barre du bas : ouvre l'assistant existant (même repère que l'ancien bouton de la barre du bas, que les guides et les scripts visent). */
+export function BoutonAssistant({ onClick, flottant }: { onClick: () => void; flottant?: 'jour' | 'vue' }) {
   return (
-    <button type="button" className="dz-assistant" aria-label="Assistant BEMEXO" onClick={onClick} data-testid="dock-assistant" data-guide="journee.assistant">✦</button>
+    <button type="button" className={`dz-assistant${flottant ? ` dz-assistant-flottant dz-assistant-${flottant}` : ''}`} aria-label="Assistant BEMEXO" onClick={onClick} data-testid="dock-assistant" data-guide="journee.assistant">✦</button>
   );
 }
 

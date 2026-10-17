@@ -46,6 +46,7 @@ function anchors(src: Record<string, string>): Map<string, number> {
 
 // Les ancres qui ont PLUSIEURS éléments dans le code, et pourquoi c'est voulu : le guide entoure la première visible.
 const REPETEES: Record<string, string> = {
+  'menu.historique': 'l’ancien menu du compte (MENU_GUIDE, ?ui=1) OU le lien « Historique » en bas du Mois (?ui=2) : jamais les deux à l’écran',
   'journee.chantier': 'cartes du jour (prévue, notée) : la première qui s’ouvre au toucher',
   'journee.copier': '« Copier la journée d’hier » (journée vide) OU « Dupliquer cette journée » : jamais les deux',
   'journee.envoyer': 'les 5 états du bouton « Envoyer ma journée » : un seul à l’écran',

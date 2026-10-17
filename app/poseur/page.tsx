@@ -543,8 +543,7 @@ export default function PoseurPage() {
   const kickerPlus = [user?.first_name, roleKicker].filter(Boolean).join(' · ').toUpperCase(); // le prénom seul : « SAM · CHEF D’ÉQUIPE » tient sur une ligne à 360 px (le nom complet passait à la ligne et allongeait l'en-tête)
   const aVoir = (reserves.length > 0 ? 1 : 0) + (trainings.unseen > 0 ? 1 : 0); // pastille rouge de l'avatar (l'ancienne de « Plus »)
   const entreesHeures: EntreePlus[] = ui2 ? [
-    // Journée · Semaine · Mois sont dans la barre du bas : le menu ne les répète pas.
-    ...TABS.filter((t) => t.value === 'history').map((t): EntreePlus => ({ id: t.value, label: t.label, icone: 'historique', guide: MENU_GUIDE[t.value], onSelect: () => { setMenuOpen(false); goTo(t.value); } })),
+    // Journée · Semaine · Mois sont dans la barre du bas, et « Historique » est un lien en bas du Mois : le menu ne les répète pas.
     { id: 'reserves', label: 'Réserves à lever', icone: 'reserves', guide: 'menu.reserves', testid: 'menu-reserves', inactif: reserves.length === 0, compteur: reserves.length, compteurTestid: 'menu-reserves-compteur', onSelect: () => { setMenuOpen(false); if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); } },
     ...(trainingsMenu ? [{ id: 'formations', label: 'Formations à voir', icone: 'formations' as const, testid: 'menu-formations', compteur: trainings.unseen, compteurTestid: 'menu-formations-badge', onSelect: () => { setMenuOpen(false); goTo('formations'); } }] : []),
     { id: 'conges', label: 'Mes congés', icone: 'conges', guide: 'menu.conges', onSelect: () => { setMenuOpen(false); setLeaveOpen(true); } },
@@ -571,7 +570,11 @@ export default function PoseurPage() {
         ) : view === 'week' ? (
           <PoseurWeek onSelectDay={openDay} />
         ) : view === 'month' ? (
-          <PoseurMonth onSelectDay={openDay} />
+          <>
+            <PoseurMonth onSelectDay={openDay} />
+            {/* ?ui=2 : « Historique » n'est plus dans le menu du compte ; on l'ouvre d'ici, en bas du Mois. */}
+            {ui2 && <button type="button" className="dz-lien-historique" data-testid="lien-historique" data-guide="menu.historique" onClick={() => goTo('history')}>Historique ›</button>}
+          </>
         ) : (
           <PoseurHistory />
         )}
@@ -625,8 +628,6 @@ export default function PoseurPage() {
                 <ScanLine className="h-5 w-5" />
               </button>
             )}
-            {/* Coque v2 : le ✦ jaune rond, à gauche de l'avatar, ouvre l'assistant existant en un seul geste (même `setAssistantOpen` que l'ancien bouton de la barre du bas). */}
-            {ui2 && (aiOn || demoSalarie) && <BoutonAssistant onClick={() => setAssistantOpen(true)} />}
             {/* Identité du salarié = déclencheur du menu (nom + rond photo/initiales). */}
             <input type="file" accept="image/*" hidden ref={photoInputRef} onChange={(e) => onPickPhoto(e.target.files?.[0])} />
             {ui2 ? (
@@ -714,7 +715,7 @@ export default function PoseurPage() {
             </DropdownMenu>
             )}
           </div>
-          {ui2 && !plusOuvert && (isToday || selectedDate) && <BandeJours jours={bande} onSelect={openDay} />}
+          {ui2 && !plusOuvert && (isToday || selectedDate || view === 'week' || view === 'month') && <BandeJours jours={bande} onSelect={openDay} />}
           {ui2 && !plusOuvert && (isToday || selectedDate) && toSendBanner}
         </header>
 
@@ -729,6 +730,8 @@ export default function PoseurPage() {
           </div>
         )}
 
+        {/* Coque v2 : le ✦ jaune rond FLOTTANT (en bas à droite, au-dessus de la barre) ouvre l'assistant existant en un geste — sur Journée, Semaine et Mois. */}
+        {ui2 && !plusOuvert && (aiOn || demoSalarie) && (ongletActif === 'day' || ongletActif === 'week' || ongletActif === 'month') && <BoutonAssistant onClick={() => setAssistantOpen(true)} flottant={ongletActif === 'day' ? 'jour' : 'vue'} />}
         {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} />}
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />

@@ -204,3 +204,30 @@ html[data-bt-ui2] .dz-retour :focus-visible { outline: 2px solid transparent; bo
 .bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="a-venir"] .dz-barre-valeur { border-color: var(--dz-creme-75); }
 .bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="cloture"] .dz-barre-valeur { background: var(--dz-creme-75); }
 .bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="vide"] .dz-barre-valeur { background: var(--dz-creme-30); }
+
+/* ── Retouches d'arbitrage (16-17 oct.) : Semaine et Mois parlent comme la Journée ─────────────────────────────────────────────
+   Cartes blanches, bordure gauche de 4 px selon l'état (vert envoyé · rouge à envoyer · violet prévu · gris absence · jaune aujourd'hui),
+   le total d'heures du jour à droite en gras, un ✦ jaune flottant, le lien « Historique » en bas du Mois. */
+.bt-ui2 .dz-sem-jour { background: #FFFFFF; border: 1px solid var(--dz-trait); border-left: 4px solid var(--dz-trait); }
+.bt-ui2 .dz-sem-jour[data-carte="envoye"] { border-left-color: #2FA36B; }
+.bt-ui2 .dz-sem-jour[data-carte="a-envoyer"] { border-left-color: #E5482E; }
+.bt-ui2 .dz-sem-jour[data-carte="prevu"] { border-left-color: #7A4FD6; }
+.bt-ui2 .dz-sem-jour[data-carte="absence"] { border-left-color: #8C867B; }
+.bt-ui2 .dz-sem-jour[data-carte="vide"] { border-left-color: transparent; }
+.bt-ui2 .dz-sem-jour.is-today { background: #FFFBEA; border: 2px solid var(--dz-jaune); border-left: 4px solid var(--dz-jaune); }
+.bt-ui2 .dz-sem-jour[data-carte="absence"] .dz-sem-nom { color: #5F594F; }
+.bt-ui2 .dz-sem-pastille[data-etat="a-envoyer"] { background: #FFE9E3; color: #9A2412; border: 1.5px solid #E5482E; }
+.bt-ui2 .dz-sem-pastille[data-etat="prevu"] { background: #EFE8FB; color: #4B2A9A; border: 1.5px solid #7A4FD6; font-family: var(--dz-font-chiffres); }
+.bt-ui2 .dz-sem-pastille[data-etat="absence"] { background: #E4E0D8; color: #3C372F; }
+.bt-ui2 .dz-sem-droite { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.bt-ui2 .dz-sem-heures { font: 900 var(--dz-fs-22)/1 var(--dz-font-chiffres); color: var(--dz-encre); }
+.bt-ui2 .dz-sem-jour[data-carte="envoye"] .dz-sem-pastille { font-weight: 900; }
+
+/* ✦ assistant : rond jaune flottant, en bas à droite, au-dessus de la barre du bas (sur Journée, la barre « + / QR / Envoyer » est au-dessus : on monte d'autant). */
+.bt-ui2 .dz-assistant-flottant { position: absolute; right: 16px; z-index: 40; width: 56px; height: 56px; font-size: 26px; box-shadow: 0 6px 18px rgba(21,18,15,.35), inset 0 -3px 0 #D9A200; bottom: calc(var(--dz-barre-h, 72px) + 16px); }
+.bt-ui2 .dz-assistant-jour { bottom: calc(var(--dz-barre-h, 72px) + 112px); }
+.bt-ui2 .dz-assistant-flottant:focus-visible { outline: 3px solid var(--dz-encre); outline-offset: 3px; }
+
+.bt-ui2 .dz-lien-historique { display: block; margin: 14px auto 8px; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1.5px solid var(--dz-trait); background: #FFFFFF; font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); color: var(--dz-encre); cursor: pointer; }
+.bt-ui2 .dz-semaine { padding-bottom: 84px; } /* le ✦ flottant ne cache pas la dernière carte */
+.bt-ui2 .bt-day-scroll::after { content: ''; display: block; height: 72px; flex: none; } /* en bas de la Journée, le dernier bloc passe au-dessus du ✦ flottant */

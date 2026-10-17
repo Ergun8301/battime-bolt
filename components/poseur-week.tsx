@@ -210,6 +210,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
               data-guide={canOpen ? 'semaine.jour' : undefined}
               aria-label={`${format(j.day, 'EEEE d MMMM', { locale: fr })}${j.aujourdhui ? ', aujourd’hui' : ''}`}
               className={`dz-sem-jour${j.aujourdhui ? ' is-today' : ''}`}
+              data-carte={pastille?.e ?? 'vide'}
             >
               <div className="dz-sem-ligne">
                 <div className="dz-sem-date">{JOURS3[j.i]}<b>{format(j.day, 'd')}</b></div>
@@ -217,7 +218,9 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                   <div className="dz-sem-nom">{nom || '—'}</div>
                   {sous && <div className="dz-sem-sous">{sous}</div>}
                 </div>
-                {pastille && <span className="dz-sem-pastille" data-etat={pastille.e}>{pastille.t}</span>}
+                {pastille && (pastille.e === 'a-envoyer' && j.minutes > 0 ? (
+                  <span className="dz-sem-droite"><b className="dz-sem-heures" data-testid="dz-sem-heures">{hm(j.minutes)}</b><span className="dz-sem-pastille" data-etat={pastille.e}>{pastille.t}</span></span>
+                ) : <span className="dz-sem-pastille" data-etat={pastille.e}>{pastille.t}</span>)}
               </div>
               {(dayMeetings.length > 0 || dayTasks.length > 0) && (
                 <div className="dz-sem-extra">

@@ -7,7 +7,7 @@
   "app/inscription/page.tsx": 1,
   "app/mot-de-passe-oublie/page.tsx": 1,
   "app/pointer/page.tsx": 7,
-  "app/poseur/page.tsx": 22,
+  "app/poseur/page.tsx": 23,
   "components/action-done.tsx": 4,
   "components/admin-mobile-menu.tsx": 17,
   "components/admin-planning.tsx": 116,

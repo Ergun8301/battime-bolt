@@ -101,7 +101,8 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
             : absence && dEnt.length === 0 ? { t: (ABS[absence] || absence).toUpperCase(), e: 'absence' } // un congé n'est pas « À déclarer » : la même pastille que la Semaine
             : { t: hasDraft ? 'À envoyer' : 'À déclarer', e: hasDraft ? 'a-envoyer' : 'prevu' };
           return (
-            <button key={d} type="button" onClick={() => onSelectDay?.(d)} className={`dz-sem-jour${isToday ? ' is-today' : ''}`}>
+            // Couleur de la carte : un jour passé encore « à déclarer » demande un geste (comme « à envoyer ») ; seul un jour à venir est « prévu » (violet).
+            <button key={d} type="button" onClick={() => onSelectDay?.(d)} className={`dz-sem-jour${isToday ? ' is-today' : ''}`} data-carte={pastille.e === 'prevu' && d < todayStr ? 'a-envoyer' : pastille.e}>
               <span className="dz-sem-ligne">
                 <span className="dz-sem-centre">
                   <span className="dz-sem-nom capitalize">{format(parseISO(d), 'EEEE d MMMM', { locale: fr })}</span>
