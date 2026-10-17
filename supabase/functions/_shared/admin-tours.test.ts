@@ -14,14 +14,19 @@ import {
 } from './admin-tours.ts';
 import { TOUR_LABEL, tourAction, tourIdOf } from './worker-tours.ts';
 import { ASSISTANT_FUNCTIONS } from './assistant-outils.ts';
+import { GUIDES_BUREAU_UI2 } from './guides-bureau-ui2.ts';
+import { ficheV2, OUVRIR_PLUS } from './admin-tours-v2.ts';
 
 const ROOTS = ['app', 'components'];
-async function sources(): Promise<Record<string, string>> {
+// Le planning v2 du bureau (components/design/bureau) a ses propres ancres (les mêmes valeurs, posées une 2e fois : l'écran v2 REMPLACE l'écran v1, jamais les deux à la fois) :
+// tant que les guides du bureau sont ceux d'avant (GUIDES_BUREAU_UI2 = false), ce dossier est hors du comptage des ancres ; il est lu à part (test « planning v2 » plus bas).
+const DOSSIER_V2 = 'components/design/bureau';
+async function sources(v2 = GUIDES_BUREAU_UI2): Promise<Record<string, string>> {
   const all: Record<string, string> = {};
   const walk = async (dir: string) => {
     for await (const e of Deno.readDir(dir)) {
       const p = `${dir}/${e.name}`;
-      if (e.isDirectory) await walk(p);
+      if (e.isDirectory) { if (p !== DOSSIER_V2 || v2) await walk(p); }
       else if (/\.(tsx|ts)$/.test(e.name)) all[p] = await Deno.readTextFile(p);
     }
   };
@@ -578,4 +583,42 @@ Deno.test('Guide du support : le bouton ne fait que lancer l’affichage (rien l
     const page = await Deno.readTextFile(f);
     if (/GuideTour|supportStepsFor|data-guide/.test(page)) throw new Error(`${f} : le guide vit dans components/support-console.tsx`);
   }
+});
+
+// ── Planning v2 du bureau (lot 1) : les guides v2 sont prêts mais ÉTEINTS (GUIDES_BUREAU_UI2 = false) ───────────────────────────────────
+Deno.test('Guides bureau v2 : éteints par défaut, l’empreinte de la consigne ne bouge pas', () => {
+  if (GUIDES_BUREAU_UI2) throw new Error('GUIDES_BUREAU_UI2 doit rester false jusqu’à la bascule du bureau (et la mise à jour de l’empreinte déclarée ci-dessus)');
+  // Éteint : ADMIN_TOURS est EXACTEMENT la liste d'avant (la fonction ficheV2 n'est pas appliquée).
+  const c = findAdminTour('couts')!.etapes[0];
+  if (c.cible !== 'bureau-nav.couts' || !/Coût chantiers/.test(c.texte)) throw new Error('la fiche « couts » doit commencer par « Coût chantiers » (v1)');
+});
+
+Deno.test('Guides bureau v2 : « Coût chantiers » et « Versions du planning » passent par « Plus ⋯ », le reste est repris tel quel', () => {
+  for (const t of ADMIN_TOURS) {
+    const v2 = ficheV2(t);
+    const touchees = t.etapes.filter((e) => e.cible === 'bureau-nav.couts' || e.cible === 'bureau-nav.versions').length;
+    if (v2.etapes.length !== t.etapes.length + touchees) throw new Error(`${t.id} : ${touchees} étape(s) remplacée(s) doivent ajouter exactement ${touchees} étape(s) « Plus ⋯ »`);
+    v2.etapes.forEach((e, i) => {
+      if (e.cible === 'bureau-nav.couts' || e.cible === 'bureau-nav.versions') {
+        const avant = v2.etapes[i - 1];
+        if (avant?.cible !== OUVRIR_PLUS.cible || avant.surface !== 'ordi') throw new Error(`${t.id} : « ${e.cible} » doit être précédée de « Plus ⋯ » (ordinateur)`);
+      }
+    });
+    // Sous 1 024 px : pas d'étape « Plus ⋯ » (le menu ☰ est ouvert à la place), mêmes lignes qu'avant.
+    const mob = adminStepsFor(v2, true);
+    if (mob.some((e) => e.cible === 'bureau-nav.plus')) throw new Error(`${t.id} : « Plus ⋯ » n’existe pas sous 1 024 px`);
+    if (mob.length !== adminStepsFor(t, true).length) throw new Error(`${t.id} : le nombre d’étapes sous 1 024 px ne doit pas changer`);
+    for (const e of adminStepsFor(v2, false)) if (e.texte.length > 140) throw new Error(`${t.id} : phrase trop longue — ${e.texte}`);
+  }
+});
+
+Deno.test('Guides bureau v2 : chaque cible des fiches v2 existe dans les écrans v2 (ordinateur et menu ☰)', async () => {
+  const found = anchors(await sources(true));
+  const manque: string[] = [];
+  for (const t of ADMIN_TOURS) for (const narrow of [false, true]) adminStepsFor(ficheV2(t), narrow).forEach((e, i) => { if (!found.has(e.cible)) manque.push(`${t.id} étape ${i + 1} → ${e.cible}`); });
+  // Les ancres des fenêtres (Réglages, Export…) restent celles des composants partagés : seul le lot 1 (planning) est vérifié ici.
+  const horsLot1 = (m: string) => /bureau-(reglages|export|cout|conges|salaries|invit|versions\.|reserves|clients\.(budget|enregistrer|supprimer|archiver)|edit\.|stat\.liste|stat\.relancer)/.test(m);
+  const reel = manque.filter((m) => !horsLot1(m));
+  if (reel.length) throw new Error(`Ancres du planning v2 introuvables :\n${reel.join('\n')}`);
+  for (const a of ['bureau-nav.plus', 'bureau-nav.couts', 'bureau-nav.versions', 'bureau-nav.compte', 'bureau-nav.reglages', 'bureau-nav.menu']) if (!found.has(a)) throw new Error(`ancre « ${a} » absente du planning v2`);
 });

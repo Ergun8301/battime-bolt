@@ -40,7 +40,7 @@ const MM_CSS = `
 .bt-mm-badge{min-width:19px;height:19px;padding:0 6px;border-radius:99px;background:#B5472E;color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;line-height:1}
 `;
 
-interface AdminMobileMenuProps {
+export interface AdminMobileMenuProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user: User | null;
@@ -56,6 +56,8 @@ interface AdminMobileMenuProps {
   onOpenStats?: () => void;
   onOpenLeaves: () => void;
   pendingLeaves?: number;
+  /** Design du bureau (v2) : invitations en attente, ajoutées au badge de « Salariés ». Absent de l'ancien menu. */
+  pendingInvites?: number;
   onOpenReserves: () => void;
   openReserves?: number;
   /** Formations (lot 6) : seulement quand la migration est passée. */

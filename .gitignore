@@ -46,3 +46,7 @@ build.log
 scripts/tests/ui2-*.mjs
 scripts/tests/ui1-*.mjs
 !scripts/tests/ui2-copies.mjs
+!scripts/tests/ui2-bureau-copies.mjs
+# Design du bureau (lot 1) : copies de rejeu en /admin?ui=2 (ui2b-) et références /admin?ui=1 (ui1b-), régénérées par scripts/tests/ui2-bureau-copies.mjs
+scripts/tests/ui2b-*.mjs
+scripts/tests/ui1b-*.mjs

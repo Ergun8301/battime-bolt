@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#E9E2D4}
+a{color:#15120F}a:hover{color:#755800}
+button{font-family:inherit}
+@keyframes bxPulse{0%{box-shadow:0 0 0 0 rgba(47,163,107,.55)}100%{box-shadow:0 0 0 8px rgba(47,163,107,0)}}
+@keyframes bxShimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+@keyframes bxSpin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<main style="font-family:'Archivo',system-ui,sans-serif;color:#15120F;padding:64px;display:flex;flex-direction:column;gap:64px">
+
+  <section style="display:flex;flex-direction:column;gap:28px;max-width:1500px">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">BEMEXO · BUREAU (/admin) · DOSSIER DE LIVRAISON · DIRECTION 1a</span>
+      <h1 style="margin:0;font-weight:900;font-size:64px;line-height:.95;letter-spacing:-.04em">Le bureau, écran par écran</h1>
+      <p style="margin:0;max-width:980px;font-size:18px;line-height:1.55;color:#3A332B;text-wrap:pretty">Une seule application, aucune variante. Chaque cadre est un écran ou un état de la même interface, ordinateur (1440 × 900) ou téléphone (390 × 844, disposition sous 1 024 px). Les codes renvoient aux lignes B1 à B72 du cahier ; la liste cochée est dans le README.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+      <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800">REPÈRES DE LECTURE</span>
+        <div style="display:flex;align-items:center;gap:10px"><span style="height:24px;padding:0 8px;border-radius:6px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center">PL01</span><span style="font-size:14px">code de l'écran, à citer</span></div>
+        <div style="display:flex;align-items:center;gap:10px"><span style="height:24px;padding:0 8px;border-radius:6px;background:#1F7A4D;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center">NOUVEAU</span><span style="font-size:14px">capacité absente aujourd'hui, validée par vous</span></div>
+        <div style="display:flex;align-items:center;gap:10px"><span style="height:24px;padding:0 8px;border-radius:6px;background:#E6DDCD;color:#3A332B;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center">◇</span><span style="font-size:14px">contenu conservé, seul l'habillage change</span></div>
+      </div>
+      <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800">UN SEUL ACCÈS PAR FONCTION · ORDINATEUR</span>
+        <span style="font-size:14px;line-height:1.5;color:#3A332B"><b>Barre noire</b> : Planning, Statistiques, essai + S'abonner, ✦ Assistant, compte (Réglages de l'entreprise, Déconnexion).</span>
+        <span style="font-size:14px;line-height:1.5;color:#3A332B"><b>Barre de semaine</b> : semaines, Clients, Salariés (congés, invitations), Réserves, Sélectionner, imprimer, Borne, Plus ⋯ (Coût chantiers, Versions, Supprimées ou décalées, Formations, Envoyer par e-mail), Exporter, plein écran.</span>
+        <span style="font-size:14px;line-height:1.5;color:#3A332B"><b>Bandeau repliable</b> : heures, à relancer, en direct, absents, pièces.</span>
+      </div>
+      <div style="background:#15120F;color:#F2EDE3;border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#FFC21A">TÉLÉPHONE · MENU ☰</span>
+        <span style="font-size:14px;line-height:1.55;color:rgba(242,237,227,.9)">Point d'entrée unique, intitulés du cahier mot pour mot : Salariés, Chantiers, Demandes de congé, Formations, Réserves de chantier, Borne, Coût chantiers, Statistiques, Exporter, Envoyer par e-mail, Sélectionner des interventions, Réglages de l'entreprise, Versions du planning, Interventions supprimées ou décalées, Légende, Déconnexion. ✦ toujours dans l'en-tête.</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <sc-for list="{{ lots }}" as="lot" hint-placeholder-count="3">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+          <a href="#{{ lot.id }}" style="font-weight:900;font-size:16px;margin-right:8px;text-decoration:none">{{ lot.title }}</a>
+          <sc-for list="{{ lot.all }}" as="x" hint-placeholder-count="10">
+            <a href="#{{ x.id }}" style="height:26px;padding:0 8px;border-radius:6px;background:#FFFDF8;border:1px solid #D6CBB7;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center;text-decoration:none">{{ x.id }}</a>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ loading }}" hint-placeholder-val="{{ true }}"><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#5B534A">Chargement des écrans…</span></sc-if>
+  </section>
+
+  <div style="position:sticky;top:0;z-index:100;display:flex;gap:8px;flex-wrap:wrap;padding:12px 0;background:#E9E2D4">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><button onClick="{{ t.go }}" style="height:44px;padding:0 18px;border-radius:999px;border:1.5px solid #15120F;background:{{ t.bg }};color:{{ t.fg }};font-size:15px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:8px">{{ t.l }}<span style="font-family:'JetBrains Mono',monospace;font-size:12px">{{ t.n }}</span></button></sc-for>
+  </div>
+  <sc-for list="{{ shown }}" as="lot" hint-placeholder-count="1">
+    <section id="{{ lot.id }}" style="display:flex;flex-direction:column;gap:40px;padding-top:40px;border-top:2px dashed #C9B998">
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:1100px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;color:#5B534A">{{ lot.kicker }}</span>
+        <h2 style="margin:0;font-weight:900;font-size:52px;line-height:.95;letter-spacing:-.04em">{{ lot.title }}</h2>
+        <p style="margin:0;font-size:17px;line-height:1.5;color:#3A332B;text-wrap:pretty">{{ lot.sub }}</p>
+      </div>
+      <sc-for list="{{ lot.groups }}" as="g" hint-placeholder-count="2">
+        <div style="display:flex;flex-direction:column;gap:24px">
+          <span style="font-weight:900;font-size:28px;letter-spacing:-.02em">{{ g.title }}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:56px 48px;align-items:flex-start">
+            <sc-for list="{{ g.screens }}" as="s" hint-placeholder-count="2">
+              <div id="{{ s.id }}" style="display:flex;flex-direction:column;gap:12px;width:{{ s.fw }};content-visibility:auto;contain-intrinsic-size:auto {{ s.ih }}">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <span style="height:32px;padding:0 10px;border-radius:8px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center">{{ s.id }}</span>
+                  <span style="font-weight:900;font-size:22px;letter-spacing:-.02em;line-height:1.1">{{ s.name }}</span>
+                  <sc-if value="{{ s.isNew }}"><span style="height:24px;padding:0 8px;border-radius:6px;background:#1F7A4D;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center">NOUVEAU</span></sc-if>
+                  <sc-if value="{{ s.keep }}"><span style="height:24px;padding:0 8px;border-radius:6px;background:#E6DDCD;color:#3A332B;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center">◇ CONTENU CONSERVÉ</span></sc-if>
+                </div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#755800;line-height:1.4">{{ s.covers }}</span>
+                <sc-if value="{{ s.hasNote }}"><span style="font-size:14px;line-height:1.45;color:#3A332B;max-width:900px;text-wrap:pretty">{{ s.note }}</span></sc-if>
+
+                <sc-if value="{{ s.off }}"><div data-bx="{{ s.id }}" style="width:{{ s.fw }};height:{{ s.fh }};border-radius:{{ s.oRad }};background:#DDD4C3"></div></sc-if>
+                <sc-if value="{{ s.on }}">
+                <div data-bx="{{ s.id }}" style="width:{{ s.fw }};height:{{ s.fh }};border-radius:{{ s.oRad }};background:{{ s.oBg }};padding:{{ s.oPad }};box-shadow:0 24px 60px rgba(21,18,15,.2)">
+                  <div style="position:relative;width:100%;height:100%;border-radius:{{ s.iRad }};overflow:hidden;background:#F2EDE3;display:flex;flex-direction:column">
+
+                    <sc-if value="{{ s.isD }}">
+                      <sc-if value="{{ s.support }}">
+                        <div style="flex:none;height:40px;background:#FFC21A;color:#15120F;display:flex;align-items:center;gap:14px;padding:0 24px;font-size:14px;font-weight:800;z-index:90">
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em">MODE SUPPORT</span><span>{{ s.supportT }}</span>
+                          <span style="margin-left:auto;height:30px;padding:0 14px;border-radius:999px;background:#15120F;color:#FFC21A;display:flex;align-items:center;font-size:13px">Quitter</span>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ s.hdr }}">
+                        <div style="flex:none;height:60px;background:#15120F;color:#F2EDE3;display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:24px">
+                          <div style="display:flex;align-items:center;gap:28px">
+                            <div style="font-weight:800;font-size:22px;letter-spacing:-.01em">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</div>
+                            <div style="display:flex;gap:4px;font-size:14px">
+                              <sc-if value="{{ s.tabPl }}"><span style="padding:8px 12px;font-weight:800;color:#FFC21A;box-shadow:inset 0 -2px 0 #FFC21A">Planning</span><span style="padding:8px 12px;color:rgba(242,237,227,.82)">Statistiques</span></sc-if>
+                              <sc-if value="{{ s.tabSt }}"><span style="padding:8px 12px;color:rgba(242,237,227,.82)">Planning</span><span style="padding:8px 12px;font-weight:800;color:#FFC21A;box-shadow:inset 0 -2px 0 #FFC21A">Statistiques</span></sc-if>
+                            </div>
+                          </div>
+                          <div style="display:flex;align-items:center;gap:10px">
+                            <sc-if value="{{ s.trial }}"><span style="display:flex;align-items:center;gap:10px;height:36px;padding:0 4px 0 14px;border-radius:999px;border:1px solid rgba(242,237,227,.25);font-size:13px;font-weight:700">{{ s.trialT }}<span style="height:28px;padding:0 12px;border-radius:999px;background:#F2EDE3;color:#15120F;display:flex;align-items:center;font-weight:800">S'abonner</span></span></sc-if>
+                            <span data-guide="bureau-nav.assistant" style="display:flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:999px;background:#FFC21A;color:#15120F;font-size:13.5px;font-weight:800">✦ Assistant</span>
+                            <span style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px 0 4px;border-radius:999px;background:#25201B;font-size:13.5px;font-weight:700"><span style="width:30px;height:30px;border-radius:50%;background:#F2EDE3;color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px">ET</span>Entreprise Test ▾</span>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ s.tb }}">
+                        <div style="flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 24px 12px">
+                          <div style="display:flex;align-items:center;gap:14px">
+                            <div style="display:flex;flex-direction:column;gap:2px">
+                              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;color:#5B534A">{{ s.kick }}</span>
+                              <div style="display:flex;align-items:baseline;gap:12px"><span style="font-weight:900;font-size:38px;line-height:1;letter-spacing:-.04em">{{ s.wk }}</span><span style="font-weight:700;font-size:16px;color:#3A332B">{{ s.range }}</span></div>
+                            </div>
+                            <div style="display:flex;gap:6px;margin-left:6px">
+                              <span aria-label="Semaine précédente" style="width:40px;height:40px;border-radius:50%;border:1px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700">←</span>
+                              <span aria-label="Semaine suivante" style="width:40px;height:40px;border-radius:50%;border:1px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700">→</span>
+                              <span style="height:40px;padding:0 14px;border-radius:999px;border:1.5px solid #15120F;display:flex;align-items:center;font-size:13.5px;font-weight:800;opacity:{{ s.todayOp }}">Aujourd'hui</span>
+                            </div>
+                          </div>
+                          <div style="display:flex;align-items:center;gap:6px">
+                            <span style="height:40px;padding:0 14px;border-radius:999px;border:1px solid #D6CBB7;background:{{ s.clientsBg }};display:flex;align-items:center;font-size:14px;font-weight:700">Clients</span>
+                            <span style="height:40px;padding:0 6px 0 14px;border-radius:999px;border:1px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700">Salariés<span style="min-width:24px;height:24px;padding:0 6px;border-radius:999px;background:#FFC21A;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span></span>
+                            <span style="height:40px;padding:0 6px 0 14px;border-radius:999px;border:1px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700">Réserves<span style="min-width:24px;height:24px;padding:0 6px;border-radius:999px;background:#C62828;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">2</span></span>
+                            <span style="height:40px;padding:0 14px;border-radius:999px;border:1px solid #D6CBB7;background:{{ s.selBg }};display:flex;align-items:center;font-size:14px;font-weight:700">Sélectionner</span>
+                            <span style="width:1px;height:26px;background:#D6CBB7;margin:0 4px"></span>
+                            <span aria-label="Imprimer le planning" style="width:34px;height:34px;border-radius:50%;border:1px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;justify-content:center;font-size:15px">⎙</span>
+                            <span style="height:40px;padding:0 14px;border-radius:999px;border:1px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;font-size:14px;font-weight:700">Borne</span>
+                            <span style="height:40px;padding:0 14px;border-radius:999px;border:1px solid #D6CBB7;background:{{ s.plusBg }};display:flex;align-items:center;font-size:14px;font-weight:700">Plus ⋯</span>
+                            <span style="height:40px;padding:0 18px;border-radius:999px;background:#FFC21A;border:1.5px solid #D9A200;display:flex;align-items:center;font-size:14px;font-weight:800">↓ Exporter</span>
+                            <span aria-label="Planning en plein écran" style="width:40px;height:40px;border-radius:50%;border:1px solid #D6CBB7;background:#FFFDF8;display:flex;align-items:center;justify-content:center;font-size:16px">⤢</span>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ s.cockClosed }}">
+                        <div style="flex:none;padding:0 24px 12px">
+                          <div style="height:40px;display:flex;align-items:center;gap:20px;padding:0 6px 0 16px;border-radius:999px;border:1px solid #E3DACB;background:#FFFDF8;font-size:13.5px;white-space:nowrap">
+                            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.16em;font-weight:700;color:#5B534A">CHIFFRES {{ s.wk }}</span>
+                            <span><b style="font-family:'JetBrains Mono',monospace">{{ s.kpi.sent }} h</b> envoyées</span>
+                            <span style="color:#8E1B14"><b style="font-family:'JetBrains Mono',monospace">{{ s.kpi.rel }} j</b> à relancer</span>
+                            <span style="display:flex;align-items:center;gap:6px;color:#17663F"><span style="width:8px;height:8px;border-radius:50%;background:#2FA36B"></span><b style="font-family:'JetBrains Mono',monospace">{{ s.kpi.live }}</b> en direct</span>
+                            <span><b style="font-family:'JetBrains Mono',monospace">{{ s.kpi.abs }}</b> absent</span>
+                            <span><b style="font-family:'JetBrains Mono',monospace">{{ s.kpi.pcs }}</b> pièces</span>
+                            <span style="margin-left:auto;height:30px;padding:0 12px;border-radius:999px;background:#15120F;color:#FFC21A;display:flex;align-items:center;font-weight:800;font-size:12.5px">Déplier ▾</span>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ s.cockOpen }}">
+                        <div style="flex:none;display:grid;grid-template-columns:1.7fr 1fr 1fr 1fr 1fr;gap:10px;padding:0 24px 14px;position:relative">
+                          <div style="background:#1B1713;color:#F2EDE3;border-radius:18px;padding:14px 18px;display:flex;gap:18px">
+                            <div style="display:flex;flex-direction:column;justify-content:space-between;min-width:150px">
+                              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:rgba(242,237,227,.75)">HEURES ENVOYÉES · {{ s.wk }}</span>
+                              <div style="display:flex;align-items:baseline;gap:6px"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:40px;line-height:1;letter-spacing:-.04em">{{ s.kpi.sent }}</span><span style="font-weight:700;color:rgba(242,237,227,.75)">h</span></div>
+                              <span style="font-size:12.5px;color:rgba(242,237,227,.8)">{{ s.kpi.planned }}</span>
+                            </div>
+                            <div aria-hidden="true" style="flex:1;display:flex;align-items:flex-end;gap:8px">
+                              <sc-for list="{{ s.kpi.barsN }}" as="b" hint-placeholder-count="7">
+                                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+                                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(242,237,227,.8)">{{ b.v }}</span>
+                                  <div style="width:100%;height:{{ b.h }};border-radius:6px 6px 2px 2px;background:{{ b.bg }};outline:{{ b.ol }};outline-offset:2px"></div>
+                                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:{{ b.lc }}">{{ b.l }}</span>
+                                </div>
+                              </sc-for>
+                            </div>
+                          </div>
+                          <div style="background:#FCE4E1;border:1.5px solid #C62828;border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+                            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:#8E1B14">À RELANCER</span>
+                            <div style="display:flex;align-items:baseline;gap:6px"><span style="font-weight:900;font-size:34px;line-height:1;letter-spacing:-.04em;color:#8E1B14">{{ s.kpi.rel }}</span><span style="font-weight:700;color:#8E1B14">journées</span></div>
+                            <span style="font-size:12.5px;color:#7A2A22;line-height:1.35">{{ s.kpi.relS }}</span>
+                          </div>
+                          <div style="background:#E7F6EE;border:1.5px solid #2FA36B;border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+                            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:#17663F">EN DIRECT</span>
+                            <div style="display:flex;align-items:center;gap:10px"><span style="width:12px;height:12px;border-radius:50%;background:#2FA36B"></span><span style="font-weight:900;font-size:34px;line-height:1;letter-spacing:-.04em;color:#17663F">{{ s.kpi.live }}</span><span style="font-weight:700;color:#17663F">pointe</span></div>
+                            <span style="font-size:12.5px;color:#17663F;line-height:1.35">{{ s.kpi.liveS }}</span>
+                          </div>
+                          <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+                            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:#5B534A">ABSENTS AUJOURD'HUI</span>
+                            <div style="display:flex;align-items:baseline;gap:6px"><span style="font-weight:900;font-size:34px;line-height:1;letter-spacing:-.04em">{{ s.kpi.abs }}</span><span style="font-weight:700;color:#5B534A">sur 8</span></div>
+                            <span style="font-size:12.5px;color:#5B534A;line-height:1.35">{{ s.kpi.absS }}</span>
+                          </div>
+                          <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+                            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:#5B534A">PIÈCES</span>
+                            <div style="display:flex;align-items:baseline;gap:6px"><span style="font-weight:900;font-size:34px;line-height:1;letter-spacing:-.04em">{{ s.kpi.pcs }}</span><span style="font-weight:700;color:#5B534A">documents</span></div>
+                            <span style="font-size:12.5px;color:#5B534A;line-height:1.35">{{ s.kpi.pcsS }}</span>
+                          </div>
+                          <span style="position:absolute;right:30px;top:-10px;height:24px;padding:0 10px;border-radius:999px;background:#F2EDE3;border:1px solid #D6CBB7;font-size:12px;font-weight:800;color:#5B534A;display:flex;align-items:center">Replier ▴</span>
+                        </div>
+                      </sc-if>
+
+                      <sc-if value="{{ s.isGrid }}">
+                        <div style="flex:1;min-height:0;padding:0 24px 24px;overflow:hidden;opacity:{{ s.gridOp }}">
+                          <table style="width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;overflow:hidden">
+                            <colgroup><col style="width:220px"><col><col><col><col><col><col><col></colgroup>
+                            <thead>
+                              <tr>
+                                <th style="text-align:left;padding:12px 14px;border-bottom:2px solid #15120F;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;color:#5B534A;font-weight:700">SALARIÉ · HEURES {{ s.wk }}</th>
+                                <sc-for list="{{ s.days }}" as="d" hint-placeholder-count="7">
+                                  <th style="padding:10px 10px;border-bottom:2px solid #15120F;border-left:1px solid #EFE7D9;background:{{ d.bg }};box-shadow:{{ d.top }};text-align:left;vertical-align:top">
+                                    <div style="display:flex;align-items:center;gap:8px">
+                                      <sc-if value="{{ d.hasChk }}"><span style="width:22px;height:22px;flex:none;border-radius:6px;border:2px solid #15120F;background:{{ d.chkBg }};font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ d.chkMark }}</span></sc-if>
+                                      <span style="font-size:13px;font-weight:700;color:#5B534A">{{ d.l }}</span><span style="font-weight:900;font-size:22px;letter-spacing:-.03em">{{ d.n }}</span>
+                                      <sc-if value="{{ d.isToday }}"><span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.08em;background:#15120F;color:#FFC21A;padding:3px 6px;border-radius:5px">AUJ.</span></sc-if>
+                                      <sc-if value="{{ d.hasClos }}"><span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.08em;background:#655B50;color:#FFFFFF;padding:3px 6px;border-radius:5px">CLOS</span></sc-if>
+                                    </div>
+                                    <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#5B534A;font-weight:500">{{ d.sub }}</span>
+                                  </th>
+                                </sc-for>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <sc-for list="{{ s.rows }}" as="r" hint-placeholder-count="8">
+                                <tr>
+                                  <td style="vertical-align:top;padding:12px 14px;border-bottom:1px solid #EFE7D9;background:{{ r.hl }}">
+                                    <div style="display:flex;align-items:center;gap:10px">
+                                      <sc-if value="{{ r.hasChk }}"><span style="width:22px;height:22px;flex:none;border-radius:6px;border:2px solid #15120F;background:{{ r.chkBg }};font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ r.chkMark }}</span></sc-if>
+                                      <span style="width:36px;height:36px;flex:none;border-radius:50%;background:{{ r.av }};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12.5px">{{ r.ini }}</span>
+                                      <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                                        <span style="font-weight:800;font-size:14px;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ r.name }}</span>
+                                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                                          <sc-if value="{{ r.chef }}"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.06em;background:#FFE9A8;color:#5C4300;padding:2px 5px;border-radius:4px">CHEF</span></sc-if>
+                                          <span style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:{{ r.stC }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.stC }}"></span>{{ r.st }}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px">
+                                      <div style="height:6px;border-radius:3px;background:#EFE7D9;overflow:hidden"><div style="height:100%;width:{{ r.pct }};border-radius:3px;background:#15120F"></div></div>
+                                      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5B534A">{{ r.hrs }}</span>
+                                    </div>
+                                  </td>
+                                  <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="7">
+                                    <td style="vertical-align:top;padding:6px;border-bottom:1px solid #EFE7D9;border-left:1px solid #EFE7D9;background:{{ c.bg }};box-shadow:{{ c.ring }};height:104px">
+                                      <div style="display:flex;flex-direction:column;gap:5px;height:100%">
+                                        <sc-if value="{{ c.hasTgt }}"><span style="align-self:stretch;height:26px;border-radius:8px;background:{{ c.tgtBg }};color:{{ c.tgtFg }};font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1;padding:0 6px">{{ c.tgtL }}</span></sc-if>
+                                        <sc-for list="{{ c.items }}" as="it" hint-placeholder-count="1">
+                                          <sc-if value="{{ it.isAbs }}">
+                                            <div style="position:relative;flex:1;min-height:90px;border-radius:12px;background:repeating-linear-gradient(135deg,{{ it.absA }} 0 9px,{{ it.absB }} 9px 18px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px">
+                                              <sc-if value="{{ it.hasChk }}"><span style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;border:{{ it.chkBd }};background:{{ it.chkBg }};color:{{ it.chkFg }};font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ it.chkMark }}</span></sc-if>
+                                              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.1em;font-size:11px;color:#3A332B;text-align:center">{{ it.absL }}</span>
+                                              <sc-if value="{{ it.hasAbsS }}"><span style="font-size:12px;color:#3A332B">{{ it.absS }}</span></sc-if>
+                                            </div>
+                                          </sc-if>
+                                          <sc-if value="{{ it.isCard }}">
+                                            <div style="position:relative;display:flex;flex-direction:column;gap:2px;padding:7px 8px 8px 12px;border-radius:11px;background:{{ it.bg }};border:{{ it.bd }};color:{{ it.fg }};overflow:hidden;opacity:{{ it.op }};outline:{{ it.ol }};outline-offset:2px">
+                                              <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:{{ it.stripe }}"></span>
+                                              <div style="display:flex;align-items:flex-start;gap:5px">
+                                                <span style="width:8px;height:8px;flex:none;margin-top:4px;border-radius:50%;background:{{ it.dot }}"></span>
+                                                <span style="flex:1;min-width:0;font-weight:800;font-size:13px;line-height:1.15;text-decoration:{{ it.deco }};overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ it.title }}</span>
+                                                <sc-if value="{{ it.hasDocs }}"><span style="flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:{{ it.subFg }}">{{ it.docs }}</span></sc-if>
+                                                <sc-if value="{{ it.hasChk }}"><span style="flex:none;width:22px;height:22px;border-radius:6px;border:{{ it.chkBd }};background:{{ it.chkBg }};color:{{ it.chkFg }};font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ it.chkMark }}</span></sc-if>
+                                              </div>
+                                              <span style="font-size:12px;line-height:1.2;color:{{ it.subFg }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.sub }}</span>
+                                              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:{{ it.timeFg }}">{{ it.time }}</span>
+                                              <sc-if value="{{ it.hasTags }}"><div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px"><sc-for list="{{ it.tags }}" as="tg" hint-placeholder-count="1"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;padding:2px 5px;border-radius:5px;background:{{ tg.bg }};color:{{ tg.fg }};line-height:1.25">{{ tg.l }}</span></sc-for></div></sc-if>
+                                              <sc-if value="{{ it.hasWhy }}"><span style="margin-top:3px;font-size:12px;font-weight:700;color:#8E1B14;background:#FCE4E1;border-radius:6px;padding:3px 6px">{{ it.why }}</span></sc-if>
+                                            </div>
+                                          </sc-if>
+                                          <sc-if value="{{ it.isMeet }}">
+                                            <div style="display:flex;justify-content:space-between;gap:6px;padding:7px 9px;border-radius:11px;background:#FFE2EC;border:1.5px solid #B7366A">
+                                              <div style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-weight:800;font-size:12.5px">{{ it.mTitle }}</span><span style="font-size:11.5px;color:#5B534A">{{ it.mSub }}</span></div>
+                                              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#B7366A">{{ it.mTime }}</span>
+                                            </div>
+                                          </sc-if>
+                                          <sc-if value="{{ it.isHors }}"><div style="padding:6px 8px;border-radius:9px;border:1.5px dashed #15120F;font-size:11.5px;font-weight:700;line-height:1.25">{{ it.hT }}</div></sc-if>
+                                          <sc-if value="{{ it.isTasks }}"><span style="align-self:flex-start;height:24px;padding:0 8px;border-radius:999px;background:{{ it.kBg }};border:1.5px solid #15120F;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;display:flex;align-items:center">☐ {{ it.kT }}</span></sc-if>
+                                        </sc-for>
+                                        <sc-if value="{{ c.empty }}"><div style="flex:1;min-height:88px;border-radius:12px;border:1.5px dashed #E0D6C4;display:flex;align-items:center;justify-content:center;color:#9C907E;font-size:20px;font-weight:600">+</div></sc-if>
+                                        <sc-if value="{{ c.closEmpty }}"><div style="flex:1;min-height:88px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#5B534A;font-size:12px;font-weight:700">Mois clôturé</div></sc-if>
+                                        <sc-if value="{{ c.more }}"><span style="align-self:flex-end;margin-top:auto;font-size:12px;font-weight:700;color:#5B534A;padding:2px 6px">+ ajouter</span></sc-if>
+                                      </div>
+                                    </td>
+                                  </sc-for>
+                                </tr>
+                              </sc-for>
+                            </tbody>
+                          </table>
+                          <sc-if value="{{ s.legendClosed }}"><span style="margin-top:10px;align-self:flex-start;display:inline-flex;height:32px;padding:0 12px;border-radius:999px;border:1px solid #D6CBB7;background:#FFFDF8;align-items:center;font-size:13px;font-weight:700">Légende ▾</span></sc-if>
+                          <sc-if value="{{ s.legendOpen }}">
+                            <div style="margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;font-size:12.5px;color:#3A332B;background:#FFFDF8;border:1px solid #E3DACB;border-radius:14px;padding:10px 14px">
+                              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;font-weight:700;color:#5B534A">LÉGENDE ▴</span>
+                              <sc-for list="{{ s.legendItems }}" as="lg" hint-placeholder-count="8"><span style="display:flex;align-items:center;gap:6px"><span style="width:16px;height:16px;border-radius:4px;background:{{ lg.bg }};border:{{ lg.bd }};border-left:{{ lg.bl }}"></span>{{ lg.l }}</span></sc-for>
+                            </div>
+                          </sc-if>
+                        </div>
+                      </sc-if>
+
+                      <sc-if value="{{ s.isCenter }}">
+                        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;text-align:center">
+                          <sc-if value="{{ s.ctr.spin }}"><span style="width:40px;height:40px;border-radius:50%;border:4px solid #E6DDCD;border-top-color:#15120F;animation:bxSpin 1s linear infinite"></span></sc-if>
+                          <span style="font-weight:900;font-size:30px;letter-spacing:-.02em;color:{{ s.ctr.tone }}">{{ s.ctr.title }}</span>
+                          <sc-if value="{{ s.ctr.hasSub }}"><span style="max-width:560px;font-size:16px;line-height:1.5;color:#3A332B">{{ s.ctr.sub }}</span></sc-if>
+                          <sc-if value="{{ s.ctr.hasBtn }}"><span style="height:48px;padding:0 22px;border-radius:999px;background:#15120F;color:#FFC21A;display:flex;align-items:center;font-weight:800;font-size:15px">{{ s.ctr.btn }}</span></sc-if>
+                        </div>
+                      </sc-if>
+
+                      <sc-if value="{{ s.focus }}">
+                        <div style="position:absolute;top:16px;right:20px;z-index:30;display:flex;align-items:center;gap:6px;padding:5px 5px 5px 14px;border-radius:999px;background:#15120F;color:#F2EDE3;box-shadow:0 10px 30px rgba(21,18,15,.3)">
+                          <span style="font-weight:900;font-size:15px">{{ s.wk }}</span>
+                          <span aria-label="Semaine précédente" style="width:34px;height:34px;border-radius:50%;background:#25201B;display:flex;align-items:center;justify-content:center">←</span>
+                          <span aria-label="Semaine suivante" style="width:34px;height:34px;border-radius:50%;background:#25201B;display:flex;align-items:center;justify-content:center">→</span>
+                          <span style="height:34px;padding:0 12px;border-radius:999px;background:#FFC21A;color:#15120F;font-size:13px;font-weight:800;display:flex;align-items:center">✦</span>
+                          <span style="height:34px;padding:0 12px;border-radius:999px;border:1px solid rgba(242,237,227,.3);font-size:13px;font-weight:800;display:flex;align-items:center">⤡ Quitter · Échap</span>
+                        </div>
+                      </sc-if>
+
+                      <sc-if value="{{ s.hasSel }}">
+                        <div style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:8px;padding:8px 8px 8px 22px;border-radius:999px;background:#15120F;color:#F2EDE3;box-shadow:0 20px 50px rgba(21,18,15,.35);white-space:nowrap">
+                          <span style="font-weight:800;font-size:15px;margin-right:8px">{{ s.selCount }}</span>
+                          <span style="height:44px;padding:0 18px;border-radius:999px;border:1px solid rgba(242,237,227,.3);font-size:14px;font-weight:700;display:flex;align-items:center">Tout sélectionner</span>
+                          <span style="height:44px;padding:0 18px;border-radius:999px;background:{{ s.selDel.bg }};color:{{ s.selDel.fg }};border:{{ s.selDel.bd }};font-size:14px;font-weight:800;display:flex;align-items:center">{{ s.selDel.l }}</span>
+                          <span style="height:44px;padding:0 20px;border-radius:999px;background:#FFC21A;color:#15120F;font-size:14px;font-weight:800;display:flex;align-items:center">Terminer</span>
+                        </div>
+                      </sc-if>
+                    </sc-if>
+
+                    <sc-if value="{{ s.isM }}">
+                      <sc-if value="{{ s.hdr }}">
+                        <div style="flex:none;background:#15120F;color:#F2EDE3;padding:{{ s.mPadTop }} 14px 12px;display:flex;flex-direction:column;gap:12px">
+                          <div style="display:flex;align-items:center;gap:8px">
+                            <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0">
+                              <div style="font-weight:800;font-size:18px">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</div>
+                              <span style="font-size:12.5px;color:rgba(242,237,227,.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Entreprise Test · essai 12 j · <b style="color:#FFC21A">S'abonner</b></span>
+                            </div>
+                            <span aria-label="Assistant BEMEXO" style="width:44px;height:44px;flex:none;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900">✦</span>
+                            <span aria-label="Menu" style="width:44px;height:44px;flex:none;border-radius:50%;border:1.5px solid rgba(242,237,227,.35);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;position:relative">☰<span style="position:absolute;top:-2px;right:-2px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#C62828;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #15120F">3</span></span>
+                          </div>
+                          <div style="display:flex;align-items:center;gap:8px">
+                            <span aria-label="Semaine précédente" style="width:44px;height:44px;flex:none;border-radius:50%;background:#25201B;display:flex;align-items:center;justify-content:center;font-size:16px">←</span>
+                            <div style="flex:1;display:flex;flex-direction:column;align-items:center"><span style="font-weight:900;font-size:20px;letter-spacing:-.02em">{{ s.wk }}</span><span style="font-size:12.5px;color:rgba(242,237,227,.82)">12 – 18 octobre</span></div>
+                            <span aria-label="Semaine suivante" style="width:44px;height:44px;flex:none;border-radius:50%;background:#25201B;display:flex;align-items:center;justify-content:center;font-size:16px">→</span>
+                          </div>
+                          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+                            <sc-for list="{{ s.mDays }}" as="d" hint-placeholder-count="7">
+                              <span style="height:52px;border-radius:14px;background:{{ d.bg }};color:{{ d.fg }};border:{{ d.bd }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px"><span style="font-size:12px;font-weight:700">{{ d.l }}</span><span style="font-weight:900;font-size:16px">{{ d.n }}</span><span style="width:6px;height:6px;border-radius:50%;background:{{ d.dot }}"></span></span>
+                            </sc-for>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ s.mBody }}">
+                        <div style="flex:1;min-height:0;overflow:hidden;padding:12px 14px 100px;display:flex;flex-direction:column;gap:10px">
+                          <div style="display:flex;gap:6px">
+                            <sc-for list="{{ s.mCounters }}" as="k" hint-placeholder-count="3">
+                              <span style="flex:1;min-height:44px;border-radius:14px;background:{{ k.bg }};color:{{ k.fg }};border:{{ k.bd }};display:flex;align-items:center;justify-content:center;gap:5px;font-size:13px;font-weight:700;padding:0 6px"><b style="font-family:'JetBrains Mono',monospace;font-size:15px">{{ k.v }}</b>{{ k.l }}</span>
+                            </sc-for>
+                          </div>
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800;margin-top:2px">{{ s.mDayTitle }}</span>
+                          <div style="display:grid;grid-template-columns:{{ s.mGtc }};gap:10px;align-items:start">
+                            <sc-for list="{{ s.mCards }}" as="p" hint-placeholder-count="4">
+                              <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:8px">
+                                <div style="display:flex;align-items:center;gap:10px;min-height:44px">
+                                  <sc-if value="{{ p.hasChk }}"><span style="width:26px;height:26px;flex:none;border-radius:7px;border:2px solid #15120F;background:{{ p.chkBg }};font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ p.chkMark }}</span></sc-if>
+                                  <span style="width:40px;height:40px;flex:none;border-radius:50%;background:{{ p.av }};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px">{{ p.ini }}</span>
+                                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                                    <span style="font-weight:900;font-size:15px;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ p.name }}</span>
+                                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                                      <sc-if value="{{ p.chef }}"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;background:#FFE9A8;color:#5C4300;padding:2px 5px;border-radius:4px">CHEF</span></sc-if>
+                                      <sc-if value="{{ p.hasWait }}"><span style="font-size:12.5px;font-weight:700;color:#8E1B14">{{ p.wait }}</span></sc-if>
+                                    </div>
+                                  </div>
+                                  <sc-if value="{{ p.hasSt }}"><span style="flex:none;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;padding:4px 7px;border-radius:6px;background:{{ p.stBg }};color:{{ p.stFg }}">{{ p.st }}</span></sc-if>
+                                </div>
+                                <sc-if value="{{ p.isAbsDay }}"><div style="min-height:52px;border-radius:12px;background:repeating-linear-gradient(135deg,{{ p.absA }} 0 9px,{{ p.absB }} 9px 18px);display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:#3A332B"><b style="font-family:'JetBrains Mono',monospace;letter-spacing:.08em">{{ p.absL }}</b>{{ p.absS }}</div></sc-if>
+                                <sc-for list="{{ p.items }}" as="x" hint-placeholder-count="1">
+                                  <sc-if value="{{ x.isCard }}">
+                                    <div role="button" style="position:relative;border-radius:14px;background:{{ x.bg }};border:{{ x.bd }};color:{{ x.fg }};padding:9px 12px 10px 16px;display:flex;flex-direction:column;gap:3px;overflow:hidden;opacity:{{ x.op }};outline:{{ x.ol }};outline-offset:2px">
+                                      <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:{{ x.stripe }}"></span>
+                                      <div style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;flex:none;border-radius:50%;background:{{ x.dot }}"></span><span style="flex:1;min-width:0;font-weight:900;font-size:15px;line-height:1.2;text-decoration:{{ x.deco }}">{{ x.title }}</span><sc-if value="{{ x.hasDocs }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:{{ x.subFg }}">{{ x.docs }}</span></sc-if><sc-if value="{{ x.hasChk }}"><span style="width:26px;height:26px;flex:none;border-radius:7px;border:{{ x.chkBd }};background:{{ x.chkBg }};color:{{ x.chkFg }};font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ x.chkMark }}</span></sc-if></div>
+                                      <span style="font-size:13px;color:{{ x.subFg }}">{{ x.sub }}</span>
+                                      <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:{{ x.timeFg }}">{{ x.time }}</span>
+                                      <sc-if value="{{ x.hasTags }}"><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px"><sc-for list="{{ x.tags }}" as="tg" hint-placeholder-count="1"><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;padding:3px 6px;border-radius:6px;background:{{ tg.bg }};color:{{ tg.fg }}">{{ tg.l }}</span></sc-for></div></sc-if>
+                                      <sc-if value="{{ x.hasWhy }}"><span style="margin-top:3px;font-size:13px;font-weight:700;color:#8E1B14;background:#FCE4E1;border-radius:8px;padding:6px 8px">{{ x.why }}</span></sc-if>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ x.isMeet }}"><div style="display:flex;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:14px;background:#FFE2EC;border:1.5px solid #B7366A"><div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:900;font-size:14px">{{ x.mTitle }}</span><span style="font-size:12.5px;color:#5B534A">{{ x.mSub }}</span></div><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#B7366A">{{ x.mTime }}</span></div></sc-if>
+                                  <sc-if value="{{ x.isHors }}"><div style="padding:9px 12px;border-radius:12px;border:1.5px dashed #15120F;font-size:13px;font-weight:700">{{ x.hT }}</div></sc-if>
+                                  <sc-if value="{{ x.isTasks }}"><span style="align-self:flex-start;min-height:44px;padding:0 14px;border-radius:999px;border:1.5px solid #15120F;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;display:flex;align-items:center">☐ {{ x.kT }}</span></sc-if>
+                                </sc-for>
+                                <sc-if value="{{ p.add }}"><div style="display:flex;gap:6px"><span style="flex:1;height:44px;border-radius:12px;border:1.5px dashed #9C907E;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">+ Ajouter un chantier</span><span style="height:44px;padding:0 14px;border-radius:12px;border:1.5px solid #D6CBB7;display:flex;align-items:center;font-size:14px;font-weight:800">+ Tâche</span></div></sc-if>
+                                <sc-if value="{{ p.noAdd }}"><span style="font-size:12.5px;color:#5B534A">Absent ce jour : pas d'ajout. Touchez le nom pour changer le statut.</span></sc-if>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ s.mCenter }}">
+                        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center">
+                          <sc-if value="{{ s.mCtr.spin }}"><span style="width:36px;height:36px;border-radius:50%;border:4px solid #E6DDCD;border-top-color:#15120F;animation:bxSpin 1s linear infinite"></span></sc-if>
+                          <span style="font-weight:900;font-size:22px;letter-spacing:-.02em">{{ s.mCtr.title }}</span>
+                          <sc-if value="{{ s.mCtr.hasSub }}"><span style="font-size:15px;line-height:1.45;color:#3A332B">{{ s.mCtr.sub }}</span></sc-if>
+                          <sc-if value="{{ s.mCtr.hasBtn }}"><span style="height:48px;padding:0 20px;border-radius:999px;background:#15120F;color:#FFC21A;display:flex;align-items:center;font-weight:800;font-size:15px">{{ s.mCtr.btn }}</span></sc-if>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ s.mSel }}">
+                        <div style="position:absolute;left:10px;right:10px;bottom:14px;z-index:30;display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:22px;background:#15120F;color:#F2EDE3;box-shadow:0 12px 30px rgba(21,18,15,.35)">
+                          <span style="font-weight:800;font-size:15px;padding:0 6px">{{ s.mSelCount }}</span>
+                          <div style="display:flex;gap:6px">
+                            <span style="flex:1;height:48px;border-radius:999px;border:1px solid rgba(242,237,227,.3);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700">Tout sélectionner</span>
+                            <span style="flex:1;height:48px;border-radius:999px;background:{{ s.mSelDel.bg }};color:{{ s.mSelDel.fg }};border:{{ s.mSelDel.bd }};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">{{ s.mSelDel.l }}</span>
+                            <span style="height:48px;padding:0 16px;border-radius:999px;background:#FFC21A;color:#15120F;display:flex;align-items:center;font-size:14px;font-weight:800">Terminer</span>
+                          </div>
+                        </div>
+                      </sc-if>
+                    </sc-if>
+
+                    <sc-for list="{{ s.ovs }}" as="o" hint-placeholder-count="0">
+                      <sc-if value="{{ o.isScrim }}"><div style="position:absolute;left:0;top:0;right:0;bottom:0;z-index:{{ o.z }};background:{{ o.scrimBg }}"></div></sc-if>
+                      <sc-if value="{{ o.isGhost }}">
+                        <div style="position:absolute;left:{{ o.gl }};top:{{ o.gt }};z-index:{{ o.z }};width:180px;transform:rotate(-2deg);padding:9px 12px;border-radius:12px;background:#15120F;color:#F2EDE3;box-shadow:0 18px 40px rgba(21,18,15,.35);display:flex;flex-direction:column;gap:2px">
+                          <sc-if value="{{ o.hasGhMark }}"><span style="position:absolute;top:-10px;right:-10px;width:26px;height:26px;border-radius:50%;background:#FFC21A;color:#15120F;font-weight:900;display:flex;align-items:center;justify-content:center">{{ o.ghMark }}</span></sc-if>
+                          <span style="font-weight:800;font-size:13px">{{ o.ghT }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#FFC21A">{{ o.ghS }}</span>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ o.isGuide }}">
+                        <div style="position:absolute;left:{{ o.gl }};top:{{ o.gt }};width:{{ o.gw }};height:{{ o.gh }};border-radius:{{ o.grad }};z-index:{{ o.z }};box-shadow:0 0 0 4px #FFC21A,0 0 0 9999px rgba(21,18,15,.55);pointer-events:none"></div>
+                        <div style="position:absolute;left:{{ o.tipL }};top:{{ o.tipT }};width:{{ o.tipW }};z-index:61;background:#FFFDF8;border-radius:18px;border-top:4px solid #FFC21A;box-shadow:0 20px 50px rgba(21,18,15,.3);padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800">✦ GUIDE · {{ o.tipStep }}</span>
+                          <span style="font-size:15px;line-height:1.45;font-weight:700">{{ o.tipT2 }}</span>
+                          <div style="display:flex;gap:8px;justify-content:flex-end"><sc-for list="{{ o.tipBtns }}" as="bt" hint-placeholder-count="2"><span style="height:44px;padding:0 16px;border-radius:999px;background:{{ bt.bg }};color:{{ bt.fg }};border:{{ bt.bd }};display:flex;align-items:center;font-size:14px;font-weight:800">{{ bt.l }}</span></sc-for></div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ o.isBox }}">
+                        <div role="dialog" style="position:absolute;left:{{ o.l }};top:{{ o.t }};right:{{ o.r }};bottom:{{ o.b }};width:{{ o.w }};height:{{ o.h }};max-height:{{ o.mh }};transform:{{ o.tf }};border-radius:{{ o.rad }};background:{{ o.bg }};box-shadow:{{ o.sh }};border:{{ o.bd }};z-index:{{ o.z }};display:flex;flex-direction:column;overflow:hidden">
+                          <sc-if value="{{ o.topLine }}"><div style="flex:none;height:4px;background:#FFC21A"></div></sc-if>
+                          <sc-if value="{{ o.grab }}"><div style="flex:none;display:flex;justify-content:center;padding-top:8px"><span style="width:44px;height:5px;border-radius:3px;background:#D6CBB7"></span></div></sc-if>
+                          <sc-if value="{{ o.hasHead }}">
+                            <div style="flex:none;display:flex;align-items:flex-start;gap:12px;padding:16px 20px 6px">
+                              <sc-if value="{{ o.back }}"><span aria-label="Retour" style="width:44px;height:44px;flex:none;border-radius:50%;border:1.5px solid #D6CBB7;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800">‹</span></sc-if>
+                              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding-top:2px">
+                                <sc-if value="{{ o.hasKicker }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:{{ o.kc }}">{{ o.kicker }}</span></sc-if>
+                                <sc-if value="{{ o.hasTitle }}"><span style="font-weight:900;font-size:{{ o.titleFs }};letter-spacing:-.02em;line-height:1.1">{{ o.title }}</span></sc-if>
+                                <sc-if value="{{ o.hasSub }}"><span style="font-size:14px;line-height:1.45;color:#3A332B">{{ o.sub }}</span></sc-if>
+                              </div>
+                              <sc-if value="{{ o.close }}"><span aria-label="Fermer" style="width:44px;height:44px;flex:none;border-radius:50%;border:1.5px solid #D6CBB7;display:flex;align-items:center;justify-content:center;font-size:15px">✕</span></sc-if>
+                            </div>
+                          </sc-if>
+                          <sc-if value="{{ o.hasTabs }}">
+                            <div style="flex:none;display:flex;gap:18px;padding:4px 20px 0;border-bottom:1px solid #E3DACB">
+                              <sc-for list="{{ o.tabs }}" as="tb" hint-placeholder-count="2"><span style="height:42px;display:flex;align-items:center;font-size:14.5px;font-weight:{{ tb.fw }};color:{{ tb.c }};border-bottom:{{ tb.bd }}">{{ tb.l }}</span></sc-for>
+                            </div>
+                          </sc-if>
+                          <div style="flex:1;min-height:0;overflow:hidden;padding:{{ o.pad }};display:grid;grid-template-columns:{{ o.gtc }};gap:20px;align-items:start;align-content:start">
+                            <sc-for list="{{ o.cols }}" as="col" hint-placeholder-count="1">
+                              <div style="display:flex;flex-direction:column;gap:{{ o.bodyGap }};min-width:0">
+                                <sc-for list="{{ col.blocks }}" as="b" hint-placeholder-count="3">
+                                  <sc-if value="{{ b.isP }}"><p style="margin:0;font-size:{{ b.fs }};line-height:1.5;color:{{ b.c }};font-weight:{{ b.fw }};text-wrap:pretty;white-space:pre-line">{{ b.t }}</p></sc-if>
+                                  <sc-if value="{{ b.isLab }}"><div style="display:flex;justify-content:space-between;gap:10px;margin-top:4px"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800">{{ b.t }}</span><sc-if value="{{ b.hasR }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700">{{ b.r }}</span></sc-if></div></sc-if>
+                                  <sc-if value="{{ b.isFields }}">
+                                    <div style="display:grid;grid-template-columns:{{ b.gtc }};gap:12px">
+                                      <sc-for list="{{ b.items }}" as="f" hint-placeholder-count="1">
+                                        <label style="display:flex;flex-direction:column;gap:6px;grid-column:{{ f.span }};min-width:0">
+                                          <span style="display:flex;justify-content:space-between;gap:8px;font-size:13.5px;font-weight:800">{{ f.label }}<sc-if value="{{ f.hasCount }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#5B534A">{{ f.count }}</span></sc-if></span>
+                                          <span style="min-height:{{ f.h }};border-radius:12px;border:{{ f.bd }};background:{{ f.bg }};display:flex;align-items:{{ f.ai }};padding:{{ f.pt }} 14px 0;gap:8px;font-size:15px;color:{{ f.vc }};font-family:{{ f.mono }};line-height:1.4"><span style="flex:1;min-width:0;white-space:pre-line;padding-bottom:{{ f.pt }}">{{ f.value }}</span><sc-if value="{{ f.hasSuf }}"><span style="color:#5B534A;font-family:'Archivo',sans-serif;font-weight:700">{{ f.suf }}</span></sc-if></span>
+                                          <sc-if value="{{ f.hasHint }}"><span style="font-size:13px;line-height:1.4;color:{{ f.hintC }};font-weight:{{ f.hintFw }}">{{ f.hint }}</span></sc-if>
+                                        </label>
+                                      </sc-for>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isSeg }}">
+                                    <div style="display:flex;flex-direction:column;gap:6px">
+                                      <sc-if value="{{ b.hasLabel }}"><span style="font-size:13.5px;font-weight:800">{{ b.label }}</span></sc-if>
+                                      <div style="display:flex;gap:2px;padding:3px;border-radius:999px;border:1.5px solid #15120F;background:#FFFDF8"><sc-for list="{{ b.items }}" as="sg" hint-placeholder-count="3"><span style="flex:1;height:38px;border-radius:999px;background:{{ sg.bg }};color:{{ sg.fg }};font-weight:{{ sg.fw }};font-size:14px;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 8px">{{ sg.l }}</span></sc-for></div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isChips }}">
+                                    <div style="display:flex;flex-direction:column;gap:6px">
+                                      <sc-if value="{{ b.hasLabel }}"><span style="font-size:13.5px;font-weight:800">{{ b.label }}</span></sc-if>
+                                      <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ b.items }}" as="ch" hint-placeholder-count="3"><span style="height:38px;padding:0 14px;border-radius:999px;background:{{ ch.bg }};color:{{ ch.fg }};border:{{ ch.bd }};font-size:13.5px;font-weight:700;display:flex;align-items:center">{{ ch.l }}</span></sc-for></div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isChecks }}">
+                                    <div style="display:flex;flex-direction:column">
+                                      <sc-if value="{{ b.hasLabel }}"><span style="font-size:13.5px;font-weight:800;margin-bottom:4px">{{ b.label }}</span></sc-if>
+                                      <sc-for list="{{ b.items }}" as="ck" hint-placeholder-count="2">
+                                        <div style="display:flex;align-items:center;gap:12px;min-height:44px">
+                                          <span style="width:24px;height:24px;flex:none;border-radius:7px;border:{{ ck.bd }};background:{{ ck.bg }};color:#FFC21A;font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ ck.mark }}</span>
+                                          <div style="flex:1;display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-size:14.5px;font-weight:700;color:{{ ck.fg }}">{{ ck.l }}</span><sc-if value="{{ ck.hasS }}"><span style="font-size:12.5px;color:#5B534A;line-height:1.35">{{ ck.s }}</span></sc-if></div>
+                                          <sc-if value="{{ ck.hasR }}"><span style="flex:none;font-size:12.5px;font-weight:700;color:{{ ck.rc }};text-align:right;max-width:55%">{{ ck.r }}</span></sc-if>
+                                        </div>
+                                      </sc-for>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isToggles }}">
+                                    <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:16px;overflow:hidden">
+                                      <sc-for list="{{ b.items }}" as="tg" hint-placeholder-count="2">
+                                        <div style="display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 14px;border-top:1px solid #EFE7D9">
+                                          <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:14.5px;font-weight:800">{{ tg.l }}</span><sc-if value="{{ tg.hasS }}"><span style="font-size:12.5px;line-height:1.35;color:#5B534A">{{ tg.s }}</span></sc-if><sc-if value="{{ tg.hasNow }}"><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:#755800">{{ tg.now }}</span></sc-if></div>
+                                          <span style="font-size:12px;font-weight:700;color:{{ tg.stc }}">{{ tg.st }}</span>
+                                          <span style="position:relative;width:48px;height:28px;flex:none;border-radius:999px;background:{{ tg.tb }}"><span style="position:absolute;top:2px;left:{{ tg.tl }};width:24px;height:24px;border-radius:50%;background:#FFFFFF"></span></span>
+                                        </div>
+                                      </sc-for>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isAlert }}">
+                                    <div role="alert" style="display:flex;flex-direction:column;gap:6px;padding:12px 16px;border-radius:14px;background:{{ b.bg }};border:{{ b.bd }};color:{{ b.fg }}">
+                                      <sc-if value="{{ b.hasTitle }}"><span style="font-weight:900;font-size:15px;line-height:1.3">{{ b.title }}</span></sc-if>
+                                      <sc-if value="{{ b.hasT }}"><span style="font-size:13.5px;line-height:1.45;white-space:pre-line">{{ b.t }}</span></sc-if>
+                                      <sc-if value="{{ b.hasBtn }}"><div style="display:flex;gap:8px;margin-top:2px"><span style="height:40px;padding:0 14px;border-radius:999px;border:1.5px solid currentColor;display:flex;align-items:center;font-size:13.5px;font-weight:800">{{ b.btn }}</span><sc-if value="{{ b.hasBtn2 }}"><span style="height:40px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:13.5px;font-weight:800;text-decoration:underline">{{ b.btn2 }}</span></sc-if></div></sc-if>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isRows }}">
+                                    <div style="display:flex;flex-direction:column;gap:6px">
+                                      <sc-if value="{{ b.hasTitle }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800">{{ b.title }}</span></sc-if>
+                                      <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:16px;overflow:hidden">
+                                        <sc-for list="{{ b.items }}" as="rw" hint-placeholder-count="3">
+                                          <div style="display:flex;align-items:center;gap:10px;min-height:52px;padding:7px 12px;border-top:{{ rw.bt }};background:{{ rw.bg }}">
+                                            <sc-if value="{{ rw.hasChk }}"><span style="width:24px;height:24px;flex:none;border-radius:7px;border:{{ rw.chkBd }};background:{{ rw.chkBg }};color:#FFC21A;font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center">{{ rw.chkMark }}</span></sc-if>
+                                            <sc-if value="{{ rw.grab }}"><span style="color:#9C907E;font-size:16px">⠿</span></sc-if>
+                                            <sc-if value="{{ rw.hasDot }}"><span style="width:12px;height:12px;flex:none;border-radius:50%;background:{{ rw.dot }}"></span></sc-if>
+                                            <sc-if value="{{ rw.hasIni }}"><span style="width:36px;height:36px;flex:none;border-radius:50%;background:{{ rw.avBg }};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px">{{ rw.ini }}</span></sc-if>
+                                            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                                              <span style="font-weight:{{ rw.fw }};font-size:14.5px;line-height:1.25;color:{{ rw.tc }};text-decoration:{{ rw.deco }}">{{ rw.t }}</span>
+                                              <sc-if value="{{ rw.hasS }}"><span style="font-size:12.5px;line-height:1.35;color:#5B534A">{{ rw.s }}</span></sc-if>
+                                              <sc-if value="{{ rw.hasWhy }}"><span style="font-size:12.5px;font-weight:700;color:#8E1B14">{{ rw.why }}</span></sc-if>
+                                            </div>
+                                            <sc-if value="{{ rw.hasBadge }}"><span style="flex:none;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;padding:4px 7px;border-radius:6px;background:{{ rw.badge.bg }};color:{{ rw.badge.fg }}">{{ rw.badge.l }}</span></sc-if>
+                                            <sc-if value="{{ rw.hasR }}"><span style="flex:none;font-family:{{ rw.rMono }};font-size:13.5px;font-weight:700;color:{{ rw.rFg }};text-align:right">{{ rw.r }}</span></sc-if>
+                                            <sc-if value="{{ rw.hasBtn }}"><span style="flex:none;height:40px;padding:0 14px;border-radius:999px;background:{{ rw.btn.bg }};color:{{ rw.btn.fg }};border:{{ rw.btn.bd }};display:flex;align-items:center;font-size:13.5px;font-weight:800">{{ rw.btn.l }}</span></sc-if>
+                                            <sc-if value="{{ rw.hasBtn2 }}"><span style="flex:none;height:40px;padding:0 14px;border-radius:999px;background:{{ rw.btn2.bg }};color:{{ rw.btn2.fg }};border:{{ rw.btn2.bd }};display:flex;align-items:center;font-size:13.5px;font-weight:800">{{ rw.btn2.l }}</span></sc-if>
+                                            <sc-if value="{{ rw.chev }}"><span style="color:#5B534A;font-size:18px">›</span></sc-if>
+                                          </div>
+                                        </sc-for>
+                                      </div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isTable }}">
+                                    <div style="display:flex;flex-direction:column;gap:6px">
+                                      <sc-if value="{{ b.hasTitle }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800">{{ b.title }}</span></sc-if>
+                                      <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:14px;overflow:hidden">
+                                        <div style="display:grid;grid-template-columns:{{ b.gtc }};gap:10px;padding:9px 12px;border-bottom:1.5px solid #15120F"><sc-for list="{{ b.head }}" as="hc" hint-placeholder-count="4"><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.06em;font-weight:700;color:#5B534A">{{ hc.l }}</span></sc-for></div>
+                                        <sc-for list="{{ b.rows }}" as="tr" hint-placeholder-count="3">
+                                          <div style="display:grid;grid-template-columns:{{ b.gtc }};gap:10px;padding:9px 12px;border-top:1px solid #EFE7D9;background:{{ tr.bg }};box-shadow:{{ tr.bl }};align-items:center">
+                                            <sc-for list="{{ tr.cells }}" as="tc" hint-placeholder-count="4">
+                                              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                                                <span style="font-size:13.5px;font-weight:{{ tc.fw }};color:{{ tc.c }};font-family:{{ tc.mono }};text-decoration:{{ tc.deco }};overflow-wrap:anywhere">{{ tc.v }}</span>
+                                                <sc-if value="{{ tc.hasS }}"><span style="font-size:12px;color:#5B534A;line-height:1.3">{{ tc.s }}</span></sc-if>
+                                                <sc-if value="{{ tc.hasTag }}"><span style="align-self:flex-start;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:3px 6px;border-radius:5px;background:{{ tc.tag.bg }};color:{{ tc.tag.fg }}">{{ tc.tag.l }}</span></sc-if>
+                                              </div>
+                                            </sc-for>
+                                          </div>
+                                        </sc-for>
+                                      </div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isStats }}">
+                                    <div style="display:grid;grid-template-columns:{{ b.gtc }};gap:10px">
+                                      <sc-for list="{{ b.items }}" as="st" hint-placeholder-count="3">
+                                        <div style="background:{{ st.bg }};color:{{ st.fg }};border:{{ st.bd }};border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0">
+                                          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.1em;font-weight:700;color:{{ st.kc }}">{{ st.k }}</span>
+                                          <span style="display:flex;align-items:baseline;gap:4px"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:{{ st.fs }};line-height:1;letter-spacing:-.04em">{{ st.v }}</span><span style="font-weight:800;font-size:14px">{{ st.u }}</span></span>
+                                          <sc-if value="{{ st.hasS }}"><span style="font-size:12.5px;line-height:1.35;color:{{ st.kc }}">{{ st.s }}</span></sc-if>
+                                        </div>
+                                      </sc-for>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isBars }}">
+                                    <div aria-hidden="true" style="background:{{ b.bg }};color:{{ b.fg }};border:1px solid #E3DACB;border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+                                      <sc-if value="{{ b.hasTitle }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800">{{ b.title }}</span></sc-if>
+                                      <div style="height:{{ b.h }};display:flex;align-items:flex-end;gap:8px">
+                                        <sc-for list="{{ b.items }}" as="br" hint-placeholder-count="7">
+                                          <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;min-width:0">
+                                            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700">{{ br.vl }}</span>
+                                            <div style="width:100%;max-width:44px;height:{{ br.h }};min-height:3px;border-radius:6px 6px 2px 2px;background:{{ br.bg }};outline:{{ br.ol }};outline-offset:2px"></div>
+                                            <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:{{ br.fw }};color:{{ br.lc }};white-space:nowrap">{{ br.l }}</span>
+                                          </div>
+                                        </sc-for>
+                                      </div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isCal }}">
+                                    <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px">
+                                      <div style="display:flex;justify-content:space-between;align-items:center"><span style="width:40px;height:40px;border-radius:50%;border:1px solid #D6CBB7;display:flex;align-items:center;justify-content:center">‹</span><span style="font-weight:900;font-size:16px">{{ b.title }}</span><span style="width:40px;height:40px;border-radius:50%;border:1px solid #D6CBB7;display:flex;align-items:center;justify-content:center">›</span></div>
+                                      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"><sc-for list="{{ b.dows }}" as="dw" hint-placeholder-count="7"><span style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#5B534A;padding:4px 0">{{ dw }}</span></sc-for></div>
+                                      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"><sc-for list="{{ b.cells }}" as="cd" hint-placeholder-count="30"><span style="height:44px;border-radius:10px;background:{{ cd.bg }};color:{{ cd.fg }};border:{{ cd.bd }};font-weight:{{ cd.fw }};text-decoration:{{ cd.deco }};font-size:14px;display:flex;align-items:center;justify-content:center">{{ cd.n }}</span></sc-for></div>
+                                      <sc-if value="{{ b.hasNote }}"><span style="font-size:12.5px;line-height:1.4;color:#5B534A">{{ b.note }}</span></sc-if>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isDays }}">
+                                    <div style="display:flex;flex-direction:column;gap:6px">
+                                      <sc-if value="{{ b.hasTitle }}"><span style="font-size:13.5px;font-weight:800">{{ b.title }}</span></sc-if>
+                                      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px">
+                                        <sc-for list="{{ b.items }}" as="dy" hint-placeholder-count="7">
+                                          <div style="display:flex;flex-direction:column;gap:4px;align-items:stretch">
+                                            <span style="height:60px;border-radius:12px;background:{{ dy.bg }};color:{{ dy.fg }};border:{{ dy.bd }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px"><span style="font-size:12px;font-weight:700">{{ dy.l }}</span><span style="font-weight:900;font-size:16px">{{ dy.n }}</span><span style="font-size:12px;font-weight:900;height:14px">{{ dy.mark }}</span></span>
+                                            <sc-if value="{{ dy.hasWhy }}"><span style="font-size:11.5px;line-height:1.25;font-weight:700;color:#8E1B14;text-align:center">{{ dy.why }}</span></sc-if>
+                                          </div>
+                                        </sc-for>
+                                      </div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isBub }}">
+                                    <div style="display:flex;flex-direction:column;gap:6px">
+                                      <sc-if value="{{ b.hasLabel }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800">{{ b.label }}</span></sc-if>
+                                      <div style="position:relative;border-radius:14px;background:{{ b.b.bg }};border:{{ b.b.bd }};color:{{ b.b.fg }};padding:10px 12px 11px 17px;display:flex;flex-direction:column;gap:3px;overflow:hidden">
+                                        <span style="position:absolute;left:0;top:0;bottom:0;width:5px;background:{{ b.b.stripe }}"></span>
+                                        <div style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:50%;background:{{ b.b.dot }}"></span><span style="flex:1;font-weight:900;font-size:15px;text-decoration:{{ b.b.deco }}">{{ b.b.title }}</span><sc-if value="{{ b.b.hasDocs }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:{{ b.b.subFg }}">{{ b.b.docs }}</span></sc-if></div>
+                                        <span style="font-size:13px;color:{{ b.b.subFg }}">{{ b.b.sub }}</span>
+                                        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:{{ b.b.timeFg }}">{{ b.b.time }}</span>
+                                        <sc-if value="{{ b.b.hasTags }}"><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px"><sc-for list="{{ b.b.tags }}" as="tg" hint-placeholder-count="1"><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;padding:3px 6px;border-radius:6px;background:{{ tg.bg }};color:{{ tg.fg }}">{{ tg.l }}</span></sc-for></div></sc-if>
+                                      </div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isKv }}">
+                                    <div style="display:flex;flex-direction:column;gap:6px">
+                                      <sc-if value="{{ b.hasTitle }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#755800">{{ b.title }}</span></sc-if>
+                                      <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:14px;padding:4px 14px">
+                                        <sc-for list="{{ b.items }}" as="kv" hint-placeholder-count="3"><div style="display:flex;justify-content:space-between;gap:12px;min-height:40px;align-items:center;border-top:1px solid #EFE7D9"><span style="font-size:13.5px;color:#5B534A">{{ kv.k }}</span><span style="font-size:14px;font-weight:800;text-align:right;font-family:{{ kv.mono }}">{{ kv.v }}</span></div></sc-for>
+                                      </div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isHist }}">
+                                    <div style="display:flex;flex-direction:column;gap:0;border-left:2px solid #D6CBB7;margin-left:6px">
+                                      <sc-for list="{{ b.items }}" as="h" hint-placeholder-count="2">
+                                        <div style="position:relative;padding:0 0 14px 16px;display:flex;flex-direction:column;gap:3px">
+                                          <span style="position:absolute;left:-7px;top:3px;width:12px;height:12px;border-radius:50%;background:#15120F;border:2px solid #F2EDE3"></span>
+                                          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5B534A">{{ h.when }} · {{ h.who }}</span>
+                                          <span style="font-size:14px;font-weight:800">{{ h.what }}</span>
+                                          <sc-if value="{{ h.hasD }}"><span style="font-size:13px;line-height:1.4;color:#3A332B">{{ h.d }}</span></sc-if>
+                                        </div>
+                                      </sc-for>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isDrop }}"><div style="min-height:110px;border-radius:16px;border:2px dashed #9C907E;background:#FFFDF8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:16px"><span style="font-weight:900;font-size:15px">{{ b.t }}</span><span style="font-size:13px;color:#5B534A">{{ b.s }}</span></div></sc-if>
+                                  <sc-if value="{{ b.isGauge }}"><div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-size:13.5px;font-weight:800"><span>{{ b.l }}</span><span style="color:{{ b.tc }};font-family:'JetBrains Mono',monospace">{{ b.txt }}</span></div><div style="height:12px;border-radius:6px;background:#EFE7D9;overflow:hidden"><div style="height:100%;width:{{ b.w }};background:{{ b.bg }};border-radius:6px"></div></div></div></sc-if>
+                                  <sc-if value="{{ b.isBtns }}"><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:{{ b.jc }}"><sc-for list="{{ b.items }}" as="bt" hint-placeholder-count="2"><span style="height:44px;padding:0 16px;border-radius:999px;background:{{ bt.bg }};color:{{ bt.fg }};border:{{ bt.bd }};flex-grow:{{ bt.grow }};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">{{ bt.l }}</span></sc-for></div></sc-if>
+                                  <sc-if value="{{ b.isSteps }}">
+                                    <div style="display:flex;flex-direction:column;gap:8px">
+                                      <sc-for list="{{ b.items }}" as="sp" hint-placeholder-count="2">
+                                        <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:#FFFDF8;border:1px solid #E3DACB">
+                                          <span style="width:32px;height:32px;flex:none;border-radius:50%;background:{{ sp.bg }};color:{{ sp.fg }};font-weight:900;display:flex;align-items:center;justify-content:center">{{ sp.n }}</span>
+                                          <div style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-weight:800;font-size:14.5px;text-decoration:{{ sp.deco }}">{{ sp.t }}</span><sc-if value="{{ sp.hasS }}"><span style="font-size:12.5px;color:#5B534A">{{ sp.s }}</span></sc-if></div>
+                                          <sc-if value="{{ sp.hasBtn }}"><span style="height:40px;padding:0 14px;border-radius:999px;background:#15120F;color:#FFC21A;display:flex;align-items:center;font-size:13.5px;font-weight:800">{{ sp.btn }}</span></sc-if>
+                                        </div>
+                                      </sc-for>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isQr }}">
+                                    <div style="display:flex;gap:16px;align-items:center;background:#FFFDF8;border:1px solid #E3DACB;border-radius:16px;padding:14px">
+                                      <div aria-label="QR code" style="width:140px;height:140px;flex:none;border-radius:10px;border:8px solid #FFFFFF;outline:1px solid #E3DACB;background:repeating-conic-gradient(#15120F 0 25%,#FFFFFF 0 50%) 0 0/14px 14px"></div>
+                                      <div style="display:flex;flex-direction:column;gap:6px"><span style="font-weight:900;font-size:15px">{{ b.t }}</span><sc-if value="{{ b.hasCode }}"><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:28px;letter-spacing:.12em">{{ b.code }}</span></sc-if><span style="font-size:13px;line-height:1.4;color:#5B534A">{{ b.s }}</span></div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isMsg }}">
+                                    <div style="display:flex;justify-content:{{ b.jc }};gap:8px">
+                                      <sc-if value="{{ b.bot }}"><span style="width:30px;height:30px;flex:none;border-radius:50%;background:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px">✦</span></sc-if>
+                                      <div style="max-width:85%;display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-radius:16px;background:{{ b.bg }};color:{{ b.fg }};border:{{ b.bd }}">
+                                        <sc-if value="{{ b.hasAtt }}"><span style="align-self:flex-start;height:30px;padding:0 10px;border-radius:8px;background:rgba(242,237,227,.15);border:1px solid rgba(242,237,227,.3);font-size:12.5px;font-weight:700;display:flex;align-items:center">{{ b.att }}</span></sc-if>
+                                        <span style="font-size:14px;line-height:1.5;white-space:pre-line">{{ b.t }}</span>
+                                        <sc-if value="{{ b.hasDone }}"><span style="font-size:13.5px;font-weight:800;color:#17663F;display:flex;gap:10px;align-items:center;flex-wrap:wrap">{{ b.done }}<span style="text-decoration:underline;color:#15120F">Annuler</span><span style="text-decoration:underline;color:#15120F">Modifier</span></span></sc-if>
+                                        <sc-if value="{{ b.hasCard }}">
+                                          <div style="border-radius:12px;border:1.5px solid #15120F;background:#F2EDE3;padding:10px 12px;display:flex;flex-direction:column;gap:6px">
+                                            <span style="font-weight:900;font-size:14px">{{ b.card.title }}</span>
+                                            <sc-for list="{{ b.card.lines }}" as="ln" hint-placeholder-count="2"><span style="font-size:13px;line-height:1.35;color:#3A332B">{{ ln }}</span></sc-for>
+                                            <div style="display:flex;gap:6px;margin-top:2px"><sc-for list="{{ b.card.btns }}" as="bt" hint-placeholder-count="2"><span style="height:40px;padding:0 14px;border-radius:999px;background:{{ bt.bg }};color:{{ bt.fg }};border:{{ bt.bd }};display:flex;align-items:center;font-size:13.5px;font-weight:800">{{ bt.l }}</span></sc-for></div>
+                                          </div>
+                                        </sc-if>
+                                        <sc-if value="{{ b.hasLinks }}"><div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ b.links }}" as="lk" hint-placeholder-count="2"><span style="height:36px;padding:0 12px;border-radius:999px;background:#15120F;color:#FFC21A;display:flex;align-items:center;font-size:13px;font-weight:800">{{ lk }}</span></sc-for></div></sc-if>
+                                      </div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isComposer }}">
+                                    <div style="display:flex;flex-direction:column;gap:8px">
+                                      <sc-if value="{{ b.hasSug }}"><div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ b.sug }}" as="sg" hint-placeholder-count="4"><span style="min-height:40px;padding:6px 12px;border-radius:14px;background:#FFFDF8;border:1px solid #D6CBB7;font-size:13px;font-weight:700;display:flex;align-items:center;line-height:1.3">{{ sg }}</span></sc-for></div></sc-if>
+                                      <div style="background:#FFFDF8;border:2px solid #15120F;border-radius:18px;padding:10px 10px 10px 14px;display:flex;flex-direction:column;gap:8px">
+                                        <sc-if value="{{ b.hasAtt }}"><span style="align-self:flex-start;height:30px;padding:0 10px;border-radius:8px;background:#E6DDCD;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:8px">{{ b.att }} <span>✕</span></span></sc-if>
+                                        <span style="min-height:44px;font-size:14.5px;line-height:1.45;color:{{ b.vc }}">{{ b.ph }}</span>
+                                        <div style="display:flex;align-items:center;gap:6px">
+                                          <span aria-label="Joindre une photo ou un PDF" style="width:44px;height:44px;border-radius:50%;border:1.5px solid #D6CBB7;display:flex;align-items:center;justify-content:center;font-size:16px">⎘</span>
+                                          <span aria-label="Dicter" style="width:44px;height:44px;border-radius:50%;border:1.5px solid #D6CBB7;display:flex;align-items:center;justify-content:center;font-size:15px">●</span>
+                                          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:12px;color:#5B534A">{{ b.count }}</span>
+                                          <span aria-label="Envoyer" style="width:44px;height:44px;border-radius:50%;background:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:900">↑</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isSearch }}"><div style="height:44px;border-radius:999px;border:{{ b.bd }};background:#FFFDF8;padding:0 16px;display:flex;align-items:center;gap:8px;font-size:14.5px;color:{{ b.c }}"><span style="color:#5B534A">⌕</span>{{ b.t }}</div></sc-if>
+                                  <sc-if value="{{ b.isSep }}"><div style="height:1px;background:#E3DACB;margin:2px 0"></div></sc-if>
+                                  <sc-if value="{{ b.isSkel }}"><div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{ b.items }}" as="sk" hint-placeholder-count="3"><div style="height:{{ sk.h }};border-radius:12px;background:linear-gradient(90deg,#E6DDCD 0,#F3ECE0 50%,#E6DDCD 100%);background-size:800px 100%;animation:bxShimmer 1.2s linear infinite"></div></sc-for></div></sc-if>
+                                  <sc-if value="{{ b.isEmpty }}"><div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 16px;border-radius:16px;border:1.5px dashed #D6CBB7;text-align:center"><span style="font-weight:900;font-size:17px">{{ b.t }}</span><sc-if value="{{ b.hasS }}"><span style="font-size:13.5px;line-height:1.4;color:#5B534A">{{ b.s }}</span></sc-if><sc-if value="{{ b.hasBtn }}"><span style="margin-top:4px;height:44px;padding:0 18px;border-radius:999px;border:1.5px solid #15120F;display:flex;align-items:center;font-size:14px;font-weight:800">{{ b.btn }}</span></sc-if></div></sc-if>
+                                  <sc-if value="{{ b.isPlans }}">
+                                    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+                                      <sc-for list="{{ b.items }}" as="pl" hint-placeholder-count="3">
+                                        <div style="background:{{ pl.bg }};color:{{ pl.fg }};border:{{ pl.bd }};border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:8px">
+                                          <sc-if value="{{ pl.hasTag }}"><span style="align-self:flex-start;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:3px 7px;border-radius:5px;background:{{ pl.tagBg }};color:{{ pl.tagFg }}">{{ pl.tag }}</span></sc-if>
+                                          <span style="font-weight:900;font-size:18px">{{ pl.name }}</span><span style="font-size:13px">{{ pl.range }}</span>
+                                          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:26px">{{ pl.price }}</span>
+                                          <span style="height:44px;border-radius:999px;background:{{ pl.b.bg }};color:{{ pl.b.fg }};border:{{ pl.b.bd }};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">{{ pl.b.l }}</span>
+                                        </div>
+                                      </sc-for>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isPhotos }}">
+                                    <div style="display:grid;grid-template-columns:{{ b.gtc }};gap:8px">
+                                      <sc-for list="{{ b.items }}" as="ph" hint-placeholder-count="4">
+                                        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                                          <div style="position:relative;aspect-ratio:1;border-radius:12px;background:repeating-linear-gradient(135deg,#E6DDCD 0 8px,#EFE7D9 8px 16px);outline:{{ ph.ol }};outline-offset:2px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:#5B534A">
+                                            <sc-if value="{{ ph.file }}"><span style="font-weight:900;font-size:14px;color:#15120F">PDF</span></sc-if>
+                                            <sc-if value="{{ ph.hasTag }}"><span style="position:absolute;left:6px;bottom:6px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:2px 5px;border-radius:5px;background:#15120F;color:#FFC21A">{{ ph.tag }}</span></sc-if>
+                                          </div>
+                                          <span style="font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ph.l }}</span>
+                                          <span style="font-size:11.5px;color:#5B534A">{{ ph.s }}</span>
+                                        </div>
+                                      </sc-for>
+                                    </div>
+                                  </sc-if>
+                                  <sc-if value="{{ b.isCode }}"><div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="display:flex;gap:8px"><sc-for list="{{ b.items }}" as="cd" hint-placeholder-count="6"><span style="width:48px;height:60px;border-radius:12px;background:#15120F;color:#FFC21A;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:30px;display:flex;align-items:center;justify-content:center">{{ cd.d }}</span></sc-for></div><span style="font-size:13px;color:#5B534A;text-align:center">{{ b.s }}</span></div></sc-if>
+                                  <sc-if value="{{ b.isLegend }}"><div style="display:grid;grid-template-columns:{{ b.cols }};gap:10px 14px"><sc-for list="{{ b.items }}" as="lg" hint-placeholder-count="8"><span style="display:flex;align-items:center;gap:10px;font-size:13.5px;line-height:1.3"><span style="width:26px;height:26px;flex:none;border-radius:6px;background:{{ lg.bg }};border:{{ lg.bd }};border-left:{{ lg.bl }}"></span>{{ lg.l }}</span></sc-for></div></sc-if>
+                                  <sc-if value="{{ b.isTabs }}"><div style="display:flex;gap:18px;border-bottom:1px solid #E3DACB"><sc-for list="{{ b.items }}" as="tb" hint-placeholder-count="2"><span style="height:42px;display:flex;align-items:center;font-size:14.5px;font-weight:{{ tb.fw }};color:{{ tb.c }};border-bottom:{{ tb.bd }}">{{ tb.l }}</span></sc-for></div></sc-if>
+                                </sc-for>
+                              </div>
+                            </sc-for>
+                          </div>
+                          <sc-if value="{{ o.hasFootNote }}"><div style="flex:none;padding:10px 20px 0;font-size:12.5px;line-height:1.4;color:#5B534A;border-top:1px solid #E3DACB">{{ o.footNote }}</div></sc-if>
+                          <sc-if value="{{ o.hasFoot }}">
+                            <div style="flex:none;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:12px 20px 16px">
+                              <sc-for list="{{ o.foot }}" as="bt" hint-placeholder-count="2"><span style="height:46px;padding:0 18px;border-radius:999px;background:{{ bt.bg }};color:{{ bt.fg }};border:{{ bt.bd }};flex-grow:{{ bt.grow }};margin-right:{{ bt.ml }};display:flex;align-items:center;justify-content:center;font-size:14.5px;font-weight:800;white-space:nowrap">{{ bt.l }}</span></sc-for>
+                            </div>
+                          </sc-if>
+                        </div>
+                      </sc-if>
+                    </sc-for>
+
+                    <sc-if value="{{ s.hasToasts }}">
+                      <div style="position:absolute;left:16px;right:16px;bottom:{{ s.toastB }};z-index:100;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none">
+                        <sc-for list="{{ s.toasts }}" as="tt" hint-placeholder-count="1">
+                          <div role="status" style="max-width:560px;width:100%;display:flex;align-items:center;gap:12px;padding:12px 12px 12px 16px;border-radius:16px;background:#15120F;color:#F2EDE3;box-shadow:0 12px 30px rgba(21,18,15,.35)">
+                            <span style="width:10px;height:10px;flex:none;border-radius:50%;background:{{ tt.dot }}"></span>
+                            <div style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:14px;font-weight:800;line-height:1.35">{{ tt.t }}</span><sc-if value="{{ tt.hasSub }}"><span style="font-size:12.5px;line-height:1.35;color:rgba(242,237,227,.82)">{{ tt.sub }}</span></sc-if></div>
+                            <sc-if value="{{ tt.hasAct }}"><span style="flex:none;height:40px;padding:0 14px;border-radius:999px;background:#FFC21A;color:#15120F;display:flex;align-items:center;font-size:13.5px;font-weight:800">{{ tt.act }}</span></sc-if>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </section>
+  </sc-for>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { lots: [], loading: true };
+  componentDidMount() {
+    const files = ['bureau-base.js', 'bureau-lot1.js', 'bureau-lot2.js', 'bureau-lot3.js'];
+    window.BX = window.BX || {}; window.BX.lots = [];
+    const load = (i) => {
+      if (i >= files.length) return this.build();
+      const sc = document.createElement('script');
+      sc.src = new URL(files[i], document.baseURI).href + '?v=' + Date.now();
+      sc.onload = () => load(i + 1); sc.onerror = () => load(i + 1);
+      document.head.appendChild(sc);
+    };
+    load(0);
+  }
+  build() {
+    const BX = window.BX;
+    const lots = (BX.lots || []).map(l => {
+      const all = [];
+      l.groups.forEach(g => g.screens.forEach(s => {
+        if (s.isD) { s.oRad = '16px'; s.oBg = '#F2EDE3'; s.oPad = '0'; s.iRad = '16px'; s.toastB = '24px'; }
+        else { s.oRad = s.mRad; s.oBg = '#15120F'; s.oPad = '10px'; s.iRad = s.mIn; s.toastB = s.mSel ? '150px' : '20px'; }
+        s.ih = s.fh; s.gridOp = s.gridDim ? '.35' : '1'; s.keep = !!s.keep;
+        all.push({ id: s.id });
+      }));
+      return Object.assign({}, l, { all });
+    });
+    const q = new URLSearchParams(location.search);
+    this.only = q.get('ecran');
+    this.setState({ lots, loading: false, cur: q.get('lot') || this.lotOf(lots, location.hash.slice(1)) || 'lot1' });
+    this.onHash = () => { const id = location.hash.slice(1); const l = this.lotOf(this.state.lots, id); if (l && l !== this.state.cur) this.setState({ cur: l }, () => setTimeout(() => { const e = document.getElementById(id); if (e) window.scrollTo(e.getBoundingClientRect().left + scrollX - 40, e.getBoundingClientRect().top + scrollY - 40); }, 300)); };
+    window.addEventListener('hashchange', this.onHash);
+    if (!this.only) this.tick = setInterval(() => {
+      const l = this.state.lots.filter(x => x.id === this.state.cur || this.state.cur === 'tout');
+      const vis = this.state.vis || {}; const next = [];
+      l.forEach(x => x.all.forEach(a => { if (!vis[a.id] && next.length < 10) next.push(a.id); }));
+      if (next.length) { const v = Object.assign({}, vis); next.forEach(id => { v[id] = true; }); this.setState({ vis: v }); }
+    }, 900);
+  }
+  componentWillUnmount() { if (this.onHash) window.removeEventListener('hashchange', this.onHash); if (this.io) this.io.disconnect(); clearInterval(this.tick); }
+  componentDidUpdate() { this.observe(); }
+  observe() {
+    if (!this.io) {
+      this.pend = {};
+      this.io = new IntersectionObserver((es) => {
+        es.forEach(e => { if (e.isIntersecting) this.pend[e.target.getAttribute('data-bx')] = true; });
+        if (!this.raf) this.raf = setTimeout(() => { this.raf = 0; const add = this.pend; this.pend = {};
+          if (Object.keys(add).some(k => !(this.state.vis || {})[k])) this.setState({ vis: Object.assign({}, this.state.vis || {}, add) }); }, 60);
+      }, { rootMargin: '400px' });
+    }
+    document.querySelectorAll('[data-bx]').forEach(el => { if (!el.__bxo) { el.__bxo = 1; this.io.observe(el); } });
+  }
+  lotOf(lots, id) { if (!id) return null; const l = lots.find(x => x.id === id || x.all.some(a => a.id === id)); return l ? l.id : null; }
+  renderVals() {
+    const cur = this.state.cur;
+    let shown = this.state.lots.filter(l => l.id === cur || cur === 'tout');
+    if (this.only) shown = this.state.lots.map(l => Object.assign({}, l, { groups: l.groups.map(g => Object.assign({}, g, { screens: g.screens.filter(s => s.id === this.only) })).filter(g => g.screens.length) })).filter(l => l.groups.length);
+    const vis = this.state.vis || {}; const only = this.only;
+    shown = shown.map(l => Object.assign({}, l, { groups: l.groups.map(g => Object.assign({}, g, { screens: g.screens.map(s => { const on = !!vis[s.id] || s.id === only; return Object.assign({}, s, { on, off: !on }); }) })) }));
+    const tabs = this.state.lots.map(l => ({ l: l.title, n: l.all.length, bg: l.id === cur ? '#15120F' : '#FFFDF8', fg: l.id === cur ? '#FFC21A' : '#15120F', go: () => this.setState({ cur: l.id }) }));
+    tabs.push({ l: 'Tout', n: this.state.lots.reduce((a, l) => a + l.all.length, 0), bg: cur === 'tout' ? '#15120F' : '#FFFDF8', fg: cur === 'tout' ? '#FFC21A' : '#15120F', go: () => this.setState({ cur: 'tout' }) });
+    return { lots: this.state.lots, shown, tabs, loading: this.state.loading };
+  }
+}
+</script>
+</body>
+</html>

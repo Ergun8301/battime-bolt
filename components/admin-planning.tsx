@@ -64,7 +64,7 @@ import { tourIdOf } from '@/supabase/functions/_shared/worker-tours';
 import PendingInvitations from '@/components/pending-invitations';
 import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
-import { useAiEnabled } from '@/lib/real-cost';
+import { useAiEnabled } from '@/lib/real-cost'; import { useBureauUi2 } from '@/lib/use-bureau-ui2';
 import { reloadCompanySettings, useCompanySettings } from '@/lib/company-settings';
 import { useVisiblePoll } from '@/lib/use-visible-poll';
 import { useStaffEmailVisible } from '@/lib/staff-email-flag';
@@ -959,6 +959,17 @@ interface AdminPlanningProps {
 }
 export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
+  // Design du bureau (v2) : `?ui=2` sur un aperçu seulement (lib/use-bureau-ui2.ts). Le morceau v2 n'est chargé qu'alors (import différé :
+  // jamais dans le premier chargement) ; sans drapeau, ce composant rend EXACTEMENT ce qu'il rendait.
+  const ui2 = useBureauUi2();
+  const [v2, setV2] = useState<typeof import('@/components/design/bureau/planning-v2') | null>(null);
+  useEffect(() => {
+    if (!ui2) return;
+    let on = true;
+    import('@/components/design/bureau/planning-v2').then((m) => { if (on) setV2(m); }, () => undefined);
+    return () => { on = false; };
+  }, [ui2]);
+  const v2on = ui2 && !!v2;
   const [workers, setWorkers] = useState<User[]>([]);
   // Les personnes du BUREAU (rôle admin). Séparées des salariés : elles ne
   // pointent pas sur le planning, mais elles doivent rester visibles quelque
@@ -2296,6 +2307,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     if (drag?.type === 'new') {
       if (!drag.worksiteId) return;
       const ws = worksites.find(w => w.id === drag.worksiteId);
+      // Design du bureau (v2) : un client lâché sur une absence ou un mois clôturé est refusé AVANT l'écriture (la case le disait déjà au survol).
+      if (ui2) {
+        const refus = targetRefusal({ absent: !!absenceForDay(tWorker, tDate), monthClosed: closedMonths.has(tDate.slice(0, 7)), workerClosed: !!closedFor(workerClosures, tWorker, tDate) }, 'copié');
+        if (refus) { toast.error(refus.message.replace('copié', 'ajouté')); return; }
+      }
       try {
         await addPlanningSlot({ companyId: user.company_id, createdBy: user.id, userId: tWorker, worksiteId: drag.worksiteId, workDate: tDate });
         toast.success(`${ws?.client_name || 'Client'} ajouté au planning`);
@@ -3371,11 +3387,46 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     );
   }
 
+  const MobileMenu = v2on && v2 ? v2.MenuMobileV2 : AdminMobileMenu;
+  // « Horaire prévu » de la fiche : un seul élément, partagé par la fiche d'avant et celle du design v2 (même ancre de guide).
+  const horaireNode = editing ? <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" onBadChange={setEditTimeBad} guide="bureau-edit.horaire" /> : null;
+  const printMenuNode = printOpen ? (
+    <>
+      <div className="bt-pl-ddbackdrop" onClick={closePrintMenu} />
+      <PrintMenu displayed={displayedPeriod} busy={printBusy} tasksOn={missions.tasksOn}
+        workers={displayWorkers.map((w) => ({ id: w.id, name: `${w.first_name} ${w.last_name}` }))}
+        onPrint={startPrint} onClose={closePrintMenu} />
+    </>
+  ) : null;
+  // Design du bureau (v2) : ce que le morceau v2 reçoit de cet écran (états et gestionnaires, rien d'autre). Calculé seulement quand il rend.
+  const ctx = v2on ? {
+    user, companyLabel, companyLogo, companyInitials, trial, onSubscribe, signOut, aiOn, isAdmin: user?.role === 'admin',
+    kioskOn, trainingsOn: trainingsOn && !!user?.company_id, tracesOn: tracesOn && !!user?.company_id, versionsOn,
+    emailAllowed: emailVisible && user?.role === 'admin' && workers.length > 0,
+    pendingLeaves, pendingInvites: pendingInvites.length, openReserves, cockpitStats,
+    currentWeekStart, weekDays, isCurrentWeek, todayStr, thisWeekStart, changeWeek, mobileDayIdx, setMobileDayIdx,
+    workers, displayWorkers, worksites, planning, realEntries, draftEntries, withdrawnIds, docsByWorksite, todayAbsence, missingEffective,
+    closedMonths, workerClosures, missions, livePlaces, worksiteNameById,
+    absenceForDay, cellChantiers, extraDeclaredForCell, liveForCell, liveChipFor, realForPlanning, draftForPlanning, liveForBubble, cells,
+    selectMode, selFor, toggleOne, toggleGroup, selectableIn, enterSelect, exitSelect, selIds, selOn, deleteSelected, eraseBusy, undoCard, setUndoCard,
+    activeDrag, copying, moveLock, copyRefusalAt,
+    openAdd, openEdit, openTasks, openTaskAdd, openMeeting, openClientFiche, setStatusTarget, setExtraTarget,
+    setSalariesOpen, setReservesOpen, setKioskOpen, setCostOpen, setVersionsOpen, setTracesOpen, setTrainingsOpen, setEmailOpen, setExportOpen,
+    setSettingsOpen, setStatsOpen, setAssistantOpen, setMobileMenuOpen, setClientOpen, setImportOpen, setWorkerOpen, setDocsWorksite,
+    preloadTrainings: () => TrainingsAdmin.preload(), preloadEmail: () => StaffEmailDialog.preload(),
+    accountMenuOpen, setAccountMenuOpen, chantierMenuOpen, setChantierMenuOpen, clientsQuery, setClientsQuery, filteredClients,
+    statPanel, setStatPanel, renderRelanceRows, monthLabel, docListState, docsByChantier, waitingByWorker, openRelance: () => setRelanceOpen(true),
+    printOpen, setPrintOpen, closePrintMenu, printMenu: printMenuNode,
+    coachHidden, dismissCoach,
+    copyTipDesk: <CopyTip variant="desk" />, copyTipHelpCorner: <CopyTipHelp variant="corner" />, copyTipMobile: <CopyTip variant="mobile" />, copyTipHelpMobile: <CopyTipHelp variant="mobile" />,
+  } : null;
+
   return (
-    <div className={`bt-pl${selectMode ? ' bt-pl--select' : ''}${undoCard ? ' bt-pl--undo' : ''}${copying ? ' bt-pl--copying' : ''}`}>
+    <div className={`bt-pl${selectMode ? ' bt-pl--select' : ''}${undoCard ? ' bt-pl--undo' : ''}${copying ? ' bt-pl--copying' : ''}${v2on ? ' dz-bureau' : ''}`}>
       <style dangerouslySetInnerHTML={PL_STYLE} />
 
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setCopy(false); setActiveDrag(null); setChantierMenuOpen(false); }}>
+        {v2on && v2 && ctx ? <v2.default c={ctx} /> : (<>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         {/* COCKPIT : tableau de bord sombre. Lot 10 : rangé de gauche à droite —
             logo · chiffres (au centre) · essai + entreprise. Mêmes informations. */}
@@ -3644,14 +3695,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               aria-expanded={printOpen} data-testid="bar-print" disabled={displayWorkers.length === 0}>
               <Printer className="h-4 w-4" />
             </button>
-            {printOpen && (
-              <>
-                <div className="bt-pl-ddbackdrop" onClick={closePrintMenu} />
-                <PrintMenu displayed={displayedPeriod} busy={printBusy} tasksOn={missions.tasksOn}
-                  workers={displayWorkers.map((w) => ({ id: w.id, name: `${w.first_name} ${w.last_name}` }))}
-                  onPrint={startPrint} onClose={closePrintMenu} />
-              </>
-            )}
+            {printMenuNode}
           </div>
           {/* Lot 11 : « Exporter » ouvre directement l'export de l'équipe (un seul
               menu « Exporter ▾ » ensuite : PDF, Excel, CSV). Un seul salarié : lien
@@ -4085,9 +4129,15 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               })}
             </div>
           </div>
+        </>)}
 
         <DragOverlay>
-          {activeDrag?.type === 'new' ? (() => {
+          {v2on && v2 ? (() => {
+            // Design du bureau (v2) : le fantôme de la planche (180 px, penché, « + » quand on copie).
+            if (activeDrag?.type === 'new') { const ws = worksites.find((w) => w.id === activeDrag.worksiteId); return ws ? <v2.Ghost titre={ws.client_name} ligne="nouvelle intervention" /> : null; }
+            const p = activeDrag?.type === 'move' ? planning.find((x) => x.id === activeDrag.id) : undefined;
+            return p ? <v2.Ghost titre={p.worksite?.client_name || 'Chantier'} ligne={plannedHoursOf(p) || 'Sans horaire'} marque={copying ? '+' : undefined} /> : null;
+          })() : activeDrag?.type === 'new' ? (() => {
             const ws = worksites.find((w) => w.id === activeDrag.worksiteId);
             return ws ? (
               <div className="bt-pl-dragchip"><span className="bt-pl-pilldot" style={{ background: colorForWorksite(ws.id).bar }} />{ws.client_name}</div>
@@ -4112,7 +4162,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       {/* Lot 11 : en bas de l'écran — la barre de sélection (mode « Sélectionner »)
           et la carte « N intervention(s) supprimée(s) · Annuler » (jusqu'à sa croix). */}
-      {(selectMode || undoCard) && (() => {
+      {!v2on && (selectMode || undoCard) && (() => {
         const n = selIds.length;
         const weekIds = selectMode ? selectableIn((p) => displayWorkers.some((w) => w.id === p.user_id)) : [];
         const dayStr = format(weekDays[mobileDayIdx], 'yyyy-MM-dd');
@@ -4228,7 +4278,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         onSaved={() => { fetchData(); if (user?.company_id) reloadCompanySettings(user.company_id); }}
         onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined} />
 
-      <AdminMobileMenu
+      <MobileMenu
         open={mobileMenuOpen}
         onOpenChange={setMobileMenuOpen}
         user={user}
@@ -4246,6 +4296,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         onOpenStats={() => setStatsOpen(true)}
         onOpenLeaves={() => setLeaveOpen(true)}
         pendingLeaves={pendingLeaves}
+        pendingInvites={pendingInvites.length}
         onOpenReserves={() => setReservesOpen(true)}
         openReserves={openReserves}
         onOpenKiosk={kioskOn && user?.company_id ? () => setKioskOpen(true) : undefined}
@@ -4303,11 +4354,13 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               <Palmtree className="h-4 w-4 mr-1.5" /> Demandes de congé
               {pendingLeaves > 0 && <span className="bt-pl-badge ml-1.5">{pendingLeaves}</span>}
             </Button>
-            {trainingsOn && (
+            {trainingsOn && !v2on && (
               <Button size="sm" variant="outline" className="mb-2 w-full font-bold" data-testid="salaries-trainings" onClick={() => { setSalariesOpen(false); setTrainingsOpen(true); }}>
                 <GraduationCap className="h-4 w-4 mr-1.5" /> Formations
               </Button>
             )}
+
+            {v2on && user?.company_id && <PendingInvitations companyId={user.company_id} invitations={pendingInvites} onChanged={() => { fetchData(); fetchExtras(); }} />}
 
             {/* LE BUREAU. Une entreprise n'avait qu'un seul administrateur, celui
                 qui a créé le compte : si le patron est sur un toit, personne ne
@@ -4832,6 +4885,19 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       </Dialog>
 
       {/* Affectation popup — ONLY this day's assignment */}
+      {v2on && v2 ? (editing ? <v2.FicheV2 f={{
+        p: editing, worker: workers.find((w) => w.id === editing.user_id), onClose: closeEdit,
+        real: editRealAgg, draft: draftForPlanning(editing), docs: docsByWorksite.get(editing.worksite_id || '') || 0, live: liveForBubble(editing), withdrawn: withdrawnIds.has(editing.id),
+        emptyDraft: emptyDraftPids.has(editing.id), enRetard: (missingEffective.get(editing.user_id) || []).includes(editing.work_date),
+        horaire: horaireNode,
+        note: editNote, setNote: setEditNote, dirty: editDirty, saving: savingEdit, deleting: deletingEdit, copyBusy,
+        onSave: saveAffectation, onDelete: () => deleteAffectation(), onCopyTo: openCopyTo, onDuplicate: duplicateNextDay,
+        onAddTask: missions.tasksOn && !editing.user_id.startsWith('demo-') ? () => {
+          const w = editing; closeEdit();
+          openTaskAdd(w.user_id, w.work_date, w.estimated_start && w.estimated_end ? { start: w.estimated_start.slice(0, 5), end: w.estimated_end.slice(0, 5) } : null);
+        } : undefined,
+        onFiche: () => openClientFiche(editing.worksite), onDocs: () => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); },
+      }} /> : null) : (<>
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) closeEdit(); }}>
         <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">
           <DialogHeader>
@@ -4862,7 +4928,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               </div>
 
               {/* Lot 11 : « Horaire prévu : début – fin » (facultatifs), plus de roulette. */}
-              <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" onBadChange={setEditTimeBad} guide="bureau-edit.horaire" />
+              {horaireNode}
 
               {/* Note for the poseur */}
               <div className="space-y-1.5">
@@ -4936,6 +5002,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           )}
         </DialogContent>
       </Dialog>
+      </>)}
 
       {/* « Copier vers un autre jour… » : le choix des jours (la fenêtre n'écrit rien ; l'écran copie avec la règle du glisser). */}
       <CopyDialog
