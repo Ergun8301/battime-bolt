@@ -84,7 +84,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
           {resume.paniers > 0 && <div className="bt-stat dz-compteur" data-testid="mois-paniers"><span className="dz-compteur-cle">Paniers</span><span className="bt-stat-n">{resume.paniers}</span></div>}
           {resume.conges > 0 && <div className="bt-stat dz-compteur" data-testid="mois-conges"><span className="dz-compteur-cle">Congés</span><span className="bt-stat-n">{resume.conges}</span></div>}
           {resume.absences > 0 && <div className="bt-stat dz-compteur" data-testid="mois-absences"><span className="dz-compteur-cle">Absences</span><span className="bt-stat-n">{resume.absences}</span></div>}
-          <div className="bt-stat dz-compteur" data-testid="mois-a-envoyer" data-ton={resume.aEnvoyerJours > 0 ? 'a-preciser' : undefined}><span className="dz-compteur-cle">À envoyer</span><span className="bt-stat-n">{resume.aEnvoyerJours}</span></div>
+          <div className="bt-stat dz-compteur" data-testid="mois-a-envoyer" data-ton={resume.aEnvoyerJours > 0 ? 'a-envoyer' : undefined}><span className="dz-compteur-cle">À envoyer</span><span className="bt-stat-n">{resume.aEnvoyerJours}</span></div>
         </div>
         {dayKeys.length === 0 ? (
           <p className="dz-vide">Aucune affectation ce mois-ci.</p>

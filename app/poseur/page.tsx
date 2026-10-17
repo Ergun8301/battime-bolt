@@ -35,7 +35,7 @@ import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 import { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
 import { AlertTriangle, GraduationCap } from 'lucide-react';
 // Design salarié, étape 3 : la coque v2 (visible seulement avec ?ui=2 sur un aperçu, voir components/design/salarie/shell-v2.tsx).
-import { BandeJours, BoutonAssistant, Kicker, NoteEntete, OngletsBas, useUi2, type OngletBas } from '@/components/design/salarie/shell-v2';
+import { BandeJours, Kicker, NoteEntete, OngletsBas, RangAssistant, useUi2, type OngletBas } from '@/components/design/salarie/shell-v2';
 // Étape 6 : la page « Plus » (E26), « Mon équipe » (E27) et le retour passager au-dessus de la barre ; tout derrière ?ui=2.
 import { PagePlus, type EntreePlus } from '@/components/design/salarie/page-plus';
 import { useRetourPassager } from '@/components/design/salarie/retour-passager';
@@ -558,9 +558,9 @@ export default function PoseurPage() {
   const corps = (
     <>
     {selectedDate ? (
-      <PoseurDay key={dayKey} date={selectedDate} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : offlineBanner} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
+      <PoseurDay key={dayKey} date={selectedDate} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : offlineBanner} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} fab={ui2 && !plusOuvert && (aiOn || demoSalarie) ? <RangAssistant onClick={() => setAssistantOpen(true)} /> : undefined} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
     ) : view === 'day' ? (
-      <PoseurDay key={dayKey} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : <>{offlineBanner}{toSendBanner}{reservesBanner}{trainingsBanner}</>} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
+      <PoseurDay key={dayKey} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : <>{offlineBanner}{toSendBanner}{reservesBanner}{trainingsBanner}</>} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} fab={ui2 && !plusOuvert && (aiOn || demoSalarie) ? <RangAssistant onClick={() => setAssistantOpen(true)} /> : undefined} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
     ) : (
       <div className="bt-phscroll bt-skin">
         {view === 'team' && ui2 && user ? (
@@ -730,8 +730,8 @@ export default function PoseurPage() {
           </div>
         )}
 
-        {/* Coque v2 : le ✦ jaune rond FLOTTANT (en bas à droite, au-dessus de la barre) ouvre l'assistant existant en un geste — sur Journée, Semaine et Mois. */}
-        {ui2 && !plusOuvert && (aiOn || demoSalarie) && (ongletActif === 'day' || ongletActif === 'week' || ongletActif === 'month') && <BoutonAssistant onClick={() => setAssistantOpen(true)} flottant={ongletActif === 'day' ? 'jour' : 'vue'} />}
+        {/* Coque v2 : le ✦ jaune rond a son RANG (dans le flux, il ne recouvre rien) : sur Semaine et Mois ici, au-dessus de la barre du bas ; sur la Journée, dans « Ma journée », au-dessus de la barre d'actions. */}
+        {ui2 && !plusOuvert && (aiOn || demoSalarie) && (ongletActif === 'week' || ongletActif === 'month') && <RangAssistant onClick={() => setAssistantOpen(true)} />}
         {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} />}
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />

@@ -44,6 +44,11 @@ export function BandeJours({ jours, onSelect }: { jours: CaseBande[]; onSelect: 
   );
 }
 
+/** Le rang du ✦ : une bande à part, entre le contenu et la barre du bas ; le contenu s'arrête au-dessus. */
+export function RangAssistant({ onClick }: { onClick: () => void }) {
+  return <div className="dz-fab-rang" data-testid="dz-fab-rang"><BoutonAssistant onClick={onClick} /></div>;
+}
+
 export type OngletBas = 'day' | 'week' | 'month';
 /**
  * La barre du bas : Journée · Semaine · Mois. Cibles de 44 px au moins.
@@ -63,10 +68,10 @@ export function OngletsBas({ actif, onGo }: { actif: OngletBas | null; onGo: (o:
   );
 }
 
-/** Le bouton ✦ rond jaune, FLOTTANT en bas à droite au-dessus de la barre du bas : ouvre l'assistant existant (même repère que l'ancien bouton de la barre du bas, que les guides et les scripts visent). */
-export function BoutonAssistant({ onClick, flottant }: { onClick: () => void; flottant?: 'jour' | 'vue' }) {
+/** Le bouton ✦ rond jaune, à droite, sur son propre RANG (`.dz-fab-rang`, dans le flux : il ne recouvre jamais du contenu), juste au-dessus de la barre d'actions (Journée) ou de la barre du bas (Semaine, Mois) : ouvre l'assistant existant (même repère que l'ancien bouton de la barre du bas, que les guides et les scripts visent). */
+export function BoutonAssistant({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" className={`dz-assistant${flottant ? ` dz-assistant-flottant dz-assistant-${flottant}` : ''}`} aria-label="Assistant BEMEXO" onClick={onClick} data-testid="dock-assistant" data-guide="journee.assistant">✦</button>
+    <button type="button" className="dz-assistant dz-assistant-fab" aria-label="Assistant BEMEXO" onClick={onClick} data-testid="dock-assistant" data-guide="journee.assistant">✦</button>
   );
 }
 

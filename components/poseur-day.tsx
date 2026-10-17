@@ -271,7 +271,7 @@ async function readLiveWithin(userId: string, ms: number): Promise<OwnLiveSessio
   }
 }
 
-export default function PoseurDay({ date: dateProp, topBanner, onAssistant, semaine, onScan, onScanWarm }: { date?: string; topBanner?: ReactNode; /** Lot 6 : bouton ✨ dans la barre (si l'assistant est activé). */ onAssistant?: () => void; /** Coque v2 (?ui=2) : les 7 jours de la semaine (barres de la carte Total). */ semaine?: BarreJour[]; /** Coque v2 : le bouton QR de la barre du bas (une tablette est reliée). */ onScan?: () => void; onScanWarm?: () => void } = {}) {
+export default function PoseurDay({ date: dateProp, topBanner, onAssistant, semaine, onScan, onScanWarm, fab }: { date?: string; topBanner?: ReactNode; /** ?ui=2 : le rang du ✦ assistant, juste au-dessus de la barre d'actions (dans le flux : jamais par-dessus le contenu). */ fab?: ReactNode; /** Lot 6 : bouton ✨ dans la barre (si l'assistant est activé). */ onAssistant?: () => void; /** Coque v2 (?ui=2) : les 7 jours de la semaine (barres de la carte Total). */ semaine?: BarreJour[]; /** Coque v2 : le bouton QR de la barre du bas (une tablette est reliée). */ onScan?: () => void; onScanWarm?: () => void } = {}) {
   const ui2 = useUi2();
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
@@ -2348,6 +2348,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
         )}
       </div>
 
+      {fab}
       {/* ===== BARRE D'ACTION DOCKÉE (bas) ===== */}
       <div className={`bt-day-dock${onAssistant ? ' with-ai' : ''}`}>
         <button

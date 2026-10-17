@@ -223,11 +223,23 @@ html[data-bt-ui2] .dz-retour :focus-visible { outline: 2px solid transparent; bo
 .bt-ui2 .dz-sem-heures { font: 900 var(--dz-fs-22)/1 var(--dz-font-chiffres); color: var(--dz-encre); }
 .bt-ui2 .dz-sem-jour[data-carte="envoye"] .dz-sem-pastille { font-weight: 900; }
 
-/* ✦ assistant : rond jaune flottant, en bas à droite, au-dessus de la barre du bas (sur Journée, la barre « + / QR / Envoyer » est au-dessus : on monte d'autant). */
-.bt-ui2 .dz-assistant-flottant { position: absolute; right: 16px; z-index: 40; width: 56px; height: 56px; font-size: 26px; box-shadow: 0 6px 18px rgba(21,18,15,.35), inset 0 -3px 0 #D9A200; bottom: calc(var(--dz-barre-h, 72px) + 16px); }
-.bt-ui2 .dz-assistant-jour { bottom: calc(var(--dz-barre-h, 72px) + 112px); }
-.bt-ui2 .dz-assistant-flottant:focus-visible { outline: 3px solid var(--dz-encre); outline-offset: 3px; }
+/* ✦ assistant : un RANG à part (dans le flux), à droite, entre le contenu et la barre (d'actions sur la Journée, du bas sur Semaine et Mois) :
+   le contenu s'arrête au-dessus, le bouton ne recouvre jamais rien. */
+.bt-ui2 .dz-fab-rang { flex: none; display: flex; justify-content: flex-end; padding: 6px 16px; background: var(--dz-creme); }
+.bt-ui2 .dz-assistant-fab { width: 52px; height: 52px; font-size: 24px; box-shadow: 0 4px 12px rgba(21,18,15,.3), inset 0 -3px 0 #D9A200; }
+.bt-ui2 .dz-assistant-fab:focus-visible { outline: 3px solid var(--dz-encre); outline-offset: 3px; }
 
 .bt-ui2 .dz-lien-historique { display: block; margin: 14px auto 8px; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1.5px solid var(--dz-trait); background: #FFFFFF; font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); color: var(--dz-encre); cursor: pointer; }
-.bt-ui2 .dz-semaine { padding-bottom: 84px; } /* le ✦ flottant ne cache pas la dernière carte */
-.bt-ui2 .bt-day-scroll::after { content: ''; display: block; height: 72px; flex: none; } /* en bas de la Journée, le dernier bloc passe au-dessus du ✦ flottant */
+
+/* Carte noire « Semaine » : les mini-barres reprennent les couleurs des cartes jour (vert envoyé, rouge à envoyer, jaune aujourd'hui, violet prévu, gris congé). */
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="envoye"] .dz-barre-valeur { background: #2FA36B; }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="a-envoyer"] .dz-barre-valeur,
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="renvoye"] .dz-barre-valeur { background: #E5482E; border: 0; }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="aujourdhui"] .dz-barre-valeur { background: var(--dz-jaune); border: 0; }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="a-venir"] .dz-barre-valeur { background: rgba(122,79,214,.55); border: 1.5px dashed #B79CFF; }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="absence"] .dz-barre-valeur,
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="cloture"] .dz-barre-valeur { background: repeating-linear-gradient(135deg, #A39C8F 0 3px, #6F695E 3px 6px); border: 0; }
+
+/* Mois : la tuile « À envoyer » est rouge, comme les pastilles « À envoyer » de la Semaine (la jaune est réservée aux « pauses à préciser » de la Journée). */
+.bt-ui2 .dz-compteur[data-ton="a-envoyer"] { background: #FFE9E3; border: 2px solid #E5482E; color: #9A2412; }
+.bt-ui2 .dz-compteur[data-ton="a-envoyer"] .dz-compteur-cle, .bt-ui2 .dz-compteur[data-ton="a-envoyer"] .bt-stat-n { color: #9A2412; }
