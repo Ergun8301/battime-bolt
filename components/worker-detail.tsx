@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { addCertification, setWorkerActive, updateWorkerIdentity } from '@/lib/admin-writes';
 import { useAuth } from '@/components/auth-provider';
@@ -47,6 +47,13 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
 import { RealCostSection } from '@/components/real-cost-card';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+import type { FicheHeuresCtx } from '@/components/design/bureau/feuille-heures-v2';
+
+// Design bureau, lot 2 (?ui=2 sur aperçu seulement) : la feuille d'heures habillée v2, chargée en différé seulement quand le drapeau est actif.
+// Elle reçoit les MÊMES états et les MÊMES gestes que l'écran d'avant (ci-dessous) : aucune logique n'est copiée.
+const FicheHeuresV2 = lazy(() => import('@/components/design/bureau/feuille-heures-v2'));
+const OngletsFicheV2 = lazy(() => import('@/components/design/bureau/onglets-fiche-v2'));
 
 function formatMinutesToHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -63,6 +70,8 @@ interface WorkerDetailDialogProps {
   mode?: 'hours' | 'manage';
   onOpenChange: (open: boolean) => void;
   onChanged?: () => void;
+  /** Design bureau v2 : « Relancer » dans la fiche (même envoi que « À relancer » du planning). Absent = pas de bouton. */
+  onRelancer?: (worker: User) => void | Promise<unknown>;
 }
 
 const OTHER_NAME = 'Autre';
@@ -115,8 +124,15 @@ interface PositionRow {
   captured_at: string;
 }
 
-export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged }: WorkerDetailDialogProps) {
+export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged, onRelancer }: WorkerDetailDialogProps) {
   const { user: me } = useAuth();
+  const ui2 = useBureauUi2();
+  // v2 : « Gérer » et « Feuille d'heures » sont deux onglets d'une même fiche ; sans le drapeau, `mode` seul décide (comme avant).
+  const [modeV2, setModeV2] = useState<'hours' | 'manage'>(mode);
+  useEffect(() => { setModeV2(mode); }, [mode, worker?.id]);
+  const modeEff = ui2 ? modeV2 : mode;
+  // v2 : la raison d'un refus du serveur reste affichée dans la fenêtre (le toast, lui, disparaît).
+  const [actionErr, setActionErr] = useState<string | null>(null);
   const [range, setRange] = useState<DateRange | undefined>(() => {
     const t = new Date();
     return { from: t, to: t };
@@ -344,26 +360,29 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const doCorrection = async (entry: ExportEntry) => {
     if (!worker || !me) return;
     // Heure tapée mais illisible (« 7h75 ») : on bloque, sinon l'ancienne heure partirait en silence.
-    if (cBadStart || cBadEnd) { toast.error(`Heure non comprise. ${TIME_HINT}`); return; }
+    if (cBadStart || cBadEnd) { setActionErr(`Heure non comprise. ${TIME_HINT}`); toast.error(`Heure non comprise. ${TIME_HINT}`); return; }
     // Lot 2 : migration passée → heures, pause, panier et route, avec motif,
     // par `office_correct_entry` (lib/office-edits.ts). Sinon : le chemin d'avant.
     if (editsAvailable) {
-      if (cPauseErr) { toast.error(cPauseErr); return; }
+      if (cPauseErr) { setActionErr(cPauseErr); toast.error(cPauseErr); return; }
       const changes = changedKeys(entry, { start_time: cStart, end_time: cEnd, break_minutes: cBreak, meal_allowance: cMeal, gap_before: cGap });
       const refus = precheck(entry, changes, sameDayOthers(entry), cReason);
-      if (refus) { toast.error(refus); return; }
+      if (refus) { setActionErr(refus); toast.error(refus); return; }
       setCSaving(true);
       try {
         const r = await correctOfficeEntry({ entryId: entry.id, workerId: worker.id, workDate: entry.work_date, changes, reason: cReason, companyName });
         // Refus du serveur : le panneau reste ouvert, avec la saisie.
-        if (!r.ok) { toast.error(r.message); return; }
+        if (!r.ok) { setActionErr(r.message); toast.error(r.message); return; }
         if (r.notified) toast.success(r.message); else toast.warning(r.message);
+        setActionErr(null);
         setCorrectingId(null);
         fetchEntries();
         fetchMissing();
         onChanged?.();
+        return true;
       } catch (err) {
         console.error('Error correcting day:', err);
+        setActionErr((err as { message?: string })?.message || 'Correction impossible');
         toast.error((err as { message?: string })?.message || 'Correction impossible');
       } finally {
         setCSaving(false);
@@ -375,13 +394,16 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       const r = await corrigerHeures({ entryId: entry.id, newStart: cStart, newEnd: cEnd });
       // `notified` faux n'est PAS une erreur : la correction a eu lieu. On le
       // dit avec le bon ton plutôt que d'annoncer un succès complet.
-      if (!r.ok) { toast.error(r.message); return; }
+      if (!r.ok) { setActionErr(r.message); toast.error(r.message); return; }
       if (r.notified) toast.success(r.message); else toast.warning(r.message);
+      setActionErr(null);
       setCorrectingId(null);
       fetchEntries();
       onChanged?.();
+      return true;
     } catch (err) {
       console.error('Error correcting hours:', err);
+      setActionErr((err as { message?: string })?.message || 'Correction impossible');
       toast.error((err as { message?: string })?.message || 'Correction impossible');
     } finally {
       setCSaving(false);
@@ -396,18 +418,21 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
    */
   const doReturn = async (entry: ExportEntry) => {
     if (!worker || !me) return;
-    if (!reasonOk(cReason)) { toast.error('Indiquez un motif (3 caractères au moins).'); return; }
+    if (!reasonOk(cReason)) { setActionErr('Indiquez un motif (3 caractères au moins).'); toast.error('Indiquez un motif (3 caractères au moins).'); return; }
     setCReturning(true);
     try {
       const r = await returnDayToWorker({ workerId: worker.id, workDate: entry.work_date, reason: cReason, companyName });
-      if (!r.ok) { toast.error(r.message); return; }
+      if (!r.ok) { setActionErr(r.message); toast.error(r.message); return; }
       if (r.notified) toast.success(r.message); else toast.warning(r.message);
+      setActionErr(null);
       setCorrectingId(null);
       fetchEntries();
       fetchMissing();
       onChanged?.();
+      return true;
     } catch (err) {
       console.error('Error returning day:', err);
+      setActionErr((err as { message?: string })?.message || 'Renvoi impossible');
       toast.error((err as { message?: string })?.message || 'Renvoi impossible');
     } finally {
       setCReturning(false);
@@ -917,6 +942,19 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     )
   ) : null;
 
+  // Design bureau v2 : « Feuille d'heures » habillée à la planche. Mêmes états, mêmes gestes ; chargée en différé.
+  if (ui2 && modeEff === 'hours' && worker) {
+    const ctx: FicheHeuresCtx = {
+      worker, onOpenChange, allerGerer: () => setModeV2('manage'), taux: mRate, range, setRange, loading, entries, liveEntries, totalMinutes, weeks, overtimeMinutes,
+      effectiveWeeklyHours, ownWeekly: !!mWeekly.trim(), travelPaid, weekRoute, meId: me?.id, missingOpen, closedUntil, exporting, doExport,
+      onRelancer: onRelancer ? () => onRelancer(worker) : undefined, erasedDraft, deleteEmptyDraft, edits, corrections, qrFlags, leadMarks, positions, editsAvailable,
+      worksites, reassigningId, setReassigningId, creatingFor, setCreatingFor, newClientName, setNewClientName, reassignEntry, createAndAttribute,
+      correctingId, setCorrectingId, cStart, setCStart, cEnd, setCEnd, cBreak, setCBreak, cMeal, setCMeal, cGap, setCGap, cReason, setCReason,
+      cBadStart, cBadEnd, setCBadStart, setCBadEnd, cPauseErr, setCPauseErr, cSaving, cReturning, mealOn, previousEnd, actionErr, setActionErr, doCorrection, doReturn,
+    };
+    return <Suspense fallback={null}><FicheHeuresV2 ctx={ctx} /></Suspense>;
+  }
+
   return (
     <Dialog open={!!worker} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-3xl max-h-[88vh] overflow-y-auto">
@@ -926,12 +964,14 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
             {worker && !worker.is_active && <Badge variant="secondary" className="text-xs">Archivé</Badge>}
           </DialogTitle>
         </DialogHeader>
+        {/* v2 : les deux onglets « Gérer » | « Feuille d'heures » (la fiche « Gérer » garde son habillage d'avant jusqu'au lot 3) */}
+        {ui2 && worker && <Suspense fallback={null}><OngletsFicheV2 mode={modeEff} onGerer={() => setModeV2('manage')} onHeures={() => setModeV2('hours')} /></Suspense>}
 
         {/* Coût réel (lot 2) : n'apparaît que si l'entreprise a `ai_enabled`, pour l'admin. */}
         {worker && <RealCostSection companyId={worker.company_id} userId={worker.id} firstName={worker.first_name} />}
 
         {/* Management — only in "manage" mode (settings) */}
-        {mode === 'manage' && worker && (
+        {modeEff === 'manage' && worker && (
           <div className="rounded-lg border p-3 space-y-3">
             <p className="flex items-center gap-2 text-sm font-medium"><Settings2 className="h-4 w-4" /> Gérer le salarié</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1069,7 +1109,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         )}
 
         {/* Timesheet — only in "hours" mode (consult + export) */}
-        {mode === 'hours' && (<>
+        {modeEff === 'hours' && (<>
         {/* Period controls — same options as the team export */}
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">

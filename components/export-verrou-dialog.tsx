@@ -10,14 +10,18 @@
 // Accessibilité : fenêtre d'alerte (role="alertdialog"), focus piégé dedans, premier focus sur
 // « Annuler » (le choix sans conséquence), Échap = annuler, retour du focus sur le bouton qui a
 // lancé l'export, boutons de 44 px de haut.
-import { useRef } from 'react';
+import { lazy, Suspense, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
 import { choixSansVerrou, phraseDejaVerrouillees, phraseVerrou, type CompteVerrou, type ExportEquipe } from '@/lib/export-verrou';
+
+// Design bureau (v2, ?ui=2 sur aperçu) : habillage de l'alerte, chargé en différé seulement quand le drapeau est actif.
+const VerrouV2 = lazy(() => import('@/components/design/bureau/verrou-v2'));
 
 export interface VerrouAsk {
   kind: ExportEquipe;
@@ -46,6 +50,8 @@ export default function ExportVerrouDialog({ ask, busy, onChoose, onCancel }: {
   if (ask) retour.current = ask.retour;
   const comptable = ask?.kind === 'comptable';
   const deja = ask ? phraseDejaVerrouillees(ask.compte) : '';
+  const ui2 = useBureauUi2();
+  if (ui2) return <Suspense fallback={null}><VerrouV2 ask={ask} busy={busy} onChoose={onChoose} onCancel={onCancel} retour={retour.current} /></Suspense>;
 
   return (
     <AlertDialog open={ask != null} onOpenChange={(o) => { if (!o && !busy) onCancel(); }}>
