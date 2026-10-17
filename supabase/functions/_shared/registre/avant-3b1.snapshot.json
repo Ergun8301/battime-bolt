@@ -1,7 +1,7 @@
 {
- "_aide": "GELÉ. Empreintes SHA-256 de ce que la production envoyait AVANT la livraison 3b-1 (consigne, outils, réponses du lecteur local et liens), cas par cas. Lu par etape3-eteint.test.ts. Ne se régénère jamais.",
+ "_aide": "GELÉ. Empreintes SHA-256 de ce que la production envoyait AVANT la livraison 3b-1 (consigne, outils, réponses du lecteur local et liens), cas par cas. Lu par etape3-eteint.test.ts. Ne se régénère jamais. EXCEPTION unique (cache d'invites Anthropic) : les empreintes `prompt` ont ete recalculees car les blocs de la consigne sont reordonnes (consigne + GUIDE d'abord, puis la date, le calendrier et les donnees) pour que le debut du message soit identique d'un appel a l'autre ; memes lignes, meme longueur (verifie sur 371 consignes de l'ancien code), memes outils, memes reponses, memes GUIDE (bureau 5766f6e9...3198). Ancien global : 38909b617022a5d360d8d4e1f651a676d32c5a2ad9577c1d03e59f48b5cbe327.",
  "commit": "0edb2a4",
- "global": "38909b617022a5d360d8d4e1f651a676d32c5a2ad9577c1d03e59f48b5cbe327",
+ "global": "2afb1803dcbea76fe267cd7aad131698ae1f12bdf00d6da3aa29d245a42201a9",
  "guides": {
   "bureau": "5766f6e975044b6dd3cd6964b8ab2b1414b51fd9ae7b89aa6002fa44d0273198",
   "salarie": "0d2f5bddd93787440fe0e1e5d2a73f01d34ab9db7405f397d1e289d1a477fcb6",
@@ -11,289 +11,289 @@
  "cas": [
   {
    "id": "b01",
-   "prompt": "86154ebe5505f88b8076fc8bf6a4496f917bdac1dba8a19a45ce0beb9fdc1d3c",
+   "prompt": "a8fb85a74f9de7fc592beac645bd6f068a755c544bb69383ed213c4ae3889250",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "6ba2588b9453c9e9016416998a6020d74254caa1e0e6d103caad3d87b07b693b"
   },
   {
    "id": "b02",
-   "prompt": "edbae73972bfabf4eb305bdaaf70e425ebcd44a0ac2b6f08092c2093d65b8cd1",
+   "prompt": "68f3b424ef6c4f9476f76074644456e59b5395109474114127b6bb838f3578f6",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "a453bc1ece5b63a2a4be002b015f9d94f5768adf3554aa816d190a3119b51698"
   },
   {
    "id": "b03",
-   "prompt": "ccae3da56d7202ebbd2630bddda4fb442e1d3d77a08e747a3896c1312dbfac1b",
+   "prompt": "1c30cff84fc61023c7868221651f68e291df6a758df5e4d2341f86851944924e",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "df531f89fdf985c7b9d228f824ccc388331d17bcd4695113f96fe3901317464e"
   },
   {
    "id": "b04",
-   "prompt": "6e2d344c7dec2bc2c170b09c44d7051a706f03b98957d00a159ce6f4482b6516",
+   "prompt": "ba1e67398cf247ee381137fb47ecc55f54a3046a36fb7feaac1a0e9c6535430e",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "175bd96db8f7a378d5a4c785a5f2dc510104c9720d7dbbd972ce2295d593a97b"
   },
   {
    "id": "b05",
-   "prompt": "bde33c675add41a3e8340f6eaa35cdc460ce3654ce69dc5cd71c93b5b7d6ce8b",
+   "prompt": "68f303dbde8b2fa846826a3ef4ba3d33fd15ab66d55dc592703f3532d65c7672",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "e239893dd3cd3d5802ea5acd08f4ef76e3e899417e8e7e526ba8b205cd05adde"
   },
   {
    "id": "b06",
-   "prompt": "924ca6d78df78e584d08cfd48d06f0ce46049138230fccb23491f58880694e94",
+   "prompt": "b206bfe59d75bcc6df50405a69be11906896e749801068166168d35d9b8fdce7",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "a6155891e282bfe56f10b23b6f0321615bebedf985a213cae0c589ef6f899c3a"
   },
   {
    "id": "b07",
-   "prompt": "5cdb9fdb8ad0634e02d98d7a136f4a1d4e0fbe2eda0a97419cfceea22ce8384d",
+   "prompt": "22eb5c801664f8033f2bf0fe766df974cac153d6ef8f7ef8bc5829de6977f67f",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "4a517b0587bc2474df518b07537147e95bc5b9d35f30831683c44a253077ad71"
   },
   {
    "id": "b08",
-   "prompt": "53f945a5c99e3f95cab4e6520d3ced565fe291e1eab13a02f4e9186ffc0b3b8a",
+   "prompt": "1ef5272fee97caea41a8f04014b0406f4094b4e6c7f2196f06193508433014f8",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "3078f2df06ad8d45b3ce0df57439e4eb792806432003cb67ec7556684b55c392"
   },
   {
    "id": "b09",
-   "prompt": "85e024f158dd5bff6177f78039bf70b6bcf04cea282d765a4e219f2036cb4827",
+   "prompt": "4e6e4e69fbd107d32a623f6c7fc8a458805967fe688eba888778c66a9a099360",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "6ad97bb08c77eb41ab2c143d217555aa164ebfb295253fcc6a5715c45ed21e66"
   },
   {
    "id": "b10",
-   "prompt": "16362865ceedddabc174ec1cc55b18bcc44d82cd8d102402b62bc2c24ea34376",
+   "prompt": "c8229a03e82f713fc25606121d7d36a9b44e279de1bec65793928b6e9acc7213",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "cd990a04255c99562a91c81aa0cdb69576878b770ed9914b4195d73615c1ad4c"
   },
   {
    "id": "b11",
-   "prompt": "79db087ebb82b31d9314bc746c38681d1f128778a01fee515a0ab00d00bf0bdf",
+   "prompt": "70a109dca9470a355abec48c0498813424ebf9acbdb2e88cc2ff6a713c33f6cd",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "5391ec127aeb24d776eb97588b0b32248ab5de6f9d4ae6d07e9ae06b261fb6c8"
   },
   {
    "id": "b12",
-   "prompt": "761642cfc937a036abfcf41686cc8c2e80717d38f43814fb8e3b015d486efb27",
+   "prompt": "c28ac8b176f860f1b465f2d0439e99a4fc5d931cd453b4edb872fc52c485df7d",
    "outils": "010d72f480244fcd48f8c5b364faa72781b0c973f71641eed4eda615abb36e52",
    "reponses": "f7f92e5bafe27ea772543c1f5847fa371cf1efe8b072a4e99e26dfa39f2631e8"
   },
   {
    "id": "b13",
-   "prompt": "9d34764986671d2adcdc3fab28cda2c00e96ae1279ce4424053f416e6c5d2037",
+   "prompt": "84f3ebf06a2bb84e6b4568c788b9e54b3a7b68da18f10aa3633fc3ab299a6468",
    "outils": "3e3db7129c7f8363bbd42a7a513c7d088a85ca53fd3d527ed6382b4b4bd0d8da",
    "reponses": "5c7854ac184fcf6b4ebe8b6f3c3995e6db98af0da263184fb7ddd70766c0f098"
   },
   {
    "id": "b14",
-   "prompt": "878127d128d255f3b4bec204795f1b98f63e24e434d944946e2f53dfdd47926d",
+   "prompt": "04d44392dba24a7001770bc08ec90ed04b0acf090ff100bb6fe8c129498333ed",
    "outils": "44a856c60bd4836547eadb454d2976120cf0fc6b63a3bf134b996af060d74c04",
    "reponses": "1c986bbee29dd78e237bdbc7481bb1a2115d25c2a375ba283f47ae7ebbab3499"
   },
   {
    "id": "b15",
-   "prompt": "2dc319e2bf422d70785714dfe5f1e32466f0b5ef70476b6a0cd5a7d64405933d",
+   "prompt": "22b5eaa888245ef269d0b43766437087967d396fd601576871531cf8f8d252a7",
    "outils": "44a856c60bd4836547eadb454d2976120cf0fc6b63a3bf134b996af060d74c04",
    "reponses": "e2e7a8e701dd99d6be81987c0e10eaf447644169a144164506dbde7bb8e85850"
   },
   {
    "id": "b16",
-   "prompt": "bcef0e69482a48380c7e75da35435faab1352fd0e730a7ae84e303b4f682f2f3",
+   "prompt": "6668ffdca75b5ac2b49f860bbdedce547640493271ffae4be57614bfb81e0f0a",
    "outils": "3e3db7129c7f8363bbd42a7a513c7d088a85ca53fd3d527ed6382b4b4bd0d8da",
    "reponses": "f701147bbe23640e25735753978c0ad483575f336b0af11f7a9f6965c1f08161"
   },
   {
    "id": "b17",
-   "prompt": "03ab36b1695c849e65be7eaf9ae05d82ffdbcbd8aca0e4503dedcd0c5b3fb4e8",
+   "prompt": "ebae4efb711b634f91a580b0b8b5a8bb4aeb8a7bda82e78a28a9640e774a996b",
    "outils": "919f32f89da937fa2d75dd11053dc81fae44a065efa695d73801ff04d95c5f97",
    "reponses": "32c2021926c216293139d86ade3d2460c4206365d8ff2295c94a8b4c73d8f9dd"
   },
   {
    "id": "b18",
-   "prompt": "2b99a16ffeb2a620483e0038e96765850082a20e84e5b00fc4e0aeccd13f431e",
+   "prompt": "924ba889997fe33d5ca7ec2cf169fa661bd6436bf050ac79b5febc680a486bc4",
    "outils": "919f32f89da937fa2d75dd11053dc81fae44a065efa695d73801ff04d95c5f97",
    "reponses": "da5cb31057359cc32763d575907d1a5b91a2d63c36a74e8ac5551f8bf3ec034f"
   },
   {
    "id": "b19",
-   "prompt": "7b21951a3098c8b7220057f2db1ddf6a2bba63326cb91fb5879522985c2ba718",
+   "prompt": "1f1f5ff41e8a5c2a68feb0c7b6b4534d413732c9f257c96e8e77152bf0bb2329",
    "outils": "919f32f89da937fa2d75dd11053dc81fae44a065efa695d73801ff04d95c5f97",
    "reponses": "dcaddc9ebea66bb5936a2943b35928780ddc8cc54264f417a5e91ee2b87a06af"
   },
   {
    "id": "b20",
-   "prompt": "e3d8e2bcf16f4e1336b9484e0893df8166498eacc5101898d3e2c51f9138a78e",
+   "prompt": "f078fe4e2777926b901085e40f34a93e0d8e1951eca420e64972731b6466476d",
    "outils": "9b0ef82d2575c4253840ab19d56d90cf7252d3d9a9b830154352780b5679ef28",
    "reponses": "23c0a6172f3016ab42c368cfe57d530b1a0290e552fa2c10dabd5af5aa899d56"
   },
   {
    "id": "b21",
-   "prompt": "1398f5f26f489e68b7b2eeca2f51ab30b83b6cfb952cf362f2dbb78a3710dea3",
+   "prompt": "5f82077d5bed4419a4f94ac3e7b1c4dc3d2bc138498f13b91c1629340ea2657d",
    "outils": "899f4152dff28ad1587de3eee6bb9071ac4f35b556269c2ef10932492a6b8b97",
    "reponses": "00fc4107b7f46e7f41e7db4827b8675afd15e10126d8bd8860f3b6fbfc1441ae"
   },
   {
    "id": "b22",
-   "prompt": "04f863e066690d88f9d0596d0d04ced46dea923bfaca9f258339513489f7bdf8",
+   "prompt": "503289cc3f3df120324c3cffb1450acc49f06c94805c8879ecfad24454cce554",
    "outils": "467549a314fb06c5e6c50308601d7c0f13a83c4a64f73d664d3aa3b512955e18",
    "reponses": "be9a4955ec755fe9723d5323317117b094542dd8fdb3bd79fa57198c707d4567"
   },
   {
    "id": "b23",
-   "prompt": "947a3a25807a15393ea96df640d60f8df0e43db930b7e7a24ec221529de2324c",
+   "prompt": "b0eaec7672f8d8ec9fcf82bad678ef6b33bdb6117e6b60dfb7583b88b39251e6",
    "outils": "899f4152dff28ad1587de3eee6bb9071ac4f35b556269c2ef10932492a6b8b97",
    "reponses": "f52819c9872a85534f4c76ec028b5ee4bb2d94e8816b38ca38683a237cc537b7"
   },
   {
    "id": "b24",
-   "prompt": "3c210a17d4826c316f51a312242edcaa3908ede5cbf39f7861242a50b28904d1",
+   "prompt": "128b8bca4d4c1f62ccc9ebaaaf8f74f9a295e608ad7dd04d09023914e3a29c6f",
    "outils": "44a856c60bd4836547eadb454d2976120cf0fc6b63a3bf134b996af060d74c04",
    "reponses": "ae6fa6b66dfce4c2647e66a583fc38e6b4168f2d85d79f1f75723985ab73f665"
   },
   {
    "id": "b25",
-   "prompt": "0a34576e013ef0ef5928b5a943e6c9cda139e13bf285b2165ed077636107d686",
+   "prompt": "fe37670af06cede5518bd34eb022efd553a144438ddb81e2eaf6ed44566d6688",
    "outils": "010d72f480244fcd48f8c5b364faa72781b0c973f71641eed4eda615abb36e52",
    "reponses": "1103313c8aea8860b43b8fe2a4644f8760c02d5b19aa8f9d6e29c52cbab48ae2"
   },
   {
    "id": "b26",
-   "prompt": "b9f127f64d226130c5fd446bb9c8a60bd7332e104bd2f188bdccc2a217f7e1df",
+   "prompt": "42b3e43281e0c14a80c44cadaeaf71ddb642f1d5f0a2302314cd2ab4385ade44",
    "outils": "467549a314fb06c5e6c50308601d7c0f13a83c4a64f73d664d3aa3b512955e18",
    "reponses": "afb46d1db6675ce4964ba7977e957e4d2548dee8175fddaa4e7ac38c44783c8a"
   },
   {
    "id": "b27",
-   "prompt": "8edbb8c26f203723068eb37201739e224fe714b055fccf154db312a7a2334975",
+   "prompt": "8a1e58b1fede883bdf3d6ed4898d471415127a60a4c5614e8545449842494cff",
    "outils": "bbbcf3a2cd2ff5bde725defe6d67fc40d009ef2a3790404b7c8fb515d0867be6",
    "reponses": "d8fbfcda97435ba515791174db5d63fe6e8d04eeab0c46332deadd35a06c2625"
   },
   {
    "id": "b28",
-   "prompt": "e550ccc4bbb0674c032fefbf9e498c888ed7b05d6600cabf5ddcb932c679bdb0",
+   "prompt": "12480dd014948d75d3170ac80699ffe914de6642a24fd208263245e39b958fa0",
    "outils": "003b510431abf469a97f1e7ba61b9be4930e3b0d6525662435d8702b0a2480c3",
    "reponses": "f1c5e86772108603c09af474001ce715c802261e60d2b2a3e56687c2add5c500"
   },
   {
    "id": "b29",
-   "prompt": "f9cfc90cae9ff5e09028bd20b3ca2cd968ee6fa2165b3fb69bbc23682d2cc9cb",
+   "prompt": "515b4053dac48cbadc610314eaeb468dd055df86b11d3b25e46c118826f1d6db",
    "outils": "467549a314fb06c5e6c50308601d7c0f13a83c4a64f73d664d3aa3b512955e18",
    "reponses": "7647f375c59bf63df16a10a6a407d6c89522877dbbbf28df9830f6528ffba424"
   },
   {
    "id": "b30",
-   "prompt": "288245afd1aefebf3f513bacaf6894aae66462cb29633824826778479dc933b8",
+   "prompt": "9f673e0c85eeb4198ae07d8025ed84db50f7ea72c1b698461fda2bdad34fc6d7",
    "outils": "003b510431abf469a97f1e7ba61b9be4930e3b0d6525662435d8702b0a2480c3",
    "reponses": "cf898b61f9bdb92f942642e9f9b15db99819829d8ce0ff11e05485be5f9805e5"
   },
   {
    "id": "b31",
-   "prompt": "087b375ba102c6c51f5b5914466f34faace34c80ad1fa633ef5f76ed94b0f200",
+   "prompt": "85426ec3f99b170f93c145edd795a87abc459e647438f8d76f1180ea3ec3617b",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "1596bd8a2a36dac9eb8adeeaeb1028264bd809df627f1935a2f4f4acfaf1cd37"
   },
   {
    "id": "b32",
-   "prompt": "c7633dc07603129a3fb204c4f14150bb9d11f46684054bf4be4bd39a899b241b",
+   "prompt": "b8005955861b2cc6adca892e4c5542a87cd6e9789029703bf545f0e65ed0781c",
    "outils": "da7dffed57e9dd87b0414d109832e2a4ced7f92c76a7b75f15b4f16bc97c5c4c",
    "reponses": "46db4c3321cda18ca71fcc34e54beeff614f9eadf8ac4487ed9a62698b740751"
   },
   {
    "id": "b33",
-   "prompt": "400d7f39daa761f8ab1bada969e696ff4ff28a4687dee89f56a791897d487693",
+   "prompt": "0315a21fa83ad70829fd3539c5e5cb74e4dd96ad902812f52c046bb16ef69569",
    "outils": "899f4152dff28ad1587de3eee6bb9071ac4f35b556269c2ef10932492a6b8b97",
    "reponses": "6975141e14dc34184fa245f687531179501849a0534ae68e9ced4b7dc51101af"
   },
   {
    "id": "b34",
-   "prompt": "886a1f4e6455e0c97248f38e310d7aaa3b48168b708f81f1c0b0683dd8af6e8d",
+   "prompt": "57acc44a0254c8002e3225bbb2e02ce0891f18021954484b1302ae4a3ee7090e",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "3226b5efb474f406bbdf5366066cbb78f0d81f2754a3c69b40ae4a8b32534070"
   },
   {
    "id": "b35",
-   "prompt": "c7cc7892d0b134adafd7fecbb298a5999182ff31e4b4f9073846c6d102232e3c",
+   "prompt": "d6d2c1a8eeeefa7a9a56489f823536c3ed332611e42c9e32d9c0d048a8d5aa9c",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "fd2f48d2a3a3ede69932c3955bcd1e23a3bc3df43a63decb08f9d41644aa8561"
   },
   {
    "id": "b36",
-   "prompt": "f9c03f37dd71c82233045cc815c4e55921da2dce8d8272dc828b04a5a4e38e69",
+   "prompt": "e80fae22658a349f312ea0339f5623135f35c55d2739b7c9cfe06fbe47aaa6e2",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "86f9c763ef40533d574af276b6ad650a614f05d3871fc8e4d793bf18eb64b8f6"
   },
   {
    "id": "b37",
-   "prompt": "bb7619f463a0122fe3612cdaec1a817b9bc9b3f5de5cc9ed7d5c3c83ca2397be",
+   "prompt": "c86ad2be0ce7a785e4c76e3fe4b4c7314a98849823ae49b24757428aeadc78ce",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "cc5e14c01a6d59c9ec775aa6cb9f94dd5835deedef266a24bb05d1b29f54102a"
   },
   {
    "id": "b38",
-   "prompt": "c868a8b191dc2a36230e51e1edfa0a804b3490c93e301ce079e5787057f82140",
+   "prompt": "35a3b6cf843a75ffad3c1ad2b6962a5459153465649fb695fa63f816cfa6ac63",
    "outils": "16cc6c95acc180839700c1f009aee0c81eb7c8870f24f59e80f4a99ac892474c",
    "reponses": "c56eac083e58fd67aa14292db454b33ab0c19183ab926ce00c98024e99458642"
   },
   {
    "id": "b39",
-   "prompt": "1788536d0237e0a7ccecb63ff08aee991d3bde8ed184b068d1a79617e7b0a4cd",
+   "prompt": "a80a0a4d4a95ebbcfc1afd44a541c5f10b01647cac06dd10d3023dafdff16462",
    "outils": "da7dffed57e9dd87b0414d109832e2a4ced7f92c76a7b75f15b4f16bc97c5c4c",
    "reponses": "b54cac8e6e18b7fbf34f1bcdba7588ad8fa68d8151aa332432e774a852f90978"
   },
   {
    "id": "b40",
-   "prompt": "e3154a68508e58f63384f0945269828ad6d96cb6e36a18462f2b216de0d4dc3b",
+   "prompt": "377f15adf52827a4cbec28740d91534fabe0fa69987b4e3bee90a7e85e52eb8b",
    "outils": "003b510431abf469a97f1e7ba61b9be4930e3b0d6525662435d8702b0a2480c3",
    "reponses": "0a6b4cfb0948ba51c09bc18649a11b6decd70b130866da7e4c18cf6660ff203f"
   },
   {
    "id": "b41",
-   "prompt": "915a5de164efb7a01140a5d98d811e60b28269fe740baf6a8f061c0941b7b397",
+   "prompt": "18e8006159d35b4eb5c13311d2679a738bf88fbde9d766200941522324c608bb",
    "outils": "9b0ef82d2575c4253840ab19d56d90cf7252d3d9a9b830154352780b5679ef28",
    "reponses": "27e1dc9bc69dc8fbde965adf599683f4c196aaa473ec23aca30766a7ad2d7cdb"
   },
   {
    "id": "b42",
-   "prompt": "3f91271bcd9d06485cf7a0c26232dd445ba1f09e01080ae1ec6ab3dc7fa6e861",
+   "prompt": "b486a4757afef48dd28bde389f9713430a3ccfc9fd214c725140d45e957032d1",
    "outils": "9b0ef82d2575c4253840ab19d56d90cf7252d3d9a9b830154352780b5679ef28",
    "reponses": "e5f3310524bd1fb72a44b8e78d1acb2b9e09f5f514475764af9060914023675c"
   },
   {
    "id": "b43",
-   "prompt": "172e8103e52dc051c831ff30f624c5cb8eb441489382435d67a0ea3f1cf81f4b",
+   "prompt": "9720e64c007911040a1c4dd5d30717aee6e9e6803a71004428a25bfd0723b7e6",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "37985ea6543dba38042929894ec0f46a6a060b69b273375625381959afcc9006"
   },
   {
    "id": "b44",
-   "prompt": "353d67c0d7207a3be967fe4685b01f66f10a9dac3a622a1b0e543de2b4e21e04",
+   "prompt": "772a964c05189daa75c4a1159e68a49a03c99e0e36edbf093a87e552f7a44fff",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "b960e71187f414c55b8d34975a0b0a619d62259d87ff16cc59bf3701f6dd9adc"
   },
   {
    "id": "b45",
-   "prompt": "4259d4626bb31260a70d176d5dfbb5421cac63ee4721f80eaeb44679bfe45fc6",
+   "prompt": "aa40caabf73c15864997dfb64dcb9d5271e0cf66ae5abc8c155300ae499a044c",
    "outils": "16cc6c95acc180839700c1f009aee0c81eb7c8870f24f59e80f4a99ac892474c",
    "reponses": "8fcd07b951bc6178e4b4343f90262b536471ac6e3f951cb275b8f1321a09d28c"
   },
   {
    "id": "b46",
-   "prompt": "2551eb11088ba812fcd32fc302a154e6dc2b552f16c3994b89205809deae3c29",
+   "prompt": "621856b37cbc5a480ec6849728b2155691abbdcfb1bd533cdc895f8b47de796a",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "3a08c1e45c05f95218f514e078bf4e83aaff4157c29b67e9ad132fa68b6954af"
   },
   {
    "id": "b47",
-   "prompt": "ae68e6120f47575c237bb5c0c8afe70afcd55949d59c776c3e7f7d2fabcedffb",
+   "prompt": "f9a19e5ac4efa67972ad065fd1bec952bbc21750fbdf722cc9289901f6700ca1",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "fc24e1f532a9a5c2a72d7763877cf137acdaa6e51d5c9315afbe2f7847125713"
   },
   {
    "id": "s01",
-   "prompt": "7286fd538625bc6c9460b0976e339634afc902ad311508246178261606aac548",
+   "prompt": "90aa25a0bd7dcaa860f80524dc386cf9f431ca680759b89755f29b39348f1f23",
    "outils": "dee49ccbd0f5e3348a5fe08521ecca125e36399bf63dc89ae611630ceba8a8a8",
    "reponses": "fb7b20c1fd23a3bdb94535f77231a6a14b22e1fc16bd225f5069d24087801ef3"
   },
@@ -311,7 +311,7 @@
   },
   {
    "id": "s04",
-   "prompt": "5b7ecccef0406c67511502ba4903cbe7d620cfdc3107f56e4374a149627fe328",
+   "prompt": "199ef50cadfb2157ca4a0d7575421a3378200fcac437d5f03aa65116e11da587",
    "outils": "dee49ccbd0f5e3348a5fe08521ecca125e36399bf63dc89ae611630ceba8a8a8",
    "reponses": "e38617c0d51467725b9cc7f33355335a95f42616b9e18679113a2d6ebe5d6e48"
   },
@@ -335,7 +335,7 @@
   },
   {
    "id": "s08",
-   "prompt": "33ad3491827c98e1663deab659801ef79110e6110a667eb94602acfc1e397c79",
+   "prompt": "feaa9af2a42c4e629d6d27192a4a01cdc3d272f8c6acb878e547260881bd5fd6",
    "outils": "68b0b9d343b3d737d226286aa657bdb5408c6fef88d4e1d6ab946d65cbab30b8",
    "reponses": "c3d8acc675d644467d954ca4ead8cc3d76841f3752a5bfbcecd5499c1a59a70e"
   },
@@ -365,7 +365,7 @@
   },
   {
    "id": "s13",
-   "prompt": "a4e6f26478a4c1c626dce03e855eb4bc7f71260f79235e4edee8984adcf62aa8",
+   "prompt": "f6214ad3684300485b90e16921ff65132a060c59307bf3c3827002effead14f9",
    "outils": "dee49ccbd0f5e3348a5fe08521ecca125e36399bf63dc89ae611630ceba8a8a8",
    "reponses": "a1483d71727ab821f95c61bc1da1a06af75c40c05f2579b357ed758bebc64fdc"
   },
@@ -383,13 +383,13 @@
   },
   {
    "id": "s16",
-   "prompt": "8a1f11094443a620b549bdded2a743cc2e399e984e1f3f519840fe18f511e1ef",
+   "prompt": "ba67c9eb3f496af1828abece6687e17e378df9058340e03b7976eaca49f206b9",
    "outils": "247c2ed6d16d8d66982d17807ae128befa0a891874c401c7b14b321998fa6b4a",
    "reponses": "a2d0450856b3330fd11a7ab911ec70d2a23248d8fc2a05e6cd2872266723b53e"
   },
   {
    "id": "s17",
-   "prompt": "2dd8bc6bbb7cf63fe25b1d6c56acc49b2a1d968313be49e7ab001a08f2d9802a",
+   "prompt": "a9a6cf61e5057cf1a546cfbd142ddff36b4a8a3222a1a163544bf5317433d9ac",
    "outils": "247c2ed6d16d8d66982d17807ae128befa0a891874c401c7b14b321998fa6b4a",
    "reponses": "b87b8d9c99a24c4e717a81ef75929cddf7426515b6d0808b76489f716c7500d7"
   },
@@ -425,13 +425,13 @@
   },
   {
    "id": "s23",
-   "prompt": "d0354358608c58eecf66d2aee40b9547e8bed4073be0806c84573b4ff77165f6",
+   "prompt": "b51f41ba86833c9798be6f4bba267774bf3894edff7e4a26f2c0b2baed333424",
    "outils": "d92e5df05f4cbf1837caaec2208a5480a133c8a5af5f4d1afe3e0d7765bbe18f",
    "reponses": "09d989a6169b659e5255796776423a388da9e41db299a28a7eef0349dfb33154"
   },
   {
    "id": "s24",
-   "prompt": "03d278618dd635a0ef1db67ae00b393c063246f8887f0086dedc427f07875aab",
+   "prompt": "d7fe99bb82e54c75d5819f4eee6a0c2870bfe76a21913d068baa3622c43a8cf9",
    "outils": "a240e3d6d3e84a6b6a892b568c4214e3261b6e9836a582e97ce4d14231f6d7bb",
    "reponses": "09c1297c992004297a2c45747072c745797da9d4081c594971c03c94ba2f4e42"
   },
@@ -467,7 +467,7 @@
   },
   {
    "id": "s30",
-   "prompt": "4fbe8df2ee4ce2b82e1b58910799d7ca4cce848fc7add7cf8e183f665c4bd9bb",
+   "prompt": "db2a338b328179bcf5029ef9b0415124c728c8743aa35797872b770341247912",
    "outils": "68b0b9d343b3d737d226286aa657bdb5408c6fef88d4e1d6ab946d65cbab30b8",
    "reponses": "fef1038d07aae48458944e4a91aff53c9f8807988f06279ae625a2dadc817d1f"
   },
@@ -491,397 +491,397 @@
   },
   {
    "id": "sl01",
-   "prompt": "7a7c3c5c97d3a2a2731fee3ff8b8e4903011986b0c3cab774fe13f70c6901924",
+   "prompt": "07ef51721d15b6f0b0cd0f8ca97fe55cd5db06c111b85ee67125b8d1305e3c24",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "0d7b4c65e03ca83ed95d54712a11816002f32fcf408502573fb29fe0dab5f5a7"
   },
   {
    "id": "sl02",
-   "prompt": "963d0145ef3836641dab64651d37ab2a3609811bf8dd490c2843f21370a5b522",
+   "prompt": "0b471af3fed2db1024ace631e5a6604dded1671b8e6086116e245bcf9e41f7b2",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "3ba551c73fd9a2bcb20bb2bf208c48ee43b697c72273b1e84cd1e40a6a87637f"
   },
   {
    "id": "sl03",
-   "prompt": "265e6015b540d7268f1d601dd2164aae08e9a146a7d16035af7b78116d3c9f6f",
+   "prompt": "462ff4f30859020cfe77f2649ab82f9959e294bb55baf55477057bdb5d59c755",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "9b4d90e74fd182a5e39be2b6e2db225cd8add296a243f79a7266083478c069e5"
   },
   {
    "id": "sl04",
-   "prompt": "f35c90eaa791b8685defd5e10c81a3a2698e86ecb3b601fdde24d442d4cdb207",
+   "prompt": "35f8a1a37c0ea28eaa97d4a2ce57b68845eabc35bc77808bdc8350581e2d3781",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "29824f3b075c97bde173692c24107e1380061c2325db6a7ec01302349dad0144"
   },
   {
    "id": "sl05",
-   "prompt": "6824bd1dc4a5298cff34ef27c45ad60ab1f6602156c6dfea7de97e6ea706c43e",
+   "prompt": "9aeddf83dd242c962e03d524a8c90b672c4d4457ab21ce27e450d144aac572ca",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "068ba794ac1fc06c8ffeba7699b5b9a2cdf2f53f79ccdb678b2dc0938cbc7959"
   },
   {
    "id": "sl06",
-   "prompt": "4ecddd24d6ef3addabe7ac8de8b0d2f50466a129d18a29ca3de776d8ad13d7b4",
+   "prompt": "8897571cfdf9707b2c64e72906787a98619b5d627112eeebc6c5a584b7fcbcb6",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "f2e79e4d612b1668043dac87c6f325405f0e0f46b7f9b28056edf58253ee3b17"
   },
   {
    "id": "sl07",
-   "prompt": "38eafcc6b8c0c8dae222b7c630d9da94b2123930fc18d0a51a9677b3daffdbcd",
+   "prompt": "d4559a0edf0ccc94df052f6499f4e60257ccfe61c28953587165c05654c47574",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "7beb20457a6f5f90ae0cb125837c5ed6d401d9d86c5d5e7fe86e7353f4367347"
   },
   {
    "id": "sl08",
-   "prompt": "45974038da2d5d7ea1139e754e6f8f9fe3af3b613885b3ada0159e6615519c58",
+   "prompt": "40c69cd8bb9731a336d6740ac89ec0ffdcc85dc37e16823cdcfb4306e05b1f13",
    "outils": "fb8b857a34d871f3d19185983e264f12d5f73b460358e449d45cbc0d5f23c2c7",
    "reponses": "e28eb3700a212b3aa508c4a485c2f8fa70c3a094102aabbe19a5fe4d64fce155"
   },
   {
    "id": "sl09",
-   "prompt": "b522ff4ed87ea2ef84ec23b57412c5b5ef801ad19fb214899a92f3e55489bc5c",
+   "prompt": "3cf5e8c9090fb6a09fe0a48caa8bde6771be60b2c2c812f2531c251060af19eb",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "15de9e00ce7db51fb6b1ef6e26e71cc148cf95c87bf120596c5f9b39834d65bd"
   },
   {
    "id": "sl10",
-   "prompt": "5c479f7a0952e3b87f89645f4175f414b9be825f3ff08ea4bcf8bc675ef6a560",
+   "prompt": "7af65e0121831732f7fc4e8c1230a208192553aead0137e1ec812eea4729910f",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "f24891a5c44130425abf03316e01df5c47f1455410cc99a44d4df459d196e68e"
   },
   {
    "id": "sl11",
-   "prompt": "67f4d4b34b47d211d0450b4a79eed9a7515847508648ae38c1eff6d8f634a77d",
+   "prompt": "9e56c99678a317392d4bfab761f3c615178473bb8ebe4748732969eca24bfab2",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "d1ad031d435bdbae1e265b4bd0b36b94489112d09519d1cda3a3d367ef630929"
   },
   {
    "id": "sl12",
-   "prompt": "891431ef6a2cf7b6c3b5c7216cf010620810f20614c7a1fec259f02385b379a2",
+   "prompt": "51f5d8de6d5de8d0cd99f51603f9f84385e9f1dee143bbdd497fead80b3abbe2",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "ae2d0421d702b47da1d4854302ba77a005dcbdd6135707b99e74be5b9cef2e32"
   },
   {
    "id": "sl13",
-   "prompt": "d4b56797d885a60bc09c33f3b7b72f16cc246679455c9a0974cd832c4eb0e0be",
+   "prompt": "9004626f92b0dc1b9cdf957874ac10f2027e3f57d816f58b649edd442214af57",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "9f514b78c77ffa8fb90160ef56522922e8254ec79689d14fcc01ba81f39d4fd3"
   },
   {
    "id": "sl14",
-   "prompt": "a68079af519516d63450335988aedd871d648e2e332f4e99d0d6a4fc483f6466",
+   "prompt": "3ae84d4780b1d4b2a50669d2610f3091041fc3b31e6b776423a6c74bde26dd70",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "74e890b36310b27c657d1acca998ee03faf466d0eb1a1335fe4c81d3fea5227a"
   },
   {
    "id": "sl15",
-   "prompt": "b27577ac77a2ac7a87721ca27455a6949bd9afca98f1ba98fd8a0ef1069185a5",
+   "prompt": "a4dfd75f33814a4b705053aae1c77e9f4077a41db14bbe9d28fe698d21a8f010",
    "outils": "b625e05fbb36ba5dd1fffe73756deb17f9ccc4b4f5d9986e4cd969219766f712",
    "reponses": "ce536943a4c06c0c928c8e28cf7d124fd24599ae9945f1e25ac7da0d45a3e0ab"
   },
   {
    "id": "sl16",
-   "prompt": "9c2db0a64ba60ed2a0de69a0a31ffea10a38067366e2c3119e66b0a633510064",
+   "prompt": "4710eb5268be6c4a6c05b90af9e56cff6170055ca6ce1797394191679421284d",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "d2370edf54e1ce07aba44c51c23678090a1d89ba32eaad6d4237e573d0f15029"
   },
   {
    "id": "sl17",
-   "prompt": "e67067b7fbb65a94397cfff9df437e01511e31885bf5380a47f951f74a1921d7",
+   "prompt": "38bd431f0cf6b8eafa0af18f49a8d92e08f7a6e8fbf4912c357fe7e7d003afd5",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "8199dd438f40a9ac420ab2d344723aa0ff39a13292e78e9f7fd4f2cd0762ca34"
   },
   {
    "id": "st01",
-   "prompt": "06ee82522e6e7065ed9cc1d0cc76c24876af71d6f753deec348d208306fbf84b",
+   "prompt": "b23d335872195b89adc4ec04d28047139b5aae2a28bca4f0bfde6b50adc8dbf3",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "1929f4c6b0b025e373a7d87529b3d084ababe9ef63a4a5d27764d332394269ee"
   },
   {
    "id": "st02",
-   "prompt": "5c0f900155125929ccef504fbeb8578c2691bf7b9025d5740cb48635ade6f128",
+   "prompt": "2603bc2f84323532235347496f3589234b19b23deea35a01e68a7930984f20e0",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "6fe8ad2ef8001ca108f51ce655e9fc7096ff6c06e1a26666ac006e9203833f12"
   },
   {
    "id": "st03",
-   "prompt": "1616ec2eab3937f6024abb638c88bce0b9a5a3660dd999dee340bfedeca6d699",
+   "prompt": "30d2519f52627544a2e8c1860921c6aac68a6575346c91b25d10aabe4974d0ee",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "b9f5c096d7cf3ecb8e00ba64904c9cb15935dc24f234f70575fd19d94e13013f"
   },
   {
    "id": "st04",
-   "prompt": "ca34f1f0d09c7969577aa36831f041270f16783fbbdfb35748d1af8afb59f6e7",
+   "prompt": "efe32662b31faee49ad71d6c65fe564f6d4cb2a87a3bb9d986a00e6ebe6f528c",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "1d57f50e465cd7557ededc4ce62885d65b2c24d6a3c6b6cfbfbf224629ea3366"
   },
   {
    "id": "st05",
-   "prompt": "3a04d4d39eae0e5ef41f047c286e01757065b1745c44c16ec3f708e56371b4f0",
+   "prompt": "9d89915220b93152b0b957d43812f83e097d69fdd342c0fc32a2949541c99ea8",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "d22088408f1a96101b660e1f44ab437e5fe63cbaf499bf80ae2eb1cc9bb42b89"
   },
   {
    "id": "st06",
-   "prompt": "f67d5a041729a4cff1729bfee8a608daf6d267077e91c77d278ab9be63e17577",
+   "prompt": "503f6f2dee8700af78c87d5746272b996cc2acd642c8064689f62be1f8fea20b",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "5cc387062f1343af8b70ad3c722cb85309fa54aa0e03b943db6762d74f933772"
   },
   {
    "id": "st07",
-   "prompt": "ddf0a46e5260a9d00d50db4fc9519241c2a06ec8d6539d8813b768cac51744da",
+   "prompt": "b91a1d026c94ee9672abf4b4c07e131cf3e6bc81522dfd37d294d64fbf8bbaff",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "c329b156c3ad67fa41b047767fc7a2866e58c2fcbbd1a7a33a7dcd92020fc4dc"
   },
   {
    "id": "st08",
-   "prompt": "9e5bb7be0466acb981112f879edd4e530a6412513fe44ab8e12fc806b62f6ecd",
+   "prompt": "c614bc0f89cbc6d77164dd0c589b5b092ce8ab97a02325941f061cd1dffe1794",
    "outils": "f608d623db38ed2b41c6fdfa6a2b5e98e1abe9f0de4f307ecfc6153e9c31eb38",
    "reponses": "32ded079692ae951d28c3ee7ae52502710a44e6ed9812b243aa0bb8d4274a4b5"
   },
   {
    "id": "st09",
-   "prompt": "265ec68882e951c37c456594decf17c076ea68e55e919fd55989044f4a8577e8",
+   "prompt": "af8e400514ee8b4c1c61f9e37741ed49c6a309d106d0abe225df80a24648793b",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "a6fbb0ffc7814c1b02927eb19095f3d738c7d4d1983955d140a7f193ce49a883"
   },
   {
    "id": "st10",
-   "prompt": "becf8a66b5227b2d00d3fc0aa65ad95ca2da21df388a7a4df88ae4a098bee05b",
+   "prompt": "e1fdbd7e85b2f21c47b54875ff7a95e409ed0db681a26addc1bbea82b90a15a4",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "b7e4705ff7f040d92b50134643624654a0e89a093fe083662008b7a78c7a969e"
   },
   {
    "id": "st11",
-   "prompt": "8b08a25fdee5d959b9813030d9ed8ed494ff65497d7b1a16f5570af37fa840c1",
+   "prompt": "f802b322a6df654c4f514a4e3b7c15c74d66f93a495cab74b1561c7cac69fad8",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "98c12ff107c09115186c8eb60e19a45b16dbc92d8f8655cfd250fcb15c52406d"
   },
   {
    "id": "st12",
-   "prompt": "1684c84650aaebc8a458d8050a1b04790f0279b582ede29f262608733a04dfff",
+   "prompt": "41918b5b6e1b86e9df0982491b596d66eef8eaa5de89e73b6fd345040beb8f93",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "dbefc96549eb0f237ae5bded7877f02eedc5c09cafa66f39c4e02197195ed2b3"
   },
   {
    "id": "st13",
-   "prompt": "e5409b5d1ac419fae2cce4e6b72c7a9deb9b49264614fcfb3914a1640a88f092",
+   "prompt": "fad92fa53be10c7ab0f7fe87f4f3f4f1a9cba4fe6e35b336eee8f4e1cd696bc3",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "dd83657225dba4c94d1c612d92e187a5d5516fc8e243e4454e2510e79a1ccb3d"
   },
   {
    "id": "st14",
-   "prompt": "bc9be9429d3890d0f6a5e678944e407b29d2ad47ef64655566e9c9a78103c925",
+   "prompt": "d0b70537654249543dd329f9b0f2b87d8f895a747beb7fabc1d69aa00659ab36",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "0e4b781f9b75efe0a49539451e6605d4a0eedf00957c1fdff81f7c9256680a12"
   },
   {
    "id": "sc01",
-   "prompt": "8301bb2410acd33257768fd450446eedafad676a8ef25461c72591e8d05a3c8e",
+   "prompt": "1531251d46c39edbe74f892b32536c22b04b8300d379edd746688ef42f46ab7b",
    "outils": "8433667bf14f790523540f63223208c52687465118c96575f24d9a7ff8837fd0",
    "reponses": "7f5c06356a4f08fbbed2364dc728e8e05fa0b52393b7f5edc9695a2eaf25af4d"
   },
   {
    "id": "sc02",
-   "prompt": "73726297c79aae789dea38a4adde563dba9ab12626e8f11aa08a5948c1023924",
+   "prompt": "ea2bc9f4d74eb03e4138fee6670ac32c2bc810e3626f13fcfec6d22e08824a9d",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "1ed37509f11c8d7ba4972610fc51cb59b971b72c2c76cbca6d1fb915f95f40d6"
   },
   {
    "id": "sc03",
-   "prompt": "a102e73f39d877fc69a6c8c95add5999337cefdb51443526730c06bf037d0187",
+   "prompt": "d6da80690453922118de8a3b4a3bc8d9db7614c480dde92e5e50c93765de6ec4",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "e6c5c502081afcef9245e483c33799c46dc83d3f28491bdc84306833fa6f7df0"
   },
   {
    "id": "sc04",
-   "prompt": "955cd658e87a65bd59608e91a028b01df5aa33e19b8f2875db92bacbb345e7ff",
+   "prompt": "8b72e4adf5cc85f3eaa0aa752fedc6d2f4018a04c8a24981c17fdc0d1fe69058",
    "outils": "ad653d034c7259cf1920eab27949ada7a81249e7e5493c4b073b3915d699e688",
    "reponses": "5df3e9db297a1a98293bac3633513049458be14c96ba16de3a09d909ccb84739"
   },
   {
    "id": "sc05",
-   "prompt": "c45661a299a0cc10a425c512d268a689913361b62fa9b9f43055d616fa938da7",
+   "prompt": "13ad9d914066e05a92e0e43974308ce9abada58f9d6d7530592cea6295043260",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "976f142d059b47f0962626934998f0fe2d79f8f2d7ca52d783371c6eab43161e"
   },
   {
    "id": "sc06",
-   "prompt": "a7221a6fcb65a4a75e0fd176fed0f3a220bedbe0da19ab1fa59526f8055384c6",
+   "prompt": "9a2f8b6bdab0116b5e72cfca689946fd54df2abdcf5d2b2fb86ba9bb58ba94fa",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "219c0140a3786eae8262cdd26a001dd773eb5618938292d1a932791ca36535a7"
   },
   {
    "id": "sc07",
-   "prompt": "776cad2594074d4bbdd98dfa98054ee65d259dd4448f42f82565213a88c4696c",
+   "prompt": "603c99fe08dcb4228ff6f3149645411e283aafe5fb50c1f76d9543e370effbc2",
    "outils": "8433667bf14f790523540f63223208c52687465118c96575f24d9a7ff8837fd0",
    "reponses": "3db92d1f72ba649f6da636329b832a13de9d7801e772b7d8b1d097b773bcdba7"
   },
   {
    "id": "sc08",
-   "prompt": "90d399f7570932ae1f5e926d7cc436929abd2fe1da18a3d1950dfa314b8c82a0",
+   "prompt": "fd2f90d1bd613bbae580f6d8ffa35072b94354714f875b26d547ae43d2dc8d2a",
    "outils": "dee49ccbd0f5e3348a5fe08521ecca125e36399bf63dc89ae611630ceba8a8a8",
    "reponses": "96e615c1ffed59677502f4fe8e2c2ac2ba4bf7b130a4f6fcf06184b236c011e0"
   },
   {
    "id": "sc09",
-   "prompt": "e1c836c00775dbbcbed1a89800ef0a78e26f439979d99b8949a3c6ebe2e2e69d",
+   "prompt": "f56b1f3c30513b34e78b08014fcfd36bd0d9945d70a256af36e66f0adb4b8098",
    "outils": "dee49ccbd0f5e3348a5fe08521ecca125e36399bf63dc89ae611630ceba8a8a8",
    "reponses": "d0cac22a7e377348bd3d423de3d1851f67590a038aee87dac4147eae9b5b8447"
   },
   {
    "id": "sc10",
-   "prompt": "b67ea0e03df3ea0c05a15d303b2a1fa6dc727b45be9b27fc7cb84071aaae3f83",
+   "prompt": "42efa68359a28c40f1c0def53722c7306dadf41dba60b29a051ede78dafcaf3f",
    "outils": "34cdfd1058fc654bf24eaea74d5b9d5bf7fb9b894466810c64ddcda85c60a5d1",
    "reponses": "1585b52fbb8e32b4a8241b3d76967f4d7d271d0f8089ff6fbfe9a1486a581226"
   },
   {
    "id": "sc11",
-   "prompt": "5171a67bc34b7635869cf8c5f8275c68a9c2da803afefdb4d083a89a2560d39c",
+   "prompt": "f9ac84ee38130fdbd9e2d52d213dd6f3dc2726cf9570cf26cf50982f2fed4571",
    "outils": "34cdfd1058fc654bf24eaea74d5b9d5bf7fb9b894466810c64ddcda85c60a5d1",
    "reponses": "44d02acbac4634c9bf951318c753aa7a273d52ffea521de7067237f217ebc11a"
   },
   {
    "id": "sc12",
-   "prompt": "506256b07d7ec796ca3723fd0936c7fc391282b53f32a6fb2c4fa3d4acde7ab5",
+   "prompt": "cc2616a76ce9bb2b4121a86259a9e4bbfd8148689c4b26a21ed500ac75d9a4de",
    "outils": "34cdfd1058fc654bf24eaea74d5b9d5bf7fb9b894466810c64ddcda85c60a5d1",
    "reponses": "cb6b8771a300bcdc126952dc70cab94d8767f41571c9f14d7f4ebe99f7fe6aef"
   },
   {
    "id": "sc13",
-   "prompt": "3635cce7732ee57bb57862063d6f8d3b5ad03e3f82e5557c433f51f7d59d5025",
+   "prompt": "60e80aa89a3473948c134a7797d291dcd7d9646aeb970fd575e8e121103aa809",
    "outils": "ad653d034c7259cf1920eab27949ada7a81249e7e5493c4b073b3915d699e688",
    "reponses": "5608959d5b7df40372fb31892634055ad0de385a7cc5f3d4e6830ec45b95c01d"
   },
   {
    "id": "sc14",
-   "prompt": "f4b3fb4b0fb78f790474e519b1b24c4a16052553c4489c0abd4baac45affcdaf",
+   "prompt": "97b20bf098d2b736be6948f20d339df2aefbd86bda67aa86e2a58193a52bb9ed",
    "outils": "d92e5df05f4cbf1837caaec2208a5480a133c8a5af5f4d1afe3e0d7765bbe18f",
    "reponses": "7cd36b460cc79186e910ee5bda480ebbfcee02d684d148c9732b3a4e086d21f9"
   },
   {
    "id": "sc15",
-   "prompt": "cfd9f04b201642ea17ea97125415a362bd87f409aeb097aa57492403d9fee67a",
+   "prompt": "9ba03e3b0725b9464c7caaaf9c930c1df44e81da627dabc21bdd4fa7d4148735",
    "outils": "dee49ccbd0f5e3348a5fe08521ecca125e36399bf63dc89ae611630ceba8a8a8",
    "reponses": "53868c8c16728346919a9e34fd3f14852337ad95eb0ee87586e15a2d9cebb5a9"
   },
   {
    "id": "be01",
-   "prompt": "d797d8282b81de59846bf5ce3757c21ee350976064ff690d9ad33d03429e6f64",
+   "prompt": "442358f7e6f8713d707e5a85f106d0407560f29213a8a54563cbeb50fdde2d0d",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "065c4413f6d69b561164d75456ab6212c027ea0b9293c05527ff5d54f049e6a8"
   },
   {
    "id": "be02",
-   "prompt": "bf07f97628f168a4855de7ca462889e625c5891b54dad382e2c68faad2d9820e",
+   "prompt": "34102da018036fefdf61fa9e21a92a75954f71feb30a0a0588c4b7afdb29fd39",
    "outils": "ad653d034c7259cf1920eab27949ada7a81249e7e5493c4b073b3915d699e688",
    "reponses": "422488f3269a1cd2df7c5e99e75111b9a72a78436a31b44778c3e67fbae55de7"
   },
   {
    "id": "be03",
-   "prompt": "b2dd2735f47d9fe5ad1da0b3b13b560a3b88c8fdb023f27275e43d9a7434e470",
+   "prompt": "dea54351807eeb9b15a7f3cc1e73f7e5f08a2d5e5e3c9b028c7917a8021b1c42",
    "outils": "ad653d034c7259cf1920eab27949ada7a81249e7e5493c4b073b3915d699e688",
    "reponses": "2932456df78e763afe0db2057480d7070c29a77a5c45bb65e9deea304d5ad095"
   },
   {
    "id": "be04",
-   "prompt": "783a5bc09b3fc8b6fbe5fcf9522d026da867cca40378e12eb74e1e7c32ce4a3c",
+   "prompt": "3be11db08d6d271500e79feaaa904850c3d16a790c9cdd3cc7beb9eff7c1584b",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "3041145e7a3ad7b0450fd6a925409d5e3ccbabc137844c37a98c6656853c60e9"
   },
   {
    "id": "be05",
-   "prompt": "c961f4b1458df9a922f07f4ee10b1323f466bd17123faf9d53cba28fea3cdbdd",
+   "prompt": "50c8481fc486cc4dc8e0ee83a258167899faf0460920f02429c02f7796dec22d",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "980420a0079195a454fbfaa8e4cca5f756d8d7ca4ed1376d2c73fa6f362d0641"
   },
   {
    "id": "be06",
-   "prompt": "5e5ea7462f72de76ed796651be9f9840ee5baddebf3200b473803559c4769a54",
+   "prompt": "c22bf6d844c9b69d33c2fe28a521466b6714a8f64ed7557d1cbe17c293741a07",
    "outils": "919f32f89da937fa2d75dd11053dc81fae44a065efa695d73801ff04d95c5f97",
    "reponses": "b9d9defe33935a90b6069461d183d3e0a5aaa130b6ccf729c3422fb0c3bf13ab"
   },
   {
    "id": "be07",
-   "prompt": "e2d7e1d7ebcb23078f19e9de7775aedeba226aea1d8aa76ebfe84ab1ce9fd80c",
+   "prompt": "976e27501d7d41bc3325b9a85163057d00a5231e68b5399fb4fd8f76e047843c",
    "outils": "919f32f89da937fa2d75dd11053dc81fae44a065efa695d73801ff04d95c5f97",
    "reponses": "27b8039e974a4fe248ca8e935cd43206e34d8dd37d2547e065e7807ac6d477e2"
   },
   {
    "id": "be08",
-   "prompt": "3640a8b44a22b21b88c17d668fd21aa2ae972f922de8436165bf90bb4bab0e5f",
+   "prompt": "ce1a75f7dbea24179b343a844bfa8f365a5ce94ed56b078178f618eaf37f3a3a",
    "outils": "44a856c60bd4836547eadb454d2976120cf0fc6b63a3bf134b996af060d74c04",
    "reponses": "9837a09c95db45379de152a2dfa03515f174e3a8a91b026f4e50be064d2edeaa"
   },
   {
    "id": "be09",
-   "prompt": "cac034c0b832767d8f98c5ad0ed8dd8e0adbc0e3a3c9f3331b2b8678c605ff2a",
+   "prompt": "cced0c3f1e3887814de4a9b6c0429abfcda44b224c00d478694062a182fe9f64",
    "outils": "899f4152dff28ad1587de3eee6bb9071ac4f35b556269c2ef10932492a6b8b97",
    "reponses": "2f3448b5467bbbce15d30a75f57d471eb9b048fd088fb158f7d6aa5bb6de90b7"
   },
   {
    "id": "be10",
-   "prompt": "ab3bc9e647835bbbf8ad7d15b0c393ae5773ab5f446c0e096db0c7d77291c2a9",
+   "prompt": "b8c2de75ed5815400091c45728250add50efe5232ef8359891cdba67726418fd",
    "outils": "9b0ef82d2575c4253840ab19d56d90cf7252d3d9a9b830154352780b5679ef28",
    "reponses": "c9ed601ec026a87f12cdb29e15c16987a9e120760df773bc5cdb72ea2bfc8437"
   },
   {
    "id": "be11",
-   "prompt": "9d7cee8d502e6f5e752015879ca78da4614f88169bb097b253ca69e99e564694",
+   "prompt": "95269137f8b072373bc049944d8cb85430e72f62422874956b25ee527511e507",
    "outils": "899f4152dff28ad1587de3eee6bb9071ac4f35b556269c2ef10932492a6b8b97",
    "reponses": "ba486f1e516eda779892c83299d1f50cf2d936e0ecb997e6702652502f8a0372"
   },
   {
    "id": "be12",
-   "prompt": "0753fd2a640b3c4cc0662f2b095218dd4efdc3234a6cc6d1e27a09141a107c4d",
+   "prompt": "ac8e6a27e1f3ff336f0a7b35d8b5f1ac56697e6f9b4af705d788e2500c48e044",
    "outils": "f4e1aa54c78b5c40d8d5820f77955e57524b333607414fa55db2053a0a766279",
    "reponses": "ddd5747687ea76b6817ed76fc7b5fa6f5977a99d0afe159cf378beb4ea60d865"
   },
   {
    "id": "be13",
-   "prompt": "350952d3ed4a38aed7778f73705519dcfbc69d645e0bb54f09b8910ca162788a",
+   "prompt": "60ad5c60c7e956c5793eb4241990f70ebc32574253604794a1a9c2febecd13ec",
    "outils": "bc0262a8f641d00ad1972d24d198dfea9c684379fb4e1d5b89bfa937c69b7ed7",
    "reponses": "de138993f6985a4af84577f6edf0b926e911c848b0d6c892d350dc35db9c75d9"
   },
   {
    "id": "be14",
-   "prompt": "57ffec00400fabb52241ddbba07b56512aae5b4d28d4003b95afe73bbcbe0a30",
+   "prompt": "cc73f1314d2ca561ac43384aaaf2a928ebce547aebcd229775611e3cdeec5d72",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "f5ae2e8f7d5cce0952fd1670cda74cc974689ce84a4b7fcce975a302f2fda614"
   },
   {
    "id": "be15",
-   "prompt": "da69e861e9917ac827a762e7444cb612f993c67ff83df710d2bb746667f4b142",
+   "prompt": "053ed7806721c939bbb6b98878df3ac4a04072299fcc149a95a7873c1028ec41",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "9a46f7427bb65fb08e6a54d63a5d84712deefb18a0f14e868a002bc90ab4d595"
   },
   {
    "id": "be16",
-   "prompt": "3c91a89ea6b23d5533dba030420bedc1eaf9040f5fccf2383682cfe0bbe2a12c",
+   "prompt": "6ddb8fa00fcea29441cd383a4e5f056aa2e677335174d6b1dcbdb3115e4c6ecf",
    "outils": "010d72f480244fcd48f8c5b364faa72781b0c973f71641eed4eda615abb36e52",
    "reponses": "dff614be73a147cb5ae20b21d695b4ca5f67c3b5f886d8bc17d247f9dc533b10"
   },
   {
    "id": "be17",
-   "prompt": "596a39d535040f8e4d0ab95cefc3eb63905b80016a1d027a07ba0c3dac859635",
+   "prompt": "a8fefbb6819dc0412bf20e221bbf4b17a6500dcddf9ad8dd42e14a2b7f3a1b09",
    "outils": "899f4152dff28ad1587de3eee6bb9071ac4f35b556269c2ef10932492a6b8b97",
    "reponses": "d0a698f9dc7ac7c2227c56601f250825537775355c451a97f82febf81b6ed0fe"
   },
   {
    "id": "be18",
-   "prompt": "2f04405bab6df386cbca59cba53e86d266ba693b1a80e9013255da5bea678800",
+   "prompt": "3f23081051881c1cb5c3e10d03d7393c14ec8c56128e338ec0ffd6d0bc2cf230",
    "outils": "919f32f89da937fa2d75dd11053dc81fae44a065efa695d73801ff04d95c5f97",
    "reponses": "8ed841977715ceb1e2d65ca507804d4ff3e35b8187b2c15f4c1389fa0768036e"
   },
   {
    "id": "be19",
-   "prompt": "25faeec1e147bb9b380d08a980e29cac3076d7b9b543f5a49c8719d74689ce23",
+   "prompt": "82a92a7a95a85d5692e25f97b2d2fd408d7b68977b0a5e18f7229adf9f4103ef",
    "outils": "919f32f89da937fa2d75dd11053dc81fae44a065efa695d73801ff04d95c5f97",
    "reponses": "b694c64efa4a7bb31ebd575b3c594ae78c06733f8d22d90d8ba5670a503bd3fc"
   },
   {
    "id": "se01",
-   "prompt": "39d6964f74b08de24804d7ab0bc519594849b5106094db4baeb02fa31dede9cc",
+   "prompt": "5742315116412bc8649057cf610368e7cdf25fb777c46a1daad4352bd7fb427b",
    "outils": "d92e5df05f4cbf1837caaec2208a5480a133c8a5af5f4d1afe3e0d7765bbe18f",
    "reponses": "106fa9d9587f79ab226f37fd7871038cd154cafcf9e72ec3647524756ee94bad"
   },
@@ -893,7 +893,7 @@
   },
   {
    "id": "se03",
-   "prompt": "238479e2cfb3d9abe7e34e573e613863e4efa4f1ed4f52c13f036beb2a74ccf3",
+   "prompt": "8d011043610f97636955f7885911031b52567859546e478806a1df8c08a5b871",
    "outils": "a240e3d6d3e84a6b6a892b568c4214e3261b6e9836a582e97ce4d14231f6d7bb",
    "reponses": "e5559c2266a8aca8021a3dc54432942a7c6d07aaa9571e086ff128f61d88cd43"
   },
@@ -905,7 +905,7 @@
   },
   {
    "id": "se05",
-   "prompt": "a9eb8940982a4c5d7298e45319393ab0bac60b75482d7193fed05b03c202a576",
+   "prompt": "1e0ca5612e78e34b9ec19ad1cc8700de0fbe77f8d84c3bcd94209a749282ffb5",
    "outils": "a240e3d6d3e84a6b6a892b568c4214e3261b6e9836a582e97ce4d14231f6d7bb",
    "reponses": "4f1b9c681b96926289837cdb90c2ff938a2e1a303c70071959659eb1f7bf7b3d"
   },
@@ -917,85 +917,85 @@
   },
   {
    "id": "ov01",
-   "prompt": "465b073a1903ede0a3bc5e5f6e6225df7f9c81181fff59aaae805f0831500738",
+   "prompt": "06cb42cf39b300fe434ca97fbc2a631bfb54a9db150154e4bee6822d9557ea0a",
    "outils": "8433667bf14f790523540f63223208c52687465118c96575f24d9a7ff8837fd0",
    "reponses": "69aea49d6aa5623b112ed6d1b81484d4ca0c69d8f7fcd2b0d246128c75e8a8b7"
   },
   {
    "id": "ov02",
-   "prompt": "0b6b543d8d5894c0e4e3b2156fbbce28acafc3a10678759df16a4e90588302bc",
+   "prompt": "a2d01eb2a6dcdcc8c3ee6449d231d76ee1cc2b4bd69ec2d6aa3b833a25284b0c",
    "outils": "003b510431abf469a97f1e7ba61b9be4930e3b0d6525662435d8702b0a2480c3",
    "reponses": "b04f80426a1a3c5b91da865706776b10c3a9a5a7129b74058b1dd0fdb9509036"
   },
   {
    "id": "ov03",
-   "prompt": "4e94a6c7499b1d3d6c39056b79256c5149f220ef592a17ff4cab6928c7a9e56c",
+   "prompt": "1550d1b38dce2cbc01504edd67a36fbdec0863d7102ce220b7e1c757c693555c",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "efca2e65f9a6217f530498e8de414baae3019491b314454e5a25cfd42d4b12fa"
   },
   {
    "id": "ov04",
-   "prompt": "7f55002d30a6ece5ee170f2d5b88fba01e398db5de45d0d72e6e83dcec1c2a6f",
+   "prompt": "889ef8bce47299ecf38f511d36b79a23e15c856aac6c8004b42ad73ac7466233",
    "outils": "76287d8786e3caded09725d9498513ea3efde6068a0ac8b59032b2a2715d15f8",
    "reponses": "f3b5a1dd325fe7ff1b85e91213f2598a52a779dd3459c9721631959d739619d2"
   },
   {
    "id": "ov05",
-   "prompt": "ecf29e3b3919f1d097d7516ba4caddf82bb6b6d62a711bef96aa61722d2d01df",
+   "prompt": "0d432e5663fe56724879156eb050e979610fb8fe12a7e448c46ee41a4f50f59f",
    "outils": "dee49ccbd0f5e3348a5fe08521ecca125e36399bf63dc89ae611630ceba8a8a8",
    "reponses": "57eafab29bccee9f2b1088c423f252230ea379ae8db711d1ba0bceff47f62b85"
   },
   {
    "id": "st15",
-   "prompt": "3b1bf87e4122a5fa4ab4103e7ac0edc70dc1c9f7da88b4a013a837010e0ad5e9",
+   "prompt": "c7805b1ba930e0afeb2abad0155030dc941450a86c8cfaf8f3a9e30d294ef689",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "e0ea03a0116c7cf63f8728ce742adc6ddc1c7322511d7fc34fb69550f1cd8cba"
   },
   {
    "id": "st16",
-   "prompt": "68d17d6577858009966b35fceb16c59538531b799bccfccf50618591defae679",
+   "prompt": "3f9821431d97676b1e49e89328eb6399ea6502d20c0fc19b9492d8ff0cd89a13",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "8ae0918b516a6d10ba5f0a93b20301db1f46d1dc3d913c21fdbbfeef1ec4fde6"
   },
   {
    "id": "st17",
-   "prompt": "09dcabe9b7109c8585eaf4ac66e81b43faed004eb7a54608a27c2258c1974a44",
+   "prompt": "12e4bb3509a794d876411532e2519c22b2036e9be5f2941241e5df8d21411f89",
    "outils": "64911e54125a5ca92fb135986ae2c2085442463b841e25998997bf11a8e202f8",
    "reponses": "f6899410329bc571ddb549db576fce88ae814b9f7a061679960b7abb81411649"
   },
   {
    "id": "st18",
-   "prompt": "2cf54c182d5be3a0ad7ee6b23c78c763b8115d828a7e2c800dfce1cb3389d99d",
+   "prompt": "b455e60b879f68e2787f34805ea0bc4f3298b68d40e65163e51c552016508d06",
    "outils": "714cd4536b0829ccf0a489b67e89c63d422869c49261f55f00af2f6bfc0fd8c7",
    "reponses": "e0896475a66ad998b2c34d09faaa02df8859fac4bd0cb115e0cab126e164f638"
   },
   {
    "id": "gu01",
-   "prompt": "c927735c7b47b6b32342000baec3e70e34909be9985ad2259d9478c6944d6bef",
+   "prompt": "21e049720d5fa8346178d31c6559841f1b826d1b929c70424eba8b393f2b791d",
    "outils": "cbcf4b2f297327b319450e648c26bf34159bae5efb4261bb9746f36363701c18",
    "reponses": "36a3538706c9aaaee009f680a71cac4577c09c084bed60437b653914ecf1753e"
   },
   {
    "id": "gu02",
-   "prompt": "891a02bac409eac8a557c18d822eb79110ea9a9fdbad351ae3cb11e203a2c4c9",
+   "prompt": "cb065202be19fa0b41ebd47c9ce1f5b5bdadc1768f242b571c7bb65702746471",
    "outils": "16cc6c95acc180839700c1f009aee0c81eb7c8870f24f59e80f4a99ac892474c",
    "reponses": "86fb20137c1d45ac9e4702a3c68b4aefc4c6942e63ab3a9f2d38aeadb789f804"
   },
   {
    "id": "gu03",
-   "prompt": "859a78e5c9d5bbfb0073f9f15036939ec8602aaf45a94ba2b65d8dc9e2fd3233",
+   "prompt": "b310891b919d88f70160c8945e14c1c6b9e93e6437705d75ebe333924e2a3957",
    "outils": "8433667bf14f790523540f63223208c52687465118c96575f24d9a7ff8837fd0",
    "reponses": "48a2293ed50ea7babae36cf9dea77a36900aebe5eb5ee807df85d080a1fbf563"
   },
   {
    "id": "gu04",
-   "prompt": "eb539867d8c0a07184fe9a872ca04e1e9e228d1ffdfd0a5b89f99cb910ab33fb",
+   "prompt": "01ff872cf6607208e4f29d7f3832af75c1cc13c61a7e38c1914509e67061d32a",
    "outils": "3e3db7129c7f8363bbd42a7a513c7d088a85ca53fd3d527ed6382b4b4bd0d8da",
    "reponses": "db91e5125766d211a18b809781ea238b504585f36840f5243209a0da3843f685"
   },
   {
    "id": "gu05",
-   "prompt": "dbe9a0013beec2dd8e1e490123d516173d5603a956349a1e638cf12dc0c9f780",
+   "prompt": "cbc78891ceb64d5a74fafc64f820b8fea7406786559cf43c525a5d8845cc5a95",
    "outils": "44a856c60bd4836547eadb454d2976120cf0fc6b63a3bf134b996af060d74c04",
    "reponses": "7fb3a83403c93bbf1869d47ba0ec63498da395ee558a3b594287daf79ccf5e7a"
   }

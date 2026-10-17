@@ -48,7 +48,8 @@ Deno.test('Non-régression : les 33 phrases salarié d’origine sont « courtes
     viaIa.push(c.id);
     if (t.via !== 'ia' || t.profil !== 'court' || t.appels !== 1 || rec.reqs.length !== 1) throw new Error(`${c.id} : un seul appel, profil court`);
     const req = rec.reqs[0];
-    eq(Object.keys(req).sort(), ['file', 'functions', 'prompt', 'tier'], `${c.id} : champs de la requête (aucun profil ni maxCalls)`);
+    eq(Object.keys(req).sort(), ['file', 'functions', 'prompt', 'stable', 'tier'], `${c.id} : champs de la requête (aucun profil ni maxCalls ; stable = début du prompt, pour le cache d’invites)`);
+    if (!req.stable || !req.prompt.startsWith(req.stable)) throw new Error(`${c.id} : stable doit être un début du prompt`);
     eq(req.prompt, workerFunctionPrompt(s0, live, c.phrase), `${c.id} : consigne d'avant`);
     eq(req.functions.map((f) => f.name), workerFunctionsFor(!!file, c.phrase).map((f) => f.name), `${c.id} : outils d'avant`);
     eq(req.functions, workerFunctionsFor(!!file, c.phrase), `${c.id} : déclarations d'avant`);
@@ -71,7 +72,7 @@ Deno.test('Ancien navigateur (multiOk faux) : TOUJOURS le chemin d’avant, mêm
     const t = await runWorkerTurn(entree({ text: c.phrase, live, call: rec.call, multiOk: false }));
     if (local) { if (t.via !== 'local' || json(t.reply) !== json(local)) throw new Error(`${c.id} : lecteur local d'abord`); continue; }
     if (t.via !== 'ia' || t.profil !== 'court' || rec.reqs.length !== 1) throw new Error(`${c.id} : ancien chemin`);
-    eq(Object.keys(rec.reqs[0]).sort(), ['file', 'functions', 'prompt', 'tier'], `${c.id} : requête d'avant`);
+    eq(Object.keys(rec.reqs[0]).sort(), ['file', 'functions', 'prompt', 'stable', 'tier'], `${c.id} : requête d'avant`);
     eq(rec.reqs[0].prompt, workerFunctionPrompt(s0, live, c.phrase), `${c.id} : ancienne consigne`);
   }
   // Le texte reste coupé à 1500 caractères côté serveur (jamais plus, quel que soit le client).
@@ -88,7 +89,7 @@ Deno.test('Un fichier joint force le profil court (outils restreints à ranger_p
   if (t.via !== 'ia' || t.profil !== 'court') throw new Error('court');
   eq(rec.reqs[0].functions.map((f) => f.name).sort(), ['ranger_photo', 'repondre'], 'outils du fichier');
   eq(rec.reqs[0].tier, 'documents', 'palier documents');
-  eq(Object.keys(rec.reqs[0]).sort(), ['file', 'functions', 'prompt', 'tier'], 'aucun champ de plus');
+  eq(Object.keys(rec.reqs[0]).sort(), ['file', 'functions', 'prompt', 'stable', 'tier'], 'aucun champ de plus');
 });
 
 Deno.test('Profil long : JAMAIS le lecteur local, le palier de quota reste « rapide », requête profil:long + maxCalls:4, une demande = un appel au modèle', async () => {
