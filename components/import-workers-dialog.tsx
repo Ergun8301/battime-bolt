@@ -10,7 +10,7 @@
 // sur le projet Supabase pour tenir sur un lot de plus de quelques salariés —
 // l'envoi natif Supabase est limité à quelques emails/heure.
 
-import { useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { InfoTip } from '@/components/ui/info-tip';
 import { Loader2, UploadCloud, FileSpreadsheet, CheckCircle2, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau, lot 3 A (?ui=2 sur aperçu seulement) : la même fenêtre habillée v2, chargée en différé seulement quand le drapeau est actif.
+const ImportV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.ImportV2 })));
 
 interface Props {
   open: boolean;
@@ -250,6 +254,24 @@ export default function ImportWorkersDialog({ open, onOpenChange, existingEmails
     onImported?.();
     setBusy(false);
   };
+
+  const ui2 = useBureauUi2();
+  if (ui2) {
+    return (
+      <Suspense fallback={null}>
+        <ImportV2 open={open} onOpenChange={(o) => { if (!busy) { onOpenChange(o); if (!o) reset(); } }} titre="Importer des salariés" step={step} busy={busy}
+          depotS="ou choisissez-le · 8 Mo au plus" colonnes="Colonnes : Prénom* · Nom* · Email* · Téléphone. Un compte et un e-mail d’invitation par ligne."
+          fileName={fileName} headers={headers} rows={rows} fields={FIELDS} mapping={mapping} setMapping={setMapping as never} skipDupes={skipDupes} setSkipDupes={setSkipDupes}
+          skipLabel="Ignorer les salariés déjà actifs ou déjà invités (même email)" parseFile={parseFile} reset={reset} manquants={prepared.invalid}
+          avertissement="Chaque ligne envoie un vrai e-mail d’invitation. Vérifiez les colonnes avant de lancer."
+          recap={<><b>{prepared.valid.length}</b> salarié{prepared.valid.length > 1 ? 's' : ''} à inviter
+            {prepared.invalid > 0 && <> · {prepared.invalid} ligne{prepared.invalid > 1 ? 's' : ''} incomplète{prepared.invalid > 1 ? 's' : ''} (ignorée{prepared.invalid > 1 ? 's' : ''})</>}
+            {prepared.dupes > 0 && <> · {prepared.dupes} doublon{prepared.dupes > 1 ? 's' : ''} {skipDupes ? '(ignoré' + (prepared.dupes > 1 ? 's' : '') + ')' : '(tenté' + (prepared.dupes > 1 ? 's' : '') + ')'}</>}</>}
+          importLabel={`Inviter ${prepared.valid.length} salarié${prepared.valid.length > 1 ? 's' : ''}`} importDisabled={!prepared.valid.length} doImport={doImport} progress={progress}
+          resultat={result ? { titre: <><b>{result.sent}</b> invitation{result.sent > 1 ? 's' : ''} envoyée{result.sent > 1 ? 's' : ''}{result.skipped > 0 && <> · {result.skipped} ignorée{result.skipped > 1 ? 's' : ''}</>}{result.failures.length > 0 && <> · {result.failures.length} échec{result.failures.length > 1 ? 's' : ''}</>}</>, echecs: result.failures } : null} />
+      </Suspense>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) { onOpenChange(o); if (!o) reset(); } }}>

@@ -18,6 +18,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ExportPreload } from '@/components/export-menu';
 import { DAYS_IN_WEEK } from '@/lib/week';
 import { FenetreB, PanneauB } from './heures-fenetre';
+// Lot 3 A : ses vues voyagent dans CE morceau différé (aucun nouveau morceau : chacun coûte au chargeur partagé par toutes les pages). Voir lot3a-v2.ts.
+export * from './lot3a-v2';
 
 export type ExportChoix = 'pdf' | 'excel' | 'csv' | 'comptable';
 export interface Periode { from: Date; to: Date }

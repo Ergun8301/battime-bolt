@@ -18,11 +18,16 @@
 //  - mode support : lecture seule, AUCUN appel, aucun envoi ;
 //  - fonction ou migration absente : message neutre, sans erreur, et les boutons se cachent.
 // Les règles (plafond, texte, libellés) sont celles de la fonction (staff-email-core.ts).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { CalendarDays, CheckCircle2, CircleAlert, CircleHelp, Loader2, Mail, MinusCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau, lot 3 A (?ui=2 sur aperçu seulement) : la même fenêtre dans la coque v2 (panneau, liseré, ✕), contenu identique habillé par
+// components/design/bureau/heures-v2.css (bloc « Lot 3 A ») ; chargée en différé seulement quand le drapeau est actif.
+const CoqueV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.Coque })));
 import type { User } from '@/lib/types';
 import { readSupportSession } from '@/lib/support';
 import { isExportLibError, preloadExportLibs } from '@/lib/export-utils';
@@ -116,6 +121,7 @@ const STATUS_LABEL: Record<string, string> = { reserved: 'en cours', sent: 'envo
 const fullName = (w: { first_name?: string | null; last_name?: string | null }) => `${w.first_name || ''} ${w.last_name || ''}`.trim() || 'Salarié';
 
 export default function StaffEmailDialog({ open, onOpenChange, companyId, companyName, workers, monday }: StaffEmailDialogProps) {
+  const ui2 = useBureauUi2();
   const support = useMemo(() => open && !!readSupportSession(), [open]);
   const week = useMemo(() => weekFromMonday(monday), [monday]);
   const people = useMemo(
@@ -280,21 +286,9 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
   const weekTitle = week ? `Semaine ${week.label}` : '';
   const loadingLog = logState === 'loading';
 
-  return (
-    <Dialog open={open} onOpenChange={(o) => {
-      // Pendant l'envoi la fenêtre reste ouverte : la fermer ferait perdre le résultat (il reste dans « Derniers envois »).
-      if (!o && phase === 'sending') return;
-      if (!o) (document.activeElement as HTMLElement | null)?.blur?.();
-      onOpenChange(o);
-    }}>
-      <DialogContent className="bt-skin max-w-lg" data-testid="staff-email-dialog">
-        <style dangerouslySetInnerHTML={CSS_HTML} />
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Mail className="h-5 w-5" /> Envoyer par e-mail</DialogTitle>
-          <DialogDescription>{weekTitle}</DialogDescription>
-        </DialogHeader>
-
+  const corps = (
         <div className="bt-em">
+
           {phase === 'loading' && (
             <p className="bt-em-muted" role="status" data-testid="em-loading"><Loader2 className="mr-1 inline h-4 w-4 animate-spin motion-reduce:animate-none" /> Chargement…</p>
           )}
@@ -493,6 +487,38 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
             </div>
           )}
         </div>
+  );
+  const fermer = (o: boolean) => {
+    // Pendant l'envoi la fenêtre reste ouverte : la fermer ferait perdre le résultat (il reste dans « Derniers envois »).
+    if (!o && phase === 'sending') return;
+    if (!o) (document.activeElement as HTMLElement | null)?.blur?.();
+    onOpenChange(o);
+  };
+  if (ui2) {
+    return (
+      <Suspense fallback={null}>
+        <CoqueV2 open={open} onOpenChange={fermer} forme="panneau" largeur={620} kicker="Équipe" titre="Envoyer par e-mail" sous={weekTitle} testId="staff-email-dialog">
+          <style dangerouslySetInnerHTML={CSS_HTML} />
+          {corps}
+        </CoqueV2>
+      </Suspense>
+    );
+  }
+  return (
+    <Dialog open={open} onOpenChange={(o) => {
+      // Pendant l'envoi la fenêtre reste ouverte : la fermer ferait perdre le résultat (il reste dans « Derniers envois »).
+      if (!o && phase === 'sending') return;
+      if (!o) (document.activeElement as HTMLElement | null)?.blur?.();
+      onOpenChange(o);
+    }}>
+      <DialogContent className="bt-skin max-w-lg" data-testid="staff-email-dialog">
+        <style dangerouslySetInnerHTML={CSS_HTML} />
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Mail className="h-5 w-5" /> Envoyer par e-mail</DialogTitle>
+          <DialogDescription>{weekTitle}</DialogDescription>
+        </DialogHeader>
+
+        {corps}
       </DialogContent>
     </Dialog>
   );

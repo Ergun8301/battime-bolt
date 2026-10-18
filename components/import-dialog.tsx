@@ -7,7 +7,7 @@
 // identique à celle du formulaire « Nouveau client », scopée à l'entreprise par
 // la RLS. Prévu pour resservir aux salariés plus tard (avec Resend).
 
-import { useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { InfoTip } from '@/components/ui/info-tip';
 import { Loader2, UploadCloud, FileSpreadsheet, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau, lot 3 A (?ui=2 sur aperçu seulement) : la même fenêtre habillée v2, chargée en différé seulement quand le drapeau est actif.
+const ImportV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.ImportV2 })));
 
 interface Props {
   open: boolean;
@@ -234,6 +238,30 @@ export default function ImportDialog({ open, onOpenChange, companyId, existingNa
       setBusy(false);
     }
   };
+
+  const ui2 = useBureauUi2();
+  if (ui2) {
+    // Aperçu ligne par ligne (CL09) : la même règle que `prepared` ci-dessus (nom vide → ignoré ; même nom → doublon), sur les premières lignes.
+    const nc = mapping.client_name, vc = mapping.city;
+    const vus = new Set(existingNames.map((n) => n.toLowerCase())); const dansFichier = new Set<string>();
+    const apercu = nc == null || nc < 0 ? [] : rows.slice(0, 8).map((r, i) => {
+      const nom = (r[nc] || '').trim(); const k = nom.toLowerCase(); const deja = !!nom && (vus.has(k) || dansFichier.has(k)); if (nom) dansFichier.add(k);
+      return { ligne: i + 2, nom, ville: vc != null && vc >= 0 ? (r[vc] || '').trim() : '', etat: (!nom ? 'manque' : deja ? 'deja' : 'creer') as 'manque' | 'deja' | 'creer' };
+    });
+    return (
+      <Suspense fallback={null}>
+        <ImportV2 open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset(); }} titre="Importer des clients" step={step} busy={busy}
+          depotS="ou choisissez-le · 8 Mo au plus" colonnes="Colonnes : Nom du client* · Ville · Code postal · Type de produit · Téléphone · Email · Adresse · Description."
+          fileName={fileName} headers={headers} rows={rows} fields={FIELDS} mapping={mapping} setMapping={setMapping as never} skipDupes={skipDupes} setSkipDupes={setSkipDupes}
+          skipLabel="Ignorer les clients déjà présents (même nom)" parseFile={parseFile} reset={reset} manquants={prepared.empty} apercu={apercu}
+          recap={<><b>{prepared.valid.length}</b> client{prepared.valid.length > 1 ? 's' : ''} à importer
+            {prepared.empty > 0 && <> · {prepared.empty} sans nom (ignoré{prepared.empty > 1 ? 's' : ''})</>}
+            {prepared.dupes > 0 && <> · {prepared.dupes} doublon{prepared.dupes > 1 ? 's' : ''} {skipDupes ? '(ignoré' + (prepared.dupes > 1 ? 's' : '') + ')' : '(importé' + (prepared.dupes > 1 ? 's' : '') + ')'}</>}</>}
+          importLabel={`Importer ${prepared.valid.length} client${prepared.valid.length > 1 ? 's' : ''}`} importDisabled={!prepared.valid.length} doImport={doImport}
+          resultat={result ? { titre: <><b>{result.imported}</b> client{result.imported > 1 ? 's' : ''} importé{result.imported > 1 ? 's' : ''}{result.skipped > 0 && <> · {result.skipped} ignoré{result.skipped > 1 ? 's' : ''}</>}</> } : null} />
+      </Suspense>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset(); }}>

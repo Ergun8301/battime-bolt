@@ -5,7 +5,8 @@
 // Déposer un bulletin → l'IA lit 4 chiffres → l'admin les vérifie → « Valider ».
 // RIEN n'est enregistré avant ce clic, et le fichier n'est jamais conservé.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
+import type { CoutReelV2Props } from '@/components/design/bureau/gerer-v2';
 import { FileUp, Keyboard, Loader2, Trash2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/auth-provider';
@@ -35,9 +36,11 @@ const fromDraft = (d: Draft): PayslipFigures => ({
   gross: parseAmount(d.gross), employer_total: parseAmount(d.employer_total), paid_hours: parseAmount(d.paid_hours),
 });
 
-interface Props { source: CostSource; companyId: string; userId: string; firstName?: string; onChanged?: () => void }
+interface Props { source: CostSource; companyId: string; userId: string; firstName?: string; onChanged?: () => void;
+  /** Design bureau, lot 3 A (fiche salarié v2) : la vue v2 « Coût réel », fournie par la fiche (morceau différé) ; ce fichier n'importe rien de plus. */
+  v2?: ComponentType<CoutReelV2Props> }
 
-export default function RealCostCard({ source, companyId, userId, firstName, onChanged }: Props) {
+export default function RealCostCard({ source, companyId, userId, firstName, onChanged, v2 }: Props) {
   const [slips, setSlips] = useState<Slip[] | null>(null);
   const [fund, setFund] = useState<LeaveFund>({ enabled: false, rate: 20.7 });
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -105,6 +108,19 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
     </label>
   );
 
+  if (v2) {
+    const CoutReelV2 = v2;
+    return (
+      <Suspense fallback={null}>
+        <CoutReelV2 prenom={firstName} horaire={result ? eur(result.hourly) : null}
+          detail={result ? `moyenne de ${result.count} bulletin${result.count > 1 ? 's' : ''}${fund.enabled ? ` · caisse congés BTP ${num(fund.rate)} % incluse` : ''}` : ''}
+          bulletins={slips ? slips.slice(0, 6).map((s) => ({ id: s.id, mois: monthLabel(s.month), ligne: `${eur(s.employer_total)} employeur · ${num(s.paid_hours)} h`, taux: `${eur(slipHourlyCost(s, fund))}/h` })) : null}
+          remove={remove} reading={reading} draft={draft} setChamp={(k, v) => setDraft((d) => (d ? { ...d, [k]: v } : d))} draftSource={draftSource} doubts={doubts} notice={notice}
+          saving={saving} validate={validate} annuler={() => { setDraft(null); setNotice(null); setDoubts([]); }} deposer={onFile}
+          saisir={() => { setDraft(EMPTY); setDraftSource('manual'); setNotice(null); setDoubts([]); }} />
+      </Suspense>
+    );
+  }
   return (
     <div className="rounded-lg border p-3 space-y-3" data-testid="real-cost">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -196,12 +212,12 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
  * Le bloc tel qu'il s'insère dans la fiche salarié : rien du tout tant que
  * l'entreprise n'a pas `ai_enabled`, ou si la personne connectée n'est pas admin.
  */
-export function RealCostSection({ companyId, userId, firstName }: { companyId: string; userId: string; firstName?: string }) {
+export function RealCostSection({ companyId, userId, firstName, v2 }: { companyId: string; userId: string; firstName?: string; v2?: ComponentType<CoutReelV2Props> }) {
   const { user } = useAuth();
   const ai = useAiEnabled(companyId);
   const [source] = useState<CostSource>(() => (isCostDemo() ? demoCostSource() : supabaseCostSource));
   if (!ai || (!source.demo && user?.role !== 'admin')) return null;
-  return <RealCostCard source={source} companyId={companyId} userId={userId} firstName={firstName} />;
+  return <RealCostCard source={source} companyId={companyId} userId={userId} firstName={firstName} v2={v2} />;
 }
 
 /** Ligne « Coût réel des heures » d'un chantier (heures pointées × coût réel de chaque salarié). */
