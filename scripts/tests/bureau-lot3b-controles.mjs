@@ -71,7 +71,7 @@ async function capture(page, nom) { if (SH) await page.screenshot({ path: path.j
 async function largeurs(nom, ouvrir, id, opts = {}) {
   for (const [w, h] of [[390, 844], [834, 1112], [1440, 900]]) {
     preparer(opts.prep);
-    const { page, ctx } = await sim.page({ ui: 2, largeur: w, hauteur: h, hasTouch: w < 1024, attente: w < 1024 ? '[data-testid=planning-mobile]' : undefined });
+    const { page, ctx } = await sim.page({ ui: 2, largeur: w, hauteur: h, hasTouch: w < 1024, attente: w < 768 ? '[data-testid=planning-mobile]' : (w < 1024 ? '.dzp-table [data-testid=bubble]:visible' : undefined) }); // intégration : la tablette garde la grille 2a (planning 2b : téléphone sous 768 px)
     await routes(ctx, opts.routes);
     await ouvrir(page, w);
     const vu = (await fenetre(page, id).count()) > 0;
@@ -85,7 +85,15 @@ async function largeurs(nom, ouvrir, id, opts = {}) {
     await ctx.close();
   }
 }
-const mobileMenu = async (page, libelle) => { await page.locator('.dzp-m-menu').click(); await page.waitForTimeout(500); await page.locator('.dzp-mm button', { hasText: libelle }).first().click(); await page.waitForTimeout(1000); };
+// Intégration bureau v2 : au téléphone (planning 2b), le menu ☰ est le rond de l'en-tête (aria-label « Menu ») ; à la tablette (768–1 023 px, barre unique 2a),
+// pas de ☰ : la ligne est dans « Plus ⋯ », et Réglages dans le menu du compte, comme à l'ordinateur.
+const mobileMenu = async (page, libelle) => {
+  const rond = page.locator('button[aria-label="Menu"]:visible');
+  if (await rond.count()) { await rond.first().click(); await page.waitForTimeout(500); await page.locator('.dzp-mm button:visible', { hasText: libelle }).first().click(); await page.waitForTimeout(1000); return; }
+  if (/^Réglages/.test(libelle)) return reglages(page);
+  await page.locator('[data-testid=bar-plus]:visible').first().click(); await page.waitForTimeout(250);
+  await page.locator('[data-testid=menu-plus] button:visible', { hasText: libelle }).first().click(); await page.waitForTimeout(1000);
+};
 const ouvreur = (desk, mob) => async (page, w) => { if (w < 1024) await mob(page); else await desk(page); };
 
 // ═════ ST03, ST04 · Coût chantiers ═══════════════════════════════════════════════════════════════════════════════════════
@@ -328,15 +336,20 @@ await largeurs('RG07 / XM05 Borne', ouvreur((p) => plus(p, 'bar-kiosk'), (p) => 
   await c2.close();
 }
 
+// Intégration bureau v2 : la barre noire du planning 1a n'a plus la pastille « Essai · S'abonner » ; « S'abonner » est en tête de « Plus ⋯ » (même onSubscribe).
+async function abonner(page) {
+  if (!(await page.locator('button:visible', { hasText: /abonner/ }).count())) { await page.locator('[data-testid=bar-plus]:visible').first().click(); await page.waitForTimeout(300); }
+  await page.locator('button:visible', { hasText: /abonner/ }).first().click();
+}
 // ═════ RG12 à RG15 · Abonnement (le paiement ne change pas : même fonction stripe-checkout) ═══════════════════════════
 {
   preparer();
   const { page, ctx, erreurs } = await sim.page({ ui: 2 });
   await routes(ctx);
-  await page.locator('.dzp-noire button', { hasText: 'S’abonner' }).or(page.locator('.dzp-noire button', { hasText: "S'abonner" })).first().click().catch(async () => { await page.evaluate(() => window.dispatchEvent(new Event('x'))); });
+  await page.locator('.dzp-noire button', { hasText: 'S’abonner' }).or(page.locator('.dzp-noire button', { hasText: "S'abonner" })).first().click({ timeout: 3000 }).catch(async () => { await page.evaluate(() => window.dispatchEvent(new Event('x'))); });
   await page.waitForTimeout(900);
   const f = fenetre(page, 'subscribe-dialog');
-  if (!(await f.count())) await page.locator('button', { hasText: /abonner/ }).first().click();
+  if (!(await f.count())) await abonner(page);
   await page.waitForTimeout(700);
   check(await fenetre(page, 'subscribe-dialog').count() === 1, 'RG12 « S’abonner » ouvre « Choisissez votre abonnement » (fenêtre v2)');
   check(await f.locator('.bt-sub-card').count() === 3 && await f.locator('.bt-sub-card.off').count() === 1 && await f.locator('.bt-sub-card.reco').count() === 1, 'RG12 trois forfaits lus en base : « trop petit » grisé, le recommandé en noir');
@@ -350,7 +363,7 @@ await largeurs('RG07 / XM05 Borne', ouvreur((p) => plus(p, 'bar-kiosk'), (p) => 
   await ctx.close();
   preparer({ plans: false });
   const b = await sim.page({ ui: 2 }); await routes(b.ctx);
-  await b.page.locator('button', { hasText: /abonner/ }).first().click(); await b.page.waitForTimeout(800);
+  await abonner(b.page); await b.page.waitForTimeout(800);
   check(await fenetre(b.page, 'subscribe-dialog').locator('.bt-sub-card').count() === 0, 'RG12 état vide : aucun forfait actif, aucune carte (rien d’inventé)');
   await b.ctx.close();
 }

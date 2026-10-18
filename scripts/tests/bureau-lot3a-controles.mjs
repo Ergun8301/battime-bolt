@@ -64,12 +64,26 @@ async function cycle(page, nom, ouvrir, attendu, { largeur = 1440, capture = nom
   }
 }
 
+// Intégration bureau v2 (planning 1a / 2a / 2b) : Réserves, Coût chantiers, Borne… sont dans « Plus ⋯ » à l'ordinateur et à la tablette, et le menu ☰ du
+// téléphone est le rond de l'en-tête 2b. Ouvre le point d'entrée existant (barre, « Plus ⋯ » ou ☰) avant de cliquer la ligne voulue.
+const ouvrirEntree = async (page, sel) => {
+  if (!(await page.locator(`${sel}:visible`).count())) {
+    const rond = page.locator('button[aria-label="Menu"]:visible');
+    if (await rond.count()) await rond.first().click(); else await page.locator('[data-guide="bureau-nav.plus"]:visible').first().click();
+    await page.waitForTimeout(500);
+  }
+  // Tablette : Clients et Salariés de « Plus ⋯ » (groupe dzp-menu__tablette) n'ont que leur data-testid.
+  const alt = { '[data-guide="bureau-nav.clients"]': '[data-testid=menu-clients]', '[data-guide="bureau-nav.salaries"]': '[data-testid=menu-salaries]' }[sel];
+  const cible = alt && !(await page.locator(`${sel}:visible`).count()) ? alt : sel;
+  await page.locator(`${cible}:visible`).first().click();
+};
+
 // ═════════════════════ Ordinateur 1440 × 900 ═════════════════════
 {
   sim.reinitialiser();
   const { page, ctx, erreurs } = await sim.page({ ui: 2, largeur: 1440, hauteur: 900, attente: ATT });
   page.on('dialog', (d) => d.accept()); // window.confirm d'avant (suppression d'un document) : accepté
-  const nav = (g) => page.locator(`[data-guide="bureau-nav.${g}"]`).first();
+  const nav = (g) => ({ click: () => ouvrirEntree(page, `[data-guide="bureau-nav.${g}"]`) });
 
   // ── Salariés (EQ01) ──
   await cycle(page, 'EQ01 Salariés', () => nav('salaries').click(), 'Salariés', { capture: 'EQ01-salaries-1440' });
@@ -266,7 +280,7 @@ async function cycle(page, nom, ouvrir, attendu, { largeur = 1440, capture = nom
   sim.reinitialiser();
   const { page, ctx } = await sim.page({ ui: 2, largeur: 1440, hauteur: 900, attente: ATT });
   await page.route('**/rest/v1/time_entries?*reception=eq.avec*', (r) => r.fulfill({ status: 500, json: { message: 'panne' } }));
-  await page.locator('[data-guide="bureau-nav.reserves"]').first().click(); await pause(page, 1200);
+  await ouvrirEntree(page, '[data-guide="bureau-nav.reserves"]'); await pause(page, 1200);
   check(/Réserves illisibles/.test(await fenetre(page).innerText()), 'CL16 erreur : « Réserves illisibles pour le moment » dans le panneau (pas une liste vide)');
   await image(page, 'CL16-erreur-1440');
   sim.D.time_entries = sim.D.time_entries.filter((e) => e.reception !== 'avec');
@@ -279,25 +293,33 @@ async function cycle(page, nom, ouvrir, attendu, { largeur = 1440, capture = nom
 // ═════════════════════ Téléphone 390 et tablette 834 ═════════════════════
 for (const [largeur, hauteur] of [[390, 844], [834, 1112]]) {
   sim.reinitialiser();
-  const { page, ctx, erreurs } = await sim.page({ ui: 2, largeur, hauteur, hasTouch: true, attente: '.dzp-m-carte' });
+  const { page, ctx, erreurs } = await sim.page({ ui: 2, largeur, hauteur, hasTouch: true, attente: '.dzp-m-carte:visible, .dzp-table [data-testid=bubble]:visible' });
   await emailPret(page);
-  const menu = async (g) => { await page.locator('button[aria-label="Menu"]').first().click(); await pause(page, 500); await page.locator(g).locator('visible=true').first().click(); };
+  const menu = (g) => ouvrirEntree(page, g);
   const s = largeur === 390 ? '390' : '834';
-  await cycle(page, 'XM01 Chantiers', () => menu('[data-guide="bureau-nav.clients"]'), 'Chantiers', { largeur, capture: `XM01-chantiers-${s}` });
-  await menu('[data-guide="bureau-nav.clients"]'); await pause(page, 700);
-  await page.locator('[data-guide="bureau-clients.crayon"]').locator('visible=true').nth(1).click(); await pause(page, 800);
-  check(/FICHE CLIENT/i.test(await fenetre(page).innerText()), `XM02 (${largeur}) : fiche client en page`);
-  check((await deborde(page)) <= 1, `XM02 (${largeur}) : aucun défilement horizontal`);
-  await image(page, `XM02-fiche-client-${s}`);
-  await page.keyboard.press('Escape'); await pause(page);
+  // Intégration bureau v2 : « Chantiers » en page (XM01, XM02) est l'écran du TÉLÉPHONE ; depuis le planning 2b, la tablette 834 garde la grille et le tiroir
+  // « Clients » de l'ordinateur (CL01, CL02 : planning, hors lot 3 A) : XM01 / XM02 ne se contrôlent qu'au téléphone.
+  if (await page.locator('button[aria-label="Menu"]:visible').count()) {
+    await cycle(page, 'XM01 Chantiers', () => menu('[data-guide="bureau-nav.clients"]'), 'Chantiers', { largeur, capture: `XM01-chantiers-${s}` });
+    await menu('[data-guide="bureau-nav.clients"]'); await pause(page, 700);
+    await page.locator('[data-guide="bureau-clients.crayon"]').locator('visible=true').nth(1).click(); await pause(page, 800);
+    check(/FICHE CLIENT/i.test(await fenetre(page).innerText()), `XM02 (${largeur}) : fiche client en page`);
+    check((await deborde(page)) <= 1, `XM02 (${largeur}) : aucun défilement horizontal`);
+    await image(page, `XM02-fiche-client-${s}`);
+    await page.keyboard.press('Escape'); await pause(page);
+  } else console.log(`·  XM01 / XM02 (${largeur}) : tablette = tiroir Clients de l'ordinateur (planning 2a), écran téléphone non monté`);
   await cycle(page, 'XM03 Salariés', () => menu('[data-guide="bureau-nav.salaries"]'), 'Salariés', { largeur, capture: `XM03-salaries-${s}` });
   await cycle(page, 'XM04 Réserves', () => menu('[data-guide="bureau-nav.reserves"]'), 'Réserves', { largeur, capture: `XM04-reserves-${s}` });
-  if (await page.locator('button[aria-label="Menu"]').count()) {
-    await page.locator('button[aria-label="Menu"]').first().click(); await pause(page, 500);
-    const fo = await page.locator('[data-testid=mm-trainings]').count(); const em = await page.locator('[data-testid=mm-email]').count();
+  {
+    // Téléphone : menu ☰ (mm-*) ; tablette du planning 2a : « Plus ⋯ » (menu-*).
+    const tel = (await page.locator('button[aria-label="Menu"]:visible').count()) > 0;
+    const [selFo, selEm] = tel ? ['[data-testid=mm-trainings]', '[data-testid=mm-email]'] : ['[data-testid=menu-trainings]', '[data-testid=menu-email]'];
+    await page.locator(tel ? 'button[aria-label="Menu"]:visible' : '[data-guide="bureau-nav.plus"]:visible').first().click(); await pause(page, 500);
+    const fo = await page.locator(selFo).count(); const em = await page.locator(selEm).count();
     await page.keyboard.press('Escape'); await pause(page);
-    if (fo) await cycle(page, 'XM15 Formations', () => menu('[data-testid=mm-trainings]'), 'Formations', { largeur, capture: `XM15-formations-${s}` });
-    if (em) await cycle(page, 'XM16 Envoyer par e-mail', () => menu('[data-testid=mm-email]'), 'Envoyer par e-mail', { largeur, capture: `XM16-email-${s}` });
+    if (await page.locator('[data-testid=menu-plus]:visible').count()) { await page.mouse.click(5, largeur > 500 ? 600 : 400); await pause(page); }
+    if (fo) await cycle(page, 'XM15 Formations', () => menu(selFo), 'Formations', { largeur, capture: `XM15-formations-${s}` });
+    if (em) await cycle(page, 'XM16 Envoyer par e-mail', () => menu(selEm), 'Envoyer par e-mail', { largeur, capture: `XM16-email-${s}` });
   }
   check((await largeurPage(page)) <= largeur, `${largeur} px : page de ${await largeurPage(page)} px, aucun défilement horizontal`);
   check(erreurs.length === 0, `${largeur} px : aucune erreur de page (${erreurs.join(' | ') || '—'})`);

@@ -21,7 +21,9 @@ fs.mkdirSync(SH, { recursive: true });
 let ok = 0, ko = 0;
 const controle = (n, c, m) => { if (c) ok++; else ko++; console.log(`${c ? 'OK    ' : 'ÉCHEC '} (${n}) ${m}`); };
 const sim = await demarrer({ out: OUT, port: Number(PORT) });
-const ATTENTE_V2 = '.dzp-table .dzp-bulle, .dzp-m-menu';
+// Intégration bureau v2 : le téléphone du planning 2b remplace « .dzp-m-menu » par le rond ☰ [data-guide="bureau-nav.menu"] (même menu).
+const MENU_TEL = '[data-guide="bureau-nav.menu"]:visible';
+const ATTENTE_V2 = `.dzp-table .dzp-bulle:visible, .dzp-table [data-testid=bubble]:visible, ${MENU_TEL}`;
 const PAGE = '[data-testid="stats-v2"]';
 const pret = async (page) => { await page.waitForSelector(`${PAGE}[data-etat="ok"]`, { timeout: 20000 }); await page.waitForTimeout(900); };
 const minutesDe = (txt) => { const m = /(\d+) h(?: (\d+))?/.exec(txt || ''); return m ? Number(m[1]) * 60 + Number(m[2] || 0) : 0; };
@@ -61,6 +63,10 @@ const ref = {};
   // C2 : les en-têtes de jour de la grille (heures envoyées) et le total de la barre.
   const grille = await page.$$eval('.dzp-table thead .dzp-jour__sub', (l) => l.map((e) => e.textContent || ''));
   const joursGrille = grille.map(minutesDe);
+  // Intégration bureau v2 : l'en-tête de jour du planning 1a (planche 1a) affiche la CHARGE prévue arrondie à l'heure (« 5 interv. · 37 h »), plus les heures
+  // envoyées de la grille v2b ; la référence devient alors : jours passés = heures envoyées arrondies, et Σ semaine = tuile « Heures envoyées » du bandeau.
+  const mode1a = grille.some((t) => /interv\./.test(t));
+  const tuileEnvoyees = mode1a ? Number((await page.textContent('[data-testid="stat-heures"] .dzp-total__n b').catch(() => '')) || NaN) : NaN;
   await page.click('[data-testid="stat-stats"]');
   await pret(page);
   const old = await page.$('[data-testid=team-stats]');
@@ -69,7 +75,12 @@ const ref = {};
 
   const P = await lirePiliers(page);
   const sem = P.map((p) => p.m);
-  controle(2, P.length === 7 && joursGrille.length === 7 && sem.every((m, i) => m === joursGrille[i]),
+  if (mode1a) {
+    const passes = P.map((p, i) => [p, i]).filter(([p]) => String(p.from).slice(0, 10) < '2026-10-15');
+    const somme = sem.reduce((a, b) => a + b, 0);
+    controle(2, P.length === 7 && joursGrille.length === 7 && passes.length === 3 && passes.every(([p, i]) => Math.round(p.m / 60) * 60 === joursGrille[i]) && Math.round(somme / 60) === tuileEnvoyees,
+      `planning 1a : jours passés ${passes.map(([p]) => (p.m / 60).toFixed(2)).join(' · ')} h ≈ en-têtes ${passes.map(([, i]) => joursGrille[i] / 60).join(' · ')} h (arrondi à l'heure) ; Σ semaine ${(somme / 60).toFixed(2)} h = tuile « Heures envoyées » ${tuileEnvoyees} h`);
+  } else controle(2, P.length === 7 && joursGrille.length === 7 && sem.every((m, i) => m === joursGrille[i]),
     `piliers ${sem.map((m) => (m / 60).toFixed(2)).join(' · ')} h = en-têtes de la grille ${joursGrille.map((m) => (m / 60).toFixed(2)).join(' · ')} h`);
 
   // C3 : mêmes totaux que l'ancien popup (= CSV de paie, cockpit).
@@ -210,10 +221,14 @@ const ref = {};
 // ── 360 (téléphone, menu ☰) et 834 (tablette) ─────────────────────────────
 for (const [w, h] of [[360, 780], [834, 1112]]) {
   const { page, ctx } = await sim.page({ ui: 2, largeur: w, hauteur: h, attente: ATTENTE_V2, hasTouch: w < 400 });
-  if (await page.locator('.dzp-m-menu').first().isVisible()) {
-    await page.click('.dzp-m-menu'); await page.waitForTimeout(400);
+  if (await page.locator(MENU_TEL).first().isVisible()) {
+    await page.click(MENU_TEL); await page.waitForTimeout(400);
     await page.click('[data-testid="mm-stats"]');
-  } else await page.click('[data-testid="stat-stats"]');
+  } else {
+    // Tablette du planning 2a : « Statistiques » est dans « Plus ⋯ » (la barre unique n'a pas d'onglet).
+    if (!(await page.locator('[data-testid="stat-stats"]:visible').count())) { await page.click('[data-guide="bureau-nav.plus"]:visible'); await page.waitForTimeout(400); }
+    await page.click('[data-testid="stat-stats"]:visible');
+  }
   await pret(page);
   const d = await debord(page);
   await page.locator('[data-testid="sx-pilier"]').nth(2).click(); await page.waitForTimeout(600);
