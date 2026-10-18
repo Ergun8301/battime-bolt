@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { reloadCompanySettings, useCompanySettings } from '@/lib/company-settings';
@@ -8,6 +8,11 @@ import AdminPlanning from '@/components/admin-planning';
 import SubscribePanel from '@/components/subscribe-panel';
 import { isPreviewHost } from '@/lib/hosting';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau (v2, ?ui=2 sur aperçu) : RG12, RG13, RG15, habillage chargé en différé seulement avec le drapeau. Le paiement (SubscribePanel → stripe-checkout),
+// le blocage et l'attente d'activation ne changent pas.
+const AbonnementV2 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.AbonnementV2 })));
 
 const ADMIN_CSS = `
 /* Canvas de l'app : parchemin chaud (crème plus prononcé, vers le doré sans
@@ -74,6 +79,7 @@ const ADMIN_CSS = `
 
 export default function AdminPage() {
   const { user } = useAuth();
+  const ui2b = useBureauUi2();
   const [trial, setTrial] = useState<{ ends: string | null; status: string } | null>(null);
   const [subOpen, setSubOpen] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -160,7 +166,8 @@ export default function AdminPage() {
     <div className="bt-admin">
       <style dangerouslySetInnerHTML={ADMIN_CSS_HTML} />
 
-      {activating && (
+      {activating && ui2b && <Suspense fallback={null}><AbonnementV2 mode="activation" /></Suspense>}
+      {activating && !ui2b && (
         <div className="bt-activating">
           <div className="bt-activating-box">
             <div className="bt-spin" />
@@ -170,7 +177,9 @@ export default function AdminPage() {
         </div>
       )}
 
-      {blocked ? (
+      {blocked && ui2b ? (
+        <Suspense fallback={null}><AbonnementV2 mode="blocage" workerCount={workerCount} apercu={!paywallEnforced} Panneau={SubscribePanel} /></Suspense>
+      ) : blocked ? (
         <div className="bt-pw">
           <div className="bt-pw-grid" />
           <div className="bt-pw-glow" />
@@ -196,6 +205,8 @@ export default function AdminPage() {
         <AdminPlanning trial={{ inTrial, expired, daysLeft }} onSubscribe={() => setSubOpen(true)} onWorkerCount={setWorkerCount} />
       )}
 
+      {ui2b && <Suspense fallback={null}><AbonnementV2 mode="fenetre" open={subOpen} onOpenChange={setSubOpen} workerCount={workerCount} Panneau={SubscribePanel} /></Suspense>}
+      {!ui2b && (
       <Dialog open={subOpen} onOpenChange={setSubOpen}>
         {/* Lot 11 : tient en largeur ET en hauteur (défile au téléphone) ; marge du
             haut pour le badge « Recommandé », posé 12 px au-dessus de sa carte. */}
@@ -208,6 +219,7 @@ export default function AdminPage() {
           </div>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }

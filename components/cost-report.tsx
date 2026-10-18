@@ -30,7 +30,7 @@
 // Les montants d'achat et les taux horaires sont des données du bureau : la
 // fonction SQL et la table des dépenses sont fermées aux salariés.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { addExpense as addExpenseWrite } from '@/lib/admin-writes';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -50,6 +50,10 @@ import { ratesByUser, realLabourCost, supabaseCostSource, useAiEnabled } from '@
 // Lot 23 : le bilan du chantier annonce les MÊMES chiffres que cet écran parce qu'il appelle les mêmes règles
 // (format des heures et des euros, catégories de dépenses, pourcentage de budget) : une seule copie.
 import { budgetProgress, EXPENSE_CATEGORIES as CATEGORIES, EXPENSE_LABEL as CATEGORY_LABEL, fmtEur, fmtH } from '@/supabase/functions/_shared/chantier-termine';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau (v2, ?ui=2 sur aperçu) : habillage ST03 / ST04 / XM06, chargé en différé seulement quand le drapeau est actif. Logique ci-dessous inchangée.
+const CoutV2 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.CoutV2 })));
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId?: string }
 
@@ -133,6 +137,7 @@ const CR_CSS = `
 // Lot 10 (règle anti-flash) : objet FIXE au niveau du module — un `{ __html }`
 // neuf à chaque rendu fait réécrire la feuille de style par React.
 const CR_HTML = { __html: CR_CSS + REAL_COST_CSS };
+const REAL_HTML = { __html: REAL_COST_CSS }; // v2 : seulement la ligne « coût réel »
 
 type Preset = 'month' | 'week' | 'custom';
 
@@ -356,6 +361,49 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
     if (error || !data || data.length === 0) { toast.error('Suppression impossible.'); return; }
     setExpenses((p) => p.filter((x) => x.id !== e.id));
   };
+
+  const ui2 = useBureauUi2();
+  if (ui2) {
+    // Le bloc « coût réel » d'un chantier : le même calcul que la ligne v1 ci-dessous (rien quand la fonction est éteinte).
+    const coutReel = (s: SiteAgg) => {
+      if (!(realRates.size > 0 && s.minutes > 0)) return null;
+      const period = realLabourCost(Array.from(s.workers.entries()).map(([uid, w]) => [uid, w.minutes] as [string, number]), realRates);
+      const b = budgets.get(s.id);
+      const whole = b?.usedByUser ? realLabourCost(Array.from(b.usedByUser.entries()), realRates) : null;
+      return (
+        <>
+          <style dangerouslySetInnerHTML={REAL_HTML} />
+          <RealCostLine cost={period.cost} unpricedUsers={period.unpricedUsers} scope="période" />
+          {whole && <RealCostLine cost={whole.cost} unpricedUsers={whole.unpricedUsers} scope={`tout le chantier${b?.amount ? ` · budget ${fmtEur(b.amount)}` : ''}`} />}
+        </>
+      );
+    };
+    return (
+      <Suspense fallback={null}>
+        <CoutV2
+          open={open} onOpenChange={onOpenChange} preset={preset} setPreset={setPreset}
+          periode={`${format(effectiveRange.from, 'd MMM', { locale: fr })} → ${format(effectiveRange.to, 'd MMM yyyy', { locale: fr })}`}
+          regles={{ fmtH, fmtEur, categories: CATEGORIES, libelle: CATEGORY_LABEL, budget: (b) => budgetProgress({ hours: b.hours, amount: b.amount, usedMinutes: b.usedMinutes, usedCost: b.usedCost }) }}
+          creneau={(
+            <Popover>
+              <PopoverTrigger asChild>
+                <button type="button" aria-pressed={preset === 'custom'}><CalendarRange className="h-4 w-4" aria-hidden="true" /> Créneau</button>
+              </PopoverTrigger>
+              <PopoverContent className="bt-skin w-auto p-0" align="end">
+                <Calendar mode="range" numberOfMonths={1} locale={fr} selected={range} onSelect={(r) => { setRange(r); setPreset('custom'); }} />
+              </PopoverContent>
+            </Popover>
+          )}
+          infoTaux={<InfoTip text="Leurs heures sont comptées, pas leur coût. Renseignez le taux dans la fiche du salarié." />}
+          loading={loading} failed={failed} sites={sites} depenses={expenses} depensesDe={(id) => expensesBySite.get(id) || []} totals={totals}
+          missingRates={missingRates} budgets={budgets} expanded={expanded} setExpanded={setExpanded} coutReel={coutReel}
+          formOpen={formOpen} setFormOpen={setFormOpen} activeSites={activeSites} newSite={newSite} setNewSite={setNewSite}
+          newCat={newCat} setNewCat={(v) => setNewCat(v as CategoryKey)} newLabel={newLabel} setNewLabel={setNewLabel} newAmount={newAmount} setNewAmount={setNewAmount}
+          newDate={newDate} setNewDate={setNewDate} saving={saving} addExpense={addExpense} delExpense={delExpense}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

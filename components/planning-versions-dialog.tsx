@@ -17,7 +17,7 @@
 // la fenêtre ne se ferme pas et aucun second clic n'est pris en compte ; si le
 // planning a bougé depuis l'aperçu, rien n'est fait et l'aperçu est refait.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { History, Loader2, Undo2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,11 @@ import {
 } from '@/lib/planning-versions';
 import { nothingToDo, versionSize, versionTitle } from '@/supabase/functions/_shared/planning-versions';
 import { dayLabel, hhmm, whenLabel } from '@/supabase/functions/_shared/traces';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau (v2, ?ui=2 sur aperçu) : ST05 à ST08, XM13, la coque v2 (panneau, feuille lot3b-v2.css) chargée en différé seulement avec le drapeau.
+// La liste, l'aperçu, le retour, « Annuler » et « Garder cette version » sont les MÊMES (VersionsBody, lib/planning-versions.ts).
+const CoqueL3 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.CoqueL3 })));
 
 export interface VersionNames { users: Record<string, string>; worksites: Record<string, string> }
 
@@ -82,6 +87,18 @@ const MAX_LINES = 8;
 export default function PlanningVersionsDialog({ open, onOpenChange, weekLabel, ...rest }: Props) {
   // Un retour en cours : la fenêtre reste ouverte jusqu'au message final.
   const working = useRef(false);
+  const ui2 = useBureauUi2();
+  if (ui2) {
+    return (
+      <Suspense fallback={null}>
+        <CoqueL3 open={open} onOpenChange={(o) => { if (!o && working.current) return; onOpenChange(o); }} kicker={`Plus ⋯ · ${weekLabel}`} titre="Versions du planning"
+          testId="versions-dialog" portee="dz-l3-versions">
+          <style dangerouslySetInnerHTML={PV_HTML} />
+          {open && <VersionsBody key={rest.monday} working={working} v2 {...rest} />}
+        </CoqueL3>
+      </Suspense>
+    );
+  }
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && working.current) return; onOpenChange(o); }}>
       <DialogContent className="bt-skin bt-pv max-w-2xl max-h-[86vh] overflow-y-auto overflow-x-hidden" data-testid="versions-dialog">
@@ -98,7 +115,7 @@ export default function PlanningVersionsDialog({ open, onOpenChange, weekLabel, 
 
 type Result = { ok: boolean; message: string; undo: PlanningVersion | null; undone?: boolean; after?: string; lost?: string; left?: { cell: VersionCell; reason: string }[] };
 
-function VersionsBody({ companyId, userId, monday, names, onChanged, working }: Omit<Props, 'open' | 'onOpenChange' | 'weekLabel'> & { working: { current: boolean } }) {
+function VersionsBody({ companyId, userId, monday, names, onChanged, working, v2 = false }: Omit<Props, 'open' | 'onOpenChange' | 'weekLabel'> & { working: { current: boolean }; v2?: boolean }) {
   const [list, setList] = useState<PlanningVersion[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -191,9 +208,11 @@ function VersionsBody({ companyId, userId, monday, names, onChanged, working }: 
     <div className="bt-pv-body">
       <div className="bt-pv-top">
         <p className="bt-pv-note">L’assistant garde une version chaque fois qu’il change le planning de la semaine. Revenir à une version ne touche jamais aux heures ni aux absences.</p>
+        {!v2 && (
         <button type="button" className="bt-pv-keep" onClick={keep} disabled={!!busy} data-testid="versions-keep">
           {busy === 'keep' ? 'Enregistrement…' : 'Garder cette version'}
         </button>
+        )}
       </div>
 
       {result && (
@@ -250,6 +269,13 @@ function VersionsBody({ companyId, userId, monday, names, onChanged, working }: 
                       <p className="bt-pv-note"><Loader2 className="inline h-4 w-4 animate-spin motion-reduce:animate-none" /> Je compare avec le planning actuel…</p>
                     ) : (<>
                       <p className="bt-pv-sum" data-testid="versions-summary">{nothingToDo(p.counts) ? p.summary : `Revenir à la V${v.number} : ${p.summary}`}</p>
+                      {v2 && !nothingToDo(p.counts) && (
+                        <div className="dz-l3-stats" data-n="3" data-testid="versions-chiffres">
+                          <div className="dz-l3-stat"><span>Remises</span><b>{p.counts.added}</b></div>
+                          <div className="dz-l3-stat"><span>Retirées</span><b>{p.counts.removed}</b></div>
+                          <div className="dz-l3-stat"><span>Gardées</span><b>{p.counts.kept}</b>{p.counts.keptReasons.length > 0 && <small>{p.counts.keptReasons.join(', ')}</small>}</div>
+                        </div>
+                      )}
                       {group('Remises', p.plan.add.map((a) => line(a.cell)))}
                       {group('Retirées', p.plan.remove.map(line), 'out')}
                       {group('Modifiées', p.plan.update.map((u) => `${line(u.from)} → ${line(u.to)}`))}
@@ -273,6 +299,13 @@ function VersionsBody({ companyId, userId, monday, names, onChanged, working }: 
         </div>
       )}
       <p className="bt-pv-note">Réservé au bureau. Une version ne se modifie pas et ne s’efface pas ; les demandes faites à l’assistant sont gardées 12 mois.</p>
+      {v2 && (
+        <div className="dz-l3-bas">
+          <button type="button" className="bt-pv-keep dz-l3-principal" onClick={keep} disabled={!!busy} data-testid="versions-keep">
+            {busy === 'keep' ? 'Enregistrement…' : 'Garder cette version'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

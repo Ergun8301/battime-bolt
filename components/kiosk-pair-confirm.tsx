@@ -22,7 +22,7 @@
 //   passe à la vérification de bout en bout au lieu d'afficher une erreur.
 // · Aucun secret affiché : ni l'identifiant de demande, ni jeton.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/auth-provider';
@@ -33,6 +33,11 @@ import { clearPairRequest, peekPairRequest } from '@/lib/kiosk-pair-stash';
 import { supabase } from '@/lib/supabase';
 import { readSupportSession } from '@/lib/support';
 import { minutesLabel, SUPPORT_READONLY_MESSAGE } from '../supabase/functions/_shared/kiosk-pair';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau (v2, ?ui=2 sur aperçu) : RG08, la coque v2 (fenêtre centrée, feuille lot3b-v2.css), chargée en différé seulement avec le drapeau.
+// Le contenu, les phases et les appels à la fonction `kiosk` sont les MÊMES.
+const CoqueL3 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.CoqueL3 })));
 
 interface Lookup {
   available?: boolean;
@@ -235,15 +240,8 @@ export default function KioskPairConfirm({ onClose }: { onClose: () => void }) {
     else void confirm(lk, c, false);
   };
 
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o) close(); }}>
-      <DialogContent className="bt-skin kpc max-w-md">
-        <style dangerouslySetInnerHTML={CSS_HTML} />
-        <DialogClose className="kpc-x" aria-label="Fermer"><X className="h-5 w-5" aria-hidden="true" /></DialogClose>
-        <DialogHeader>
-          <DialogTitle>Associer cette tablette ?</DialogTitle>
-          <DialogDescription className="sr-only">Touchez le code de vérification affiché sur la tablette pour la relier à votre entreprise.</DialogDescription>
-        </DialogHeader>
+  const ui2 = useBureauUi2();
+  const corps = (
         <div className="kpc-body" data-testid="kpc" ref={bodyRef}>
           {phase.kind === 'loading' && <p className="kpc-state" role="status">Recherche de la tablette…</p>}
 
@@ -318,6 +316,28 @@ export default function KioskPairConfirm({ onClose }: { onClose: () => void }) {
             </>
           )}
         </div>
+  );
+  if (ui2) {
+    return (
+      <Suspense fallback={null}>
+        <CoqueL3 open onOpenChange={(o) => { if (!o) close(); }} forme="centree" titre="Associer cette tablette ?" testId="associer-v2" portee="dz-l3-associer">
+          <style dangerouslySetInnerHTML={CSS_HTML} />
+          {corps}
+        </CoqueL3>
+      </Suspense>
+    );
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) close(); }}>
+      <DialogContent className="bt-skin kpc max-w-md">
+        <style dangerouslySetInnerHTML={CSS_HTML} />
+        <DialogClose className="kpc-x" aria-label="Fermer"><X className="h-5 w-5" aria-hidden="true" /></DialogClose>
+        <DialogHeader>
+          <DialogTitle>Associer cette tablette ?</DialogTitle>
+          <DialogDescription className="sr-only">Touchez le code de vérification affiché sur la tablette pour la relier à votre entreprise.</DialogDescription>
+        </DialogHeader>
+        {corps}
       </DialogContent>
     </Dialog>
   );
