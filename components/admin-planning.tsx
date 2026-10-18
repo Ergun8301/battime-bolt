@@ -4317,7 +4317,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       {/* Lot 3 : lecture seule ; `workers` (les vrais comptes), jamais la démo. */}
       {tracesOn && user?.company_id && (
-        <TracesDialog open={tracesOpen} onOpenChange={setTracesOpen} companyId={user.company_id} viewerId={user.id} office workers={workers} />
+        <TracesDialog open={tracesOpen} onOpenChange={setTracesOpen} companyId={user.company_id} viewerId={user.id} office workers={workers} v2={ui2b} />
       )}
 
       {/* Lot 8 : la semaine AFFICHÉE ; un retour relit le planning. */}

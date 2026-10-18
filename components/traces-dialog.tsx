@@ -12,7 +12,7 @@
 // viennent de la base (lib/traces.ts) ; la mise en forme de
 // supabase/functions/_shared/traces.ts (testée sous Deno).
 
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -22,6 +22,11 @@ import {
   daysAgoISO, isSystemTrace, ORIGIN_LABEL, traceChange, traceConcerned, traceTitle, traceWho, visibleTraces, whenLabel, WORKER_DAYS, type TraceRow,
 } from '@/supabase/functions/_shared/traces';
 import { isFuturePeriod, periodFor, periodLabel, shiftPeriod, type Period } from '@/supabase/functions/_shared/team-stats-core';
+
+// Design bureau (v2, ?ui=2 sur aperçu) : ST09, XM14, la coque v2 (panneau large, feuille lot3b-v2.css), chargée en différé seulement avec le drapeau,
+// et SEULEMENT pour le bureau (`office`) : la vue du salarié (/poseur) ne change jamais ici. La liste, les filtres et la lecture sont les MÊMES.
+// Le drapeau vient de l'appelant (`v2`, passé par admin-planning.tsx) : ce fichier, aussi chargé par /poseur, n'importe pas lib/use-bureau-ui2.ts.
+const CoqueL3 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.CoqueL3 })));
 
 interface Props {
   open: boolean;
@@ -34,6 +39,8 @@ interface Props {
   /** Bureau : la liste du filtre « salarié » (les vrais comptes, jamais la démo) ; s'y
    *  ajoutent les personnes citées par les traces (un compte archivé, par exemple). */
   workers?: { id: string; first_name: string; last_name: string }[];
+  /** Design du bureau v2 (?ui=2), donné par le bureau. */
+  v2?: boolean;
 }
 
 const TR_CSS = `
@@ -75,7 +82,18 @@ const TR_HTML = { __html: TR_CSS };
 const todayISO = () => format(new Date(), 'yyyy-MM-dd');
 const dotClass = (t: TraceRow) => (t.action === 'remise' ? 'dot back' : t.action === 'supprimee' || t.action === 'retiree' ? 'dot' : 'dot moved');
 
-export default function TracesDialog({ open, onOpenChange, companyId, viewerId, office = false, workers = [] }: Props) {
+export default function TracesDialog({ open, onOpenChange, companyId, viewerId, office = false, workers = [], v2 = false }: Props) {
+  const ui2 = v2 && office;
+  if (ui2) {
+    return (
+      <Suspense fallback={null}>
+        <CoqueL3 open={open} onOpenChange={onOpenChange} large kicker="Plus ⋯ · Lecture seule" titre="Interventions supprimées ou décalées" testId="traces-dialog" portee="dz-l3-traces">
+          <style dangerouslySetInnerHTML={TR_HTML} />
+          {open && <TracesBody companyId={companyId} viewerId={viewerId} office={office} workers={workers} />}
+        </CoqueL3>
+      </Suspense>
+    );
+  }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin bt-tr max-w-2xl max-h-[86vh] overflow-y-auto overflow-x-hidden" data-testid="traces-dialog">

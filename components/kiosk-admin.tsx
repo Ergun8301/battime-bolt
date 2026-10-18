@@ -44,7 +44,7 @@
 // admin et l'interrupteur) ; ici on ne fait que LIRE, sous RLS. Les relectures
 // gardent le même objet quand rien n'a changé (keep) : rien ne se redessine.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import qrcode from 'qrcode-generator';
 import { Check, Copy, MonitorSmartphone } from 'lucide-react';
@@ -58,9 +58,14 @@ import { TimeField } from '@/components/time-field';
 import { callKiosk, type KioskPairingCode, type KioskSettings } from '@/lib/kiosk-client';
 import { kioskNotices } from '../supabase/functions/_shared/kiosk-client-state';
 import { KioskNotices } from '@/components/kiosk-health';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
 
 // Lot 12 : la section du QR fixe, chargée seulement à l'ouverture de la fenêtre.
 const KioskFixedQr = dynamic(() => import('@/components/kiosk-fixed-qr'), { ssr: false });
+// Design bureau (v2, ?ui=2 sur aperçu) : coque v2 (panneau, feuille lot3b-v2.css) et la question « Déconnecter la tablette ? » en fenêtre (RG10),
+// chargées en différé seulement quand le drapeau est actif. Le contenu, l'état et les appels à la fonction `kiosk` sont les MÊMES.
+const CoqueL3 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.CoqueL3 })));
+const DeconnecterV2 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.DeconnecterV2 })));
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId: string }
 
@@ -472,16 +477,11 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
     setTimeout(() => helpRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }), 50);
   };
 
+  const ui2 = useBureauUi2();
   // Fermer (Échap, ✕, clic à côté) quitte d'abord le champ d'heure en cours :
   // l'heure tapée est enregistrée, pas perdue.
-  return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) (document.activeElement as HTMLElement | null)?.blur?.(); onOpenChange(o); }}>
-      <DialogContent className="bt-skin max-w-md">
-        <style dangerouslySetInnerHTML={CSS_HTML} />
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><MonitorSmartphone className="h-5 w-5" /> Borne de pointage</DialogTitle>
-          <DialogDescription className="sr-only">Code pour relier la tablette de pointage, état de la tablette et horaires d’ouverture.</DialogDescription>
-        </DialogHeader>
+  const fermer = (o: boolean) => { if (!o) (document.activeElement as HTMLElement | null)?.blur?.(); onOpenChange(o); };
+  const corps = (
         <div className="ka">
           <div className="ka-status" data-testid="ka-status">
             <span className={`ka-dot${latest ? (late ? ' late' : ' on') : ''}`} aria-hidden="true" />
@@ -495,7 +495,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
                 Déconnecter la tablette
               </button>
             )}
-            {latest && confirmDisc && (
+            {latest && confirmDisc && !ui2 && (
               <span className="ka-confirm" data-testid="ka-disconnect-confirm">
                 <button type="button" className="ka-btn danger" onClick={disconnect} disabled={discBusy}>
                   {discBusy ? 'Déconnexion…' : 'Oui, déconnecter'}
@@ -611,6 +611,30 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
           </details>
           {open && <KioskFixedQr />}
         </div>
+  );
+  if (ui2) {
+    let question: ReactNode = null;
+    if (latest && confirmDisc) question = <DeconnecterV2 busy={discBusy} onConfirm={disconnect} onCancel={() => setConfirmDisc(false)} />;
+    return (
+      <Suspense fallback={null}>
+        <CoqueL3 open={open} onOpenChange={fermer} kicker="Borne" titre="Borne de pointage" testId="borne-v2" portee="dz-l3-borne">
+          <style dangerouslySetInnerHTML={CSS_HTML} />
+          {corps}
+          {question}
+        </CoqueL3>
+      </Suspense>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={fermer}>
+      <DialogContent className="bt-skin max-w-md">
+        <style dangerouslySetInnerHTML={CSS_HTML} />
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><MonitorSmartphone className="h-5 w-5" /> Borne de pointage</DialogTitle>
+          <DialogDescription className="sr-only">Code pour relier la tablette de pointage, état de la tablette et horaires d’ouverture.</DialogDescription>
+        </DialogHeader>
+        {corps}
       </DialogContent>
     </Dialog>
   );

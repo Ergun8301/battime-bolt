@@ -5,7 +5,7 @@
 // (n'écrit QUE les champs humains, jamais Stripe/abonnement). Le logo est stocké
 // dans le bucket `company-logos` (dossier {company_id}/…), URL publique dans logo_url.
 
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
@@ -19,7 +19,7 @@ import KioskAdmin from '@/components/kiosk-admin';
 import SupportAccess from '@/components/support-access';
 import { InfoTip } from '@/components/ui/info-tip';
 import { readSupportSession, supabaseSupportSource } from '@/lib/support';
-import { toast } from 'sonner';
+import { toast } from 'sonner'; import { useBureauUi2 } from '@/lib/use-bureau-ui2';
 
 // Lot 12 : le QR fixe encore actif alors que la borne est coupée (chargé seulement dans ce cas rare).
 const KioskFixedQr = dynamic(() => import('@/components/kiosk-fixed-qr'), { ssr: false });
@@ -149,6 +149,11 @@ function SetSection({ id, testId, title, hint, icon, open, onToggle, guide, chil
     </section>
   );
 }
+
+// Design bureau (v2, ?ui=2 sur aperçu) : la coque v2 (panneau 760 px, feuille lot3b-v2.css), chargée en différé seulement quand le drapeau est actif.
+// Le contenu ci-dessous (après les rubriques, pour garder les numéros de ligne des ancres du registre) (champs, rubriques, gestionnaires, « Enregistrer ») est le MÊME dans les deux rendus.
+const CoqueL3 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.CoqueL3 })));
+const SupportV2 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.SupportV2 })));
 
 export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTraces }: Props) {
   const { user } = useAuth();
@@ -475,14 +480,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
     }
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bt-skin max-w-2xl max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Building2 className="h-5 w-5 shrink-0" /> Réglages de l&apos;entreprise</DialogTitle>
-        </DialogHeader>
-        <style dangerouslySetInnerHTML={SET_HTML} />
-        {loading ? (
+  const ui2 = useBureauUi2();
+  const corps = (
+        loading ? (
           <div className="bt-set-load">Chargement…</div>
         ) : (
           <div className="bt-set">
@@ -875,7 +875,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
                 </div>
               </div>
 
-              {supportEnabled && <SupportAccess source={supabaseSupportSource} />}
+              {supportEnabled && <SupportAccess source={supabaseSupportSource} vueV2={ui2 ? SupportV2 : undefined} />}
             </SetSection>
 
             {/* Lot 3 : lecture seule, hors des rubriques (rien à enregistrer). Absente
@@ -900,11 +900,33 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
               </button>
             </div>
           </div>
-        )}
+        )
+  );
+  const borne = kioskEnabled && user?.company_id ? <KioskAdmin open={kioskOpen} onOpenChange={setKioskOpen} companyId={user.company_id} /> : null;
+  if (ui2) {
+    return (
+      <>
+        <Suspense fallback={null}>
+          <CoqueL3 open={open} onOpenChange={onOpenChange} large kicker="Compte" titre="Réglages de l’entreprise" testId="reglages-v2" portee="dz-l3-reglages">
+            <style dangerouslySetInnerHTML={SET_HTML} />
+            {corps}
+          </CoqueL3>
+        </Suspense>
+        {borne}
+      </>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bt-skin max-w-2xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Building2 className="h-5 w-5 shrink-0" /> Réglages de l&apos;entreprise</DialogTitle>
+        </DialogHeader>
+        <style dangerouslySetInnerHTML={SET_HTML} />
+        {corps}
       </DialogContent>
-      {kioskEnabled && user?.company_id && (
-        <KioskAdmin open={kioskOpen} onOpenChange={setKioskOpen} companyId={user.company_id} />
-      )}
+      {borne}
     </Dialog>
   );
 }

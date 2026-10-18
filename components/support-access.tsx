@@ -6,12 +6,13 @@
 //
 // Les droits sont vérifiés par la base : ce composant n'affiche que l'état.
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState, type ComponentType } from 'react';
 import { Loader2, LifeBuoy, ShieldCheck } from 'lucide-react';
 import { InfoTip } from '@/components/ui/info-tip';
 import {
   describeEvent, fmtDateTime, SUPPORT_DURATIONS, type SupportAdminSource, type SupportHours, type SupportState,
 } from '@/lib/support';
+import type { SupportV2Props } from '@/components/design/bureau/support-v2';
 
 const CSS = `
 .sa{background:#FBF8F2;border:1px solid rgba(21,18,15,.1);border-radius:12px;padding:12px 14px;margin-top:4px}
@@ -37,9 +38,12 @@ const CSS = `
 .sa-empty{font-size:12.5px;color:#9a948a;margin:6px 0 0}
 `;
 
-interface Props { source: SupportAdminSource }
+// Design bureau (v2, ?ui=2 sur aperçu) · RG16 : la ligne et sa fenêtre « Autoriser le support BEMEXO ». La vue v2 est DONNÉE par l'appelant (`vueV2`,
+// chargée en différé par company-settings.tsx seulement avec le drapeau) : ce fichier, aussi lu par /apercu/acces-support, n'importe ni le drapeau ni la vue.
+// L'état, la durée et les appels (source.grant, source.revoke) sont les MÊMES.
+interface Props { source: SupportAdminSource; vueV2?: ComponentType<SupportV2Props> }
 
-export default function SupportAccess({ source }: Props) {
+export default function SupportAccess({ source, vueV2: SupportV2 }: Props) {
   const [state, setState] = useState<SupportState | null>(null);
   const [hours, setHours] = useState<SupportHours>(24);
   const [busy, setBusy] = useState(false);
@@ -61,6 +65,16 @@ export default function SupportAccess({ source }: Props) {
     setBusy(true); setErr(null);
     try { await fn(); await reload(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
+
+  if (SupportV2) {
+    return (
+      <Suspense fallback={null}>
+        <SupportV2 state={state} hours={hours} setHours={setHours} busy={busy} err={err}
+          onGrant={() => act(() => source.grant(hours))} onRevoke={() => act(() => source.revoke())}
+          durees={SUPPORT_DURATIONS} fmtDateTime={fmtDateTime} decrire={describeEvent} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="sa" data-testid="support-access">
