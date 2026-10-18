@@ -961,6 +961,8 @@ interface AdminPlanningProps {
 const ExporterV2 = lazy(() => import('@/components/design/bureau/exporter-v2'));
 const ClotureV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.ClotureV2 })));
 const ExportSalarieV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.ExportSalarieV2 })));
+// Statistiques v2 (?ui=2 sur aperçu seulement) : la page plein écran + fiche salarié, chargée en différé à l'ouverture ; sans drapeau, l'ancien popup.
+const StatistiquesV2 = lazy(() => import('@/components/design/bureau/statistiques-v2'));
 
 export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
@@ -4463,7 +4465,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
 
-      <TeamStats open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id} />
+      {ui2b ? (statsOpen && (
+        <Suspense fallback={null}>
+          <StatistiquesV2 open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id}
+            initiales={`${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase() || undefined} />
+        </Suspense>
+      )) : <TeamStats open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id} />}
 
       {aiOn && user?.role === 'admin' && (
         <AssistantBureau
