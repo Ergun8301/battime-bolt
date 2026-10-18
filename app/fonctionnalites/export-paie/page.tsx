@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA } from '@/lib/ippyx';
 import SeoPage, { JsonLd } from '@/components/seo-page';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'Export paie du BTP, prêt en un clic — BEMEXO',
   description:
     'En fin de mois, exportez un récapitulatif d’heures propre, prêt pour votre comptable. Heures exportées verrouillées, fini la ressaisie du lundi.',
@@ -50,6 +52,7 @@ export default function Page() {
         ],
       }} />
       <SeoPage
+        campaign="fonctionnalites-export-paie"
         kicker="Fonctionnalité · Export paie"
         crumbs={[{ label: 'Export paie', href: '/fonctionnalites/export-paie' }]}
         title={<>L’export paie, <em>prêt en un clic.</em></>}

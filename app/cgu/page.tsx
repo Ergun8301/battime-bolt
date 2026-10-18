@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA } from '@/lib/ippyx';
 import Link from 'next/link';
 import VitrineFonts from '@/components/vitrine-fonts';
+import IppyxSignature from '@/components/ippyx-signature';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: "Conditions Générales d'Utilisation — BEMEXO",
   description: "Conditions Générales d'Utilisation de BEMEXO, service édité par K.HABITAT (SAS) : règles d'accès et d'usage de l'application.",
   // Voir /cgv : formulation juridique proche, canonique explicite pour éviter
@@ -154,6 +157,7 @@ export default function CGUPage() {
           </p>
 
           <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS) · <button type="button" data-bx-cookies="">Gérer les cookies</button></div>
+          <IppyxSignature campaign="cgu" align="left" style={{ marginTop: 14 }} />
         </main>
       </div>
     </>

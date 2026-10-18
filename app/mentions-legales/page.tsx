@@ -1,9 +1,12 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA, ippyxHref } from '@/lib/ippyx';
 import { WEB_HOST } from '@/lib/hosting';
 import Link from 'next/link';
 import VitrineFonts from '@/components/vitrine-fonts';
+import IppyxSignature from '@/components/ippyx-signature';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'Mentions légales — BEMEXO',
   description: 'Mentions légales de BEMEXO, édité par K.HABITAT (SAS).',
   alternates: { canonical: 'https://bemexo.com/mentions-legales' },
@@ -72,6 +75,10 @@ export default function MentionsLegalesPage() {
             Contact : <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.
           </p>
           <p>Directeur de la publication : <strong>Ergun Kilic</strong>.</p>
+          <p>
+            Conception et réalisation du site : <strong>IPPYX</strong> —{' '}
+            <a href={ippyxHref('mentions-legales-credit')} target="_blank" rel="noopener">ippyx.com</a>.
+          </p>
 
           <h2>2. Hébergement</h2>
           <p>Le site et les données sont hébergés par les prestataires suivants :</p>
@@ -116,7 +123,8 @@ export default function MentionsLegalesPage() {
             <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.
           </p>
 
-          <div className="ml-foot">Conception et développement : IPPYX · © 2026 BEMEXO — K.HABITAT (SAS) · <button type="button" data-bx-cookies="">Gérer les cookies</button></div>
+          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS) · <button type="button" data-bx-cookies="">Gérer les cookies</button></div>
+          <IppyxSignature campaign="mentions-legales" align="left" style={{ marginTop: 14 }} />
         </main>
       </div>
     </>

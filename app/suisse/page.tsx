@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA } from '@/lib/ippyx';
 import SeoPage, { JsonLd } from '@/components/seo-page';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'Timbrage de chantier et suivi des heures — Suisse romande | BEMEXO',
   description:
     'BEMEXO : le timbrage de chantier sur mobile pour les entreprises de construction de Suisse romande (Genève, Vaud, Valais, Fribourg, Neuchâtel). Conforme à l’obligation d’enregistrement du temps de travail (LTr / OLT 1 art. 73).',
@@ -50,6 +52,7 @@ export default function Page() {
         ],
       }} />
       <SeoPage
+        campaign="suisse"
         kicker="Suisse romande"
         crumbs={[{ label: 'Suisse', href: '/suisse' }]}
         title={<>Le timbrage de chantier, <em>conforme au droit suisse.</em></>}

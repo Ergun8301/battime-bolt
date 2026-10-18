@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA } from '@/lib/ippyx';
 import SeoPage, { JsonLd } from '@/components/seo-page';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'Timbrage de chantier sur mobile — Suisse | BEMEXO',
   description:
     'Le timbrage de chantier sans badgeuse : vos ouvriers timbrent leurs heures depuis leur téléphone. Enregistrement fiable de la durée du travail, conforme au droit suisse, prêt pour la paie.',
@@ -51,6 +53,7 @@ export default function Page() {
         ],
       }} />
       <SeoPage
+        campaign="suisse-timbrage"
         kicker="Suisse · Timbrage"
         crumbs={[{ label: 'Suisse', href: '/suisse' }, { label: 'Timbrage de chantier', href: '/suisse/timbrage-chantier' }]}
         title={<>Le timbrage de chantier, <em>sur le téléphone.</em></>}

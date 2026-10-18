@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA } from '@/lib/ippyx';
 import SeoPage, { JsonLd } from '@/components/seo-page';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'Pointage sur chantier : la feuille d’heures qui se remplit toute seule — BEMEXO',
   description:
     'Vos salariés saisissent leurs heures depuis leur téléphone, directement sur le chantier. Chantier, début, fin — la journée part au bureau, prête pour la paie. Sans papier, sans ressaisie.',
@@ -55,6 +57,7 @@ export default function Page() {
         ],
       }} />
       <SeoPage
+        campaign="fonctionnalites-pointage"
         kicker="Fonctionnalité · Pointage"
         crumbs={[{ label: 'Pointage chantier', href: '/fonctionnalites/pointage-chantier' }]}
         title={<>Le pointage chantier, <em>en un geste.</em></>}

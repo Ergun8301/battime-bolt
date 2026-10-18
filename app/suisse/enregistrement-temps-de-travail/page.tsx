@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA } from '@/lib/ippyx';
 import SeoPage, { JsonLd } from '@/components/seo-page';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'Enregistrement du temps de travail en Suisse : vos obligations | BEMEXO',
   description:
     'Ce que dit la loi suisse sur l’enregistrement du temps de travail : art. 46 LTr, art. 73 OLT 1, et les allègements des art. 73a / 73b. Comment rester conforme sur le chantier avec un timbrage mobile.',
@@ -65,6 +67,7 @@ export default function Page() {
         ],
       }} />
       <SeoPage
+        campaign="suisse-enregistrement-temps"
         kicker="Suisse · Obligations légales"
         crumbs={[{ label: 'Suisse', href: '/suisse' }, { label: 'Enregistrement du temps de travail', href: '/suisse/enregistrement-temps-de-travail' }]}
         title={<>Enregistrer la durée du travail : <em>vos obligations en Suisse.</em></>}

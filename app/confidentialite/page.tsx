@@ -1,9 +1,12 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA } from '@/lib/ippyx';
 import { WEB_HOST } from '@/lib/hosting';
 import Link from 'next/link';
 import VitrineFonts from '@/components/vitrine-fonts';
+import IppyxSignature from '@/components/ippyx-signature';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'Politique de confidentialité — BEMEXO',
   description: 'Politique de confidentialité de BEMEXO, édité par K.HABITAT (SAS) — conforme au RGPD.',
   alternates: { canonical: 'https://bemexo.com/confidentialite' },
@@ -349,6 +352,7 @@ export default function ConfidentialitePage() {
           </p>
 
           <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS) · <button type="button" data-bx-cookies="">Gérer les cookies</button></div>
+          <IppyxSignature campaign="confidentialite" align="left" style={{ marginTop: 14 }} />
         </main>
       </div>
     </>
