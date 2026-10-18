@@ -34,12 +34,12 @@ export const ADAPTATIONS = {
     srcOpacity: src ? getComputedStyle(src).opacity : null,
   };
 });`, 'D4 : les repères visibles pendant le glisser sont ceux du planning v2 : la case visée porte .dzp-cible-msg (« Déposer ici » .mv / « Copier ici » .cp), le fantôme est [data-testid=drag-overlay] avec une pastille « + » (<i>), la bulle tenue porte data-glisse. Même information, même gestes ; le fantôme de la planche est une carte sombre (titre + horaire prévu) qui ne montre jamais les heures envoyées (overlayReal = faux)'],
-    ["=== '' && /Copier une case : cliquez dessus puis", "!== undefined && /Copier une case : cliquez dessus puis",
-      'v2b (SPEC-v2b « survol : infobulle (chantier, durée, qui l’a créée) ») : la bulle porte maintenant une infobulle voulue par la planche ; le contrôle garde l’astuce visible (même texte), il ne peut plus exiger l’absence de titre'],
-    ["/08:00–17:00/.test(await copyCell.innerText())", "/8 h–17 h/.test(await copyCell.innerText())",
-      'v2b : l’horaire de la bulle s’écrit « 8 h–17 h » (planche v2b, ligne 2 de la bulle), plus « 08:00–17:00 » ; même horaire prévu, toujours sans « à envoyer »'],
   ],
-  'absences-lot2': [],
+  'absences-lot2': [
+    ["const absLabel = async (p, first, day) => ((await cell(p, first, day).locator('.dzp-absence b').textContent({ timeout: 3000 }).catch(() => '')) || '').trim();",
+      "const ABS_2A = { 'CONGÉ': 'Congé', 'INTEMPÉRIE': 'Intempérie', 'ABSENT · MALADIE': 'Arrêt maladie', 'REPOS': 'Repos' };\nconst absLabel = async (p, first, day) => { const t = ((await cell(p, first, day).locator('.dzp-absence b').textContent({ timeout: 3000 }).catch(() => '')) || '').trim(); return ABS_2A[t] || t; };",
+      'Planche d’essai 2a : la case d’absence écrit son type en mono capitales (« CONGÉ », « INTEMPÉRIE », « ABSENT · MALADIE ») ; la copie relit le même libellé et le ramène au mot attendu (« Congé »…). Même absence, même type, même case'],
+  ],
   'versions-lot8': [
     ["const openVersions = async (p) => {\n  await p.click('[data-testid=\"corner-versions\"]');", "const openVersions = async (p) => {\n  await ouvrirPlus(p); await p.click('[data-testid=\"corner-versions\"]');",
       'W1 : « Versions du planning » est une ligne du menu « Plus ⋯ » (plus la petite flèche du coin de la grille) : on ouvre le menu, puis on touche la ligne ; même fenêtre ensuite'],
@@ -88,9 +88,11 @@ export const REPERES = [
   ['img.bt-pl-acct-av-img', '.dzp-compte__btn img'],
   ['.bt-pl-gridwrap', '.dzp-defile'], ['.bt-pl-grab', '.dzp-prise'], ['td.bt-pl-cell', 'td.dzp-td'], ['.bt-pl-cell', '.dzp-td'], ['.bt-pl-namebtn', '.dzp-nom-btn'], ['.bt-pl-name', '.dzp-nom'],
   ['.bt-pl-m-card', '.dzp-m-carte'], ['.bt-pl-daypill', '.dzp-m-jour'], ['.bt-pl-m-bubbtn', '.dzp-m-bulle'], ['.bt-pl-bub', '.dzp-bulle'], ['.bt-pl-abs-lbl', '.dzp-absence b'], ['.bt-pl-abs', '.dzp-absence'],
-  ['.bt-pl-cellfill', '.dzp-case'], ['.bt-pl-real-txt', '.dzp-bulle[data-etat="envoyee"] .dzp-bulle__heure'], ['.bt-pl-th-name', '.dzp-th-nom'], ['.bt-pl-th', '.dzp-th-jour'], ['.bt-pl-acctmenu', '.dzp-menu-compte'],
+  ['.bt-pl-cellfill', '.dzp-case'], ['.bt-pl-real-txt', '[data-etat="envoyee"] [data-testid="bubble-hours"]'], ['.bt-pl-th-name', '.dzp-th-nom'], ['.bt-pl-th', '.dzp-th-jour'], ['.bt-pl-acctmenu', '.dzp-menu-compte'],
   ['.bt-pl-acct-av-img', '.dzp-compte__btn img'], ['.bt-pl-acct-name', '.dzp-compte__btn span:nth-child(2)'], ['.bt-pl-acct', '.dzp-compte__btn'], ['.bt-pl-ddbackdrop', '.dzp-fond-menu'], ['.bt-pl-sp', '.dzp-panneau-stat'], ['.bt-pl-mobile', '.dzp-mobile'],
 ];
+// Planche d'essai 2a : dans la grille, la bulle du lot 1 (.dzp-bulle) devient la carte compacte (.dzp-carte) ; « heures envoyées » se lit par son repère
+// stable (data-etat="envoyee" + data-testid="bubble-hours"), commun à la carte de la grille et à la bulle du téléphone : même élément, même information.
 const gReperes = (s) => REPERES.reduce((acc, [de, vers]) => acc.replace(new RegExp(`${de.replace(/[.\\^$*+?()[\]{}|]/g, '\\$&')}(?![\\w-])`, 'g'), vers), s);
 
 /** Ouvre « Plus ⋯ » s'il ne l'est pas : Coût chantiers, Versions, Interventions supprimées, Formations et Envoyer par e-mail y sont des lignes (un seul accès par fonction). */

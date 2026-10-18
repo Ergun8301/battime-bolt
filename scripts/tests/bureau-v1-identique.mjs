@@ -16,7 +16,7 @@ async function releves(out, port) {
   const prendre = async (page, cle, sel = 'body') => { r[cle] = normalise(await page.evaluate((s) => { const e = document.querySelector(s); return e ? e.outerHTML : ''; }, sel)); };
   for (const [nom, largeur, hauteur, tactile] of [['1440', 1440, 900, false], ['1024', 1024, 768, false], ['390', 390, 844, true]]) {
     sim.reinitialiser();
-    const { page, ctx } = await sim.page({ ui: null, largeur, hauteur, hasTouch: tactile, attente: '.bt-pl-gridwrap .bt-pl-grab, .bt-pl-m-card' });
+    const { page, ctx } = await sim.page({ ui: null, largeur, hauteur, hasTouch: tactile, attente: tactile ? '.bt-pl-m-card' : '.bt-pl-gridwrap .bt-pl-grab' }); // au téléphone, la grille d'ordinateur est cachée : on attend une carte visible
     await prendre(page, `planning-${nom}`, '.bt-admin');
     if (nom === '1440') {
       await page.locator('.bt-pl-acct').first().click(); await page.waitForTimeout(400); await prendre(page, 'compte', '.bt-admin'); await page.mouse.click(10, 500); await page.waitForTimeout(300);
