@@ -1,100 +1,153 @@
 'use client';
 
-// Design du bureau (v2b « Couleur ») · la bulle d'intervention : UN composant pour la grille (compacte), le téléphone (grande) et le fantôme du glisser.
-// Planche v2b (docs/design-brief/designer-planning-v2/SPEC-v2b.md) : DEUX lignes au plus (client, puis horaire), aucune étiquette en majuscules,
-// un seul code couleur par état (couleurs de la légende des Statistiques) : contour clair = prévue, vert d'eau = en cours, rouge = à envoyer (seul mot écrit),
-// violet = envoyée (« ✓ »), barrée = retirée ; coin jaune = ajoutée par le salarié. Le reste (durée, ville, réserve, documents) va dans l'infobulle et la fiche.
-// Aucune règle métier ici : l'état se lit sur les mêmes données que la bulle d'avant (heures envoyées, brouillon, pointage en direct, retrait, jour en attente).
+// Design du bureau (v2) · la bulle d'intervention : UN composant pour la grille (compacte), le téléphone (grande) et le fantôme du glisser.
+// Règles de la planche : bande gauche = créneau ; pastille = couleur du chantier ; prévue = pointillés ; à envoyer = trait ambre ;
+// envoyée = fond encre, heure jaune, « ENVOYÉ » vert ; en direct = fond vert pâle ; retirée = barrée, grisée ; ajoutée par le salarié = trait encre.
+// Aucune règle métier ici : l'état se lit sur les mêmes données que la bulle d'avant (heures envoyées, brouillon, pointage en direct, retrait).
 import type { ReactNode } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Check } from 'lucide-react';
 import type { PlanningWithWorksite } from '@/lib/types';
 import type { RealAgg } from '@/lib/planning-cells';
 import { bubbleTitleOf } from '@/lib/planning-cells';
+import { dayPartTint } from '@/supabase/functions/_shared/day-part';
 import { hashStr } from '@/components/planning-bubble';
+import { hm } from '@/supabase/functions/_shared/bureau-vue';
 import type { SelState } from './contexte-v2';
 
-export type EtatBulle = 'prevue' | 'sans-horaire' | 'a-envoyer' | 'envoyee' | 'en-cours' | 'retiree';
+export type EtatBulle = 'prevue' | 'a-envoyer' | 'envoyee' | 'en-cours' | 'retiree' | 'ajoutee';
+type Ton = 'envoye' | 'a-envoyer' | 'reserve' | 'levee' | 'sans' | 'cours' | 'ajoutee' | 'direct' | 'retiree' | 'relance';
+export interface Etiquette { ton: Ton; texte: string }
 
 export interface DonneesBulle {
   p: PlanningWithWorksite; real?: RealAgg; draft?: RealAgg; docs: number; live?: string; withdrawn?: boolean;
-  /** Jour passé sans heures envoyées (journée à relancer). */
+  /** Jour passé sans heures envoyées (« PAS D'HEURES ENVOYÉES »). */
   enRetard?: boolean;
 }
 
-/** « 8 h », « 7 h 30 » (heure d'horloge « 07:30 » ou « 07:30:00 »). */
-export function heureFr(t: string): string {
-  const [h, m] = t.slice(0, 5).split(':').map(Number);
-  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
-}
-/** Une durée en minutes : « 24 h », « 7 h 30 », « 0 h ». */
-export function dureeFr(min: number): string {
-  const t = Math.max(0, Math.round(min));
-  const h = Math.floor(t / 60); const m = t % 60;
-  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
-}
-const plageFr = (a?: string | null, b?: string | null) => (a ? `${heureFr(a)}${b ? `–${heureFr(b)}` : ''}` : null);
-/** Index (0 à 6) de la couleur du chantier (tiroir Clients seulement : la bulle v2b n'a plus de couleur de chantier). */
+const hhmm = (t: string) => t.slice(0, 5);
+const plage = (p: PlanningWithWorksite) => (p.estimated_start ? `${hhmm(p.estimated_start)}${p.estimated_end ? `–${hhmm(p.estimated_end)}` : ''}` : null);
+/** Index (0 à 6) de la couleur du chantier : la même règle que la bulle d'avant et le menu Clients. */
 export const indexCouleur = (id: string | null | undefined, repli: string): number => hashStr(id || repli) % 7;
 
-/** Tout ce que la bulle montre, sans JSX : l'état, les deux lignes, le coin et l'infobulle. */
+/** Tout ce que la bulle montre, sans JSX : l'état, le créneau, les lignes de texte et les étiquettes. */
 export function lireBulle(d: DonneesBulle) {
   const { p, real, draft, live, withdrawn } = d;
   const autre = p.worksite?.client_name === 'Autre' && !!p.notes?.trim();
   const sous = autre ? 'Autre' : [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
   const titre = real || draft ? (p.worksite?.client_name || 'Chantier') : bubbleTitleOf(p);
-  const prevu = plageFr(p.estimated_start, p.estimated_end);
-  let etat: EtatBulle = prevu ? 'prevue' : 'sans-horaire';
-  let ligne = prevu || 'Sans horaire';
-  let duree: number | null = null;
-  if (real) { etat = 'envoyee'; ligne = `✓ ${plageFr(real.start, real.end)}`; duree = real.minutes; }
-  else if (draft) { etat = 'a-envoyer'; ligne = plageFr(draft.start, draft.end) || ligne; duree = draft.minutes; }
-  else if (live) etat = 'en-cours';
-  else if (withdrawn) etat = 'retiree';
-  else if (d.enRetard) etat = 'a-envoyer';
-  // L'infobulle (survol) : ce que la bulle ne dit plus (planche v2b : chantier, durée, qui l'a créée), plus la réserve et les documents.
-  const info = [
-    p.worksite?.client_name || titre, sous,
-    duree !== null ? `${dureeFr(duree)} ${etat === 'envoyee' ? 'envoyées' : 'notées, pas encore envoyées'}` : prevu ? `Prévu ${prevu}` : 'Sans horaire',
-    live ? `En cours depuis ${live}` : '',
-    etat === 'a-envoyer' && !draft ? 'Heures pas encore envoyées' : '',
-    etat === 'retiree' ? 'Retirée par le salarié' : '',
-    real?.reception === 'avec' ? (real.reserveOpen ? 'Réserve à traiter' : 'Réserve levée') : real?.reception === 'sans' ? 'Sans réserve' : real?.reception === 'en_cours' ? 'Chantier en cours' : '',
-    d.docs > 0 ? `${d.docs} document${d.docs > 1 ? 's' : ''}` : '',
-    p.added_by_worker ? 'Ajoutée par le salarié' : 'Ajoutée par le bureau',
-  ].filter(Boolean).join(' · ');
-  return { etat, titre, ligne, info, ajoutee: !!p.added_by_worker, live: !!live };
+  const etiquettes: Etiquette[] = [];
+  let etat: EtatBulle = 'prevue';
+  let heure = plage(p) || 'Sans horaire';
+  // Le créneau (bande de gauche) se lit sur l'horaire : celui des heures du salarié si elles existent, sinon l'horaire prévu.
+  const creneau = (draft ? dayPartTint(draft.start, draft.end) : null)?.key ?? dayPartTint(p.estimated_start, p.estimated_end)?.key ?? (real ? dayPartTint(real.start, real.end)?.key : undefined) ?? 'journee';
+  if (real) {
+    etat = 'envoyee';
+    heure = `${hhmm(real.start)}–${hhmm(real.end)} · ${hm(real.minutes)}`;
+    etiquettes.push({ ton: 'envoye', texte: 'Envoyé' });
+    if (real.reception === 'avec') etiquettes.push(real.reserveOpen ? { ton: 'reserve', texte: 'Réserve à traiter' } : { ton: 'levee', texte: 'Réserve levée' });
+    else if (real.reception === 'sans') etiquettes.push({ ton: 'sans', texte: 'Sans réserve' });
+    else if (real.reception === 'en_cours') etiquettes.push({ ton: 'cours', texte: 'Chantier en cours' });
+  } else if (draft) {
+    etat = 'a-envoyer';
+    heure = `${hhmm(draft.start)}–${hhmm(draft.end)} · ${hm(draft.minutes)}`;
+    etiquettes.push({ ton: 'a-envoyer', texte: 'À envoyer' });
+  } else if (withdrawn && !live) {
+    etat = 'retiree';
+    etiquettes.push({ ton: 'retiree', texte: 'Retirée par le salarié' });
+  } else if (d.enRetard && !live) {
+    etiquettes.push({ ton: 'relance', texte: 'Pas d’heures envoyées' });
+  }
+  if (live) {
+    if (!real && !draft) { etat = 'en-cours'; heure = plage(p) ? `Prévu ${plage(p)}` : 'Sans horaire'; }
+    etiquettes.push({ ton: 'direct', texte: `● En cours depuis ${live}` });
+  }
+  if (p.added_by_worker && etat !== 'en-cours') {
+    etat = 'ajoutee';
+    // La planche ne redit pas « ENVOYÉ » : la durée affichée dit déjà que les heures comptent.
+    const i = etiquettes.findIndex((e) => e.ton === 'envoye'); if (i >= 0) etiquettes.splice(i, 1);
+    etiquettes.unshift({ ton: 'ajoutee', texte: 'Ajoutée par le salarié' });
+  }
+  return { etat, creneau, titre, sous, heure, etiquettes, couleur: indexCouleur(p.worksite_id, p.id) };
 }
 
 export function CaseCoche({ sel, classe = 'dzp-bulle__case' }: { sel: SelState; classe?: string }) {
   return <span className={classe} aria-hidden="true">{sel.lock ? '–' : sel.on ? <Check className="h-3 w-3" strokeWidth={3.5} /> : null}</span>;
 }
 
-/** Le dessin d'une bulle à deux lignes (sans glisser-déposer). Sert aussi aux heures « hors planning » ajoutées par le salarié. */
-export function DessinBulle({ etat, titre, ligne, ajoutee, live, info, sel, grand, raison, testId = 'bubble', liveDepuis }: {
-  etat: EtatBulle; titre: ReactNode; ligne: ReactNode; ajoutee?: boolean; live?: boolean; info?: string; sel?: SelState; grand?: boolean; raison?: string | null; testId?: string; liveDepuis?: string;
-}) {
+/** Le contenu visuel d'une bulle (sans glisser-déposer). `grand` : téléphone. */
+export function CarteBulle({ d, sel, grand, raison }: { d: DonneesBulle; sel?: SelState; grand?: boolean; raison?: string | null }) {
+  const b = lireBulle(d);
   return (
-    <span className="dzp-bulle" data-etat={etat} data-grand={grand ? '' : undefined} data-ajoutee={ajoutee ? '' : undefined} data-withdrawn={etat === 'retiree' ? '1' : undefined} data-testid={testId} title={info}>
-      {ajoutee && <span className="dzp-bulle__coin" aria-hidden="true" />}
-      <span className="dzp-bulle__l1">
-        {live && <span className="dzp-bulle__point" data-testid="bubble-live" aria-label={liveDepuis ? `En cours depuis ${liveDepuis}` : 'En cours'} role="img" />}
-        <span className="dzp-bulle__titre" data-testid={testId === 'bubble' ? 'bubble-title' : undefined}>{titre}</span>
+    <div className={`dzp-bulle dzp-c${b.couleur}`} data-etat={b.etat} data-creneau={b.creneau} data-grand={grand ? '' : undefined} data-withdrawn={b.etat === 'retiree' ? '1' : undefined} data-testid="bubble">
+      <span className="dzp-bulle__bande" aria-hidden="true" />
+      <div className="dzp-bulle__tete">
+        <span className="dzp-bulle__pastille" aria-hidden="true" />
+        <span className="dzp-bulle__titre" data-testid="bubble-title">{b.titre}</span>
+        {d.docs > 0 && <span className="dzp-bulle__docs" title={`${d.docs} document${d.docs > 1 ? 's' : ''}`}>⧉ {d.docs}</span>}
         {sel && <CaseCoche sel={sel} />}
-      </span>
-      <span className="dzp-bulle__l2">
-        <span className="dzp-bulle__heure" data-testid={testId === 'bubble' ? 'bubble-hours' : undefined}>{ligne}</span>
-        {etat === 'a-envoyer' && <span className="dzp-bulle__mot">à envoyer</span>}
-      </span>
+      </div>
+      {b.sous && <span className="dzp-bulle__sous">{b.sous}</span>}
+      <span className="dzp-bulle__heure" data-testid="bubble-hours">{b.heure}</span>
+      {b.etiquettes.length > 0 && (
+        <div className="dzp-etiquettes">
+          {b.etiquettes.map((e) => <span key={e.texte} className="dzp-etiquette" data-ton={e.ton} data-testid={e.ton === 'direct' ? 'bubble-live' : undefined}>{e.texte}</span>)}
+        </div>
+      )}
       {raison ? <span className="dzp-bulle__raison" role="status">{raison}</span> : null}
-    </span>
+    </div>
   );
 }
 
-/** Le contenu visuel d'une bulle d'intervention. `grand` : téléphone. */
-export function CarteBulle({ d, sel, grand, raison }: { d: DonneesBulle; sel?: SelState; grand?: boolean; raison?: string | null }) {
+/** « 4h00 » : la durée telle que l'écrit la planche 2a (heures, « h », minutes sur deux chiffres). */
+export const duree2a = (minutes: number): string => { const m = Math.max(0, Math.round(minutes)); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
+
+/** Minutes écoulées depuis « 07:45 » (heure de Paris), ou null si l'heure n'est pas lisible (pointage d'un autre jour : « jeu. 07:45 »). */
+export function minutesDepuis(depuis: string, maintenant = new Date()): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(depuis.trim());
+  if (!m) return null;
+  const [h, mn] = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(maintenant).split(':').map(Number);
+  const d = h * 60 + mn - (Number(m[1]) * 60 + Number(m[2]));
+  return d >= 0 ? d : null;
+}
+
+/**
+ * La bulle de la GRILLE, telle que la dessine la planche 2a (`styleItem` du script, réglage « envoyées sombres » allumé) : fond du créneau, liseré de 4 px,
+ * titre 800 12,5 px, horaire en mono 11 px, une seule étiquette. Mêmes états que la bulle d'avant (lus par lireBulle), seuls le dessin et les libellés suivent la planche.
+ */
+export function lireBulle2a(d: DonneesBulle) {
   const b = lireBulle(d);
-  return <DessinBulle etat={b.etat} titre={b.titre} ligne={b.ligne} ajoutee={b.ajoutee} live={b.live} liveDepuis={d.live} info={sel ? undefined : b.info} sel={sel} grand={grand} raison={raison} />;
+  const { p, real, draft, live } = d;
+  const prevu = p.estimated_start ? (p.estimated_end ? `${hhmm(p.estimated_start)}–${hhmm(p.estimated_end)}` : `${hhmm(p.estimated_start)} · fin à préciser`) : 'sans horaire';
+  let heure = prevu;
+  let etiquette: string | null = null;
+  if (b.etat === 'envoyee' && real) heure = `✓ ${hhmm(real.start)}–${hhmm(real.end)} · ${duree2a(real.minutes)}`;
+  else if (b.etat === 'a-envoyer' && draft) { heure = `${hhmm(draft.start)}–${hhmm(draft.end)} · ${duree2a(draft.minutes)}`; etiquette = 'À ENVOYER'; }
+  else if (b.etat === 'en-cours' && live) { const n = minutesDepuis(live); heure = `● depuis ${live}${n !== null ? ` · ${duree2a(n)}` : ''}`; etiquette = 'EN DIRECT'; }
+  else if (b.etat === 'retiree') etiquette = 'RETIRÉE PAR LE SALARIÉ';
+  else if (b.etat === 'ajoutee') {
+    const min = real?.minutes ?? draft?.minutes ?? null;
+    heure = min !== null ? `${duree2a(min)} · hors planning` : `${prevu} · hors planning`;
+    etiquette = 'AJOUTÉE PAR LE SALARIÉ';
+  }
+  // « Autre » nommé par le salarié : la planche titre la carte par ce nom (« Dépannage SAV »), même quand des heures existent.
+  const titre = p.worksite?.client_name === 'Autre' && p.notes?.trim() ? p.notes.trim() : b.titre;
+  return { ...b, titre, heure, etiquette };
+}
+
+/** Une carte de la grille 2a (aussi utilisée pour une réunion et pour les heures ajoutées hors planning). */
+export function Carte2a({ etat, creneau, titre, heure, etiquette, sel, testId = 'bubble', title }: {
+  etat: EtatBulle | 'reunion'; creneau: string; titre: ReactNode; heure: ReactNode; etiquette?: string | null; sel?: SelState; testId?: string; title?: string;
+}) {
+  return (
+    <div className="dzp-carte" data-etat={etat} data-creneau={creneau} data-withdrawn={etat === 'retiree' ? '1' : undefined} data-testid={testId} title={title}>
+      <span className="dzp-carte__lisere" aria-hidden="true" />
+      <span className="dzp-carte__titre" data-testid={testId === 'bubble' ? 'bubble-title' : undefined}>{titre}</span>
+      <span className="dzp-carte__heure" data-testid={testId === 'bubble' ? 'bubble-hours' : undefined}>{heure}</span>
+      {etiquette ? <span className="dzp-carte__tag" data-testid={etat === 'en-cours' ? 'bubble-live' : undefined}>{etiquette}</span> : null}
+      {sel && <CaseCoche sel={sel} classe="dzp-bulle__case dzp-carte__case" />}
+    </div>
+  );
 }
 
 /** Une bulle de la grille : on la prend (déplacer, copier) et on peut la viser (réordonner). Mêmes identifiants et repères que la bulle d'avant. */
@@ -110,8 +163,9 @@ export function BulleV2({ d, sel, onEdit, onToggle, raison }: {
       data-sel={attr} data-pid={sel ? p.id : undefined} data-bub={p.id} data-guide="bureau-planning.bulle">
       <div ref={drag.setNodeRef} {...drag.attributes} {...drag.listeners} className="dzp-prise"
         onClick={(e) => { e.stopPropagation(); if (sel) onToggle?.(p, sel.lock); else onEdit(p); }}
-        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : undefined}>
-        <CarteBulle d={d} sel={sel} raison={raison} />
+        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : ''}>
+        {(() => { const b = lireBulle2a(d); return <Carte2a etat={b.etat} creneau={b.creneau} titre={b.titre} heure={b.heure} etiquette={b.etiquette} sel={sel} title={b.sous || undefined} />; })()}
+        {raison ? <span className="dzp-bulle__raison" role="status">{raison}</span> : null}
       </div>
     </div>
   );
