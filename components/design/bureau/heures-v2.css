@@ -309,7 +309,7 @@
   .dz-portail.dz-hb-fenetre.dz-l3-coque { width: min(var(--l3-w, 520px), calc(100vw - 32px)); }
 }
 .dz-l3-coque .dz-hb-corps { padding: 12px 24px 20px; gap: 14px; }
-.dz-l3-coque .dz-hb-tete { padding-left: 24px; }
+@media (min-width: 1024px) { .dz-l3-coque .dz-hb-tete { padding-left: 24px; } }
 .dz-l3-coque .dz-hb-pied { padding: 12px 20px 16px; gap: 8px; }
 .dz-l3-coque .dz-hb-fermer { border-width: 1.5px; }
 .dz-l3-coque .dz-hb-pied > .dz-l3-pousse { margin-right: auto; }
@@ -511,14 +511,14 @@ button.dz-l3-ligne:hover, .dz-l3-ligne__clic:hover { background: var(--dz-jaune-
   .dz-l3-photos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .dz-l3-onglets { padding: 4px 16px 0; }
   .dz-l3-ligne { flex-wrap: wrap; }
-  .dz-l3-ligne__actions { margin-left: auto; }
+  .dz-l3-ligne__clic { flex: 1 1 calc(100% - 30px); }
+  .dz-l3-ligne__actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
   .dz-l3-btn, .dz-l3-select { min-height: 44px; height: auto; }
   .dz-l3-btn[data-taille="ligne"] { min-height: 44px; }
   .dz-l3-chiffre > b { font-size: 30px; }
 }
 @media (max-width: 480px) {
   .dz-l3-photos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dz-l3-ligne__txt { flex-basis: calc(100% - 60px); }
 }
 @media (forced-colors: active) {
   .dz-l3-btn, .dz-l3-lignes, .dz-l3-champ__boite, .dz-l3-alerte, .dz-l3-pastille, .dz-l3-coche__boite { border: 1px solid CanvasText; }
@@ -586,3 +586,10 @@ button.dz-l3-ligne:hover, .dz-l3-ligne__clic:hover { background: var(--dz-jaune-
 .dz-l3-coque .bt-em-confirm .bt-em-actions { flex-direction: row; justify-content: flex-end; }
 .dz-l3-coque .bt-em-confirm .bt-em-actions > .bt-em-btn { width: auto; flex: none; }
 .dz-l3-coque .bt-fo-link { font: 800 13.5px/1.2 var(--dz-font-ui); color: var(--dz-encre); text-decoration-color: var(--dz-jaune); text-decoration-thickness: 2px; min-height: 40px; }
+.dz-l3-coque .bt-fo-chk input[type="checkbox"], .dz-l3-coque .bt-em-row input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; margin: 0; border-radius: 7px; border: 2px solid var(--dz-encre); background: var(--dz-carte);
+  display: inline-grid; place-content: center; cursor: pointer; }
+.dz-l3-coque .bt-fo-chk input[type="checkbox"]:checked, .dz-l3-coque .bt-em-row input[type="checkbox"]:checked { background: var(--dz-encre); }
+.dz-l3-coque .bt-fo-chk input[type="checkbox"]:checked::after, .dz-l3-coque .bt-em-row input[type="checkbox"]:checked::after { content: "✓"; color: var(--dz-jaune); font: 900 13px/1 var(--dz-font-ui); }
+.dz-l3-coque .bt-em-row input[type="checkbox"]:disabled { background: var(--dz-verrou-fond); border-color: var(--dz-trait-fort); cursor: default; }
+.dz-l3-coque .bt-em-row input[type="checkbox"]:disabled::after { content: "–"; color: var(--dz-texte-2); font: 900 13px/1 var(--dz-font-ui); }

@@ -13,7 +13,10 @@ const sim = await demarrer({ out: OUT, port: Number(PORT) });
 const ATT = '.dzp-table .dzp-bulle, .dzp-m-carte';
 const pause = (page, ms = 450) => page.waitForTimeout(ms);
 const fenetre = (page) => page.locator('[role="dialog"].dz-l3-coque, [role="alertdialog"].dz-l3-coque').last();
-const titre = async (page) => (await fenetre(page).locator('.dz-hb-titre').first().innerText().catch(() => '')).trim();
+const titre = async (page) => {
+  const t = fenetre(page).locator('.dz-hb-titre').first();
+  return (await t.count()) ? (await t.innerText({ timeout: 2000 }).catch(() => '')).trim() : ''; // sans fenêtre : '' tout de suite (pas 30 s d'attente)
+};
 const largeurPage = (page) => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth));
 /** Débordement horizontal DANS une fenêtre (contenu plus large que la fenêtre). */
 const deborde = (page) => page.evaluate(() => {
@@ -102,7 +105,7 @@ async function cycle(page, nom, ouvrir, attendu, { largeur = 1440, capture = nom
   await page.keyboard.press('Escape'); await pause(page);
 
   // ── Nouveau salarié (EQ02) ──
-  await cycle(page, 'EQ02 Nouveau salarié', async () => { await nav('salaries').click(); await pause(page, 500); await fenetre(page).locator('[data-guide="bureau-salaries.nouveau"]').click(); }, 'Nouveau salarié', { echap: false });
+  await cycle(page, 'EQ02 Nouveau salarié', async () => { await nav('salaries').click(); await pause(page, 500); await fenetre(page).locator('[data-guide="bureau-salaries.nouveau"]').click(); }, 'Nouveau salarié', { echap: false, capture: 'EQ02-nouveau-salarie-1440' });
   await nav('salaries').click(); await pause(page, 500); await fenetre(page).locator('[data-guide="bureau-salaries.nouveau"]').click(); await pause(page, 600);
   await page.getByLabel('Prénom *', { exact: true }).fill('Inès'); await page.getByLabel('Nom *', { exact: true }).fill('Prototype'); await page.getByLabel('Email *', { exact: true }).fill('ines.prototype@exemple'); await page.getByLabel('Téléphone').click(); await pause(page);
   check(/Adresse incomplète/.test(await fenetre(page).innerText()) && await page.locator('[data-guide="bureau-salaries.envoyer"]').isDisabled(), 'EQ02 : e-mail invalide → message sous le champ, bouton désactivé');
@@ -278,11 +281,11 @@ for (const [largeur, hauteur] of [[390, 844], [834, 1112]]) {
   sim.reinitialiser();
   const { page, ctx, erreurs } = await sim.page({ ui: 2, largeur, hauteur, hasTouch: true, attente: '.dzp-m-carte' });
   await emailPret(page);
-  const menu = async (g) => { await page.locator('button[aria-label="Menu"]').first().click(); await pause(page, 500); await page.locator(g).first().click(); };
+  const menu = async (g) => { await page.locator('button[aria-label="Menu"]').first().click(); await pause(page, 500); await page.locator(g).locator('visible=true').first().click(); };
   const s = largeur === 390 ? '390' : '834';
   await cycle(page, 'XM01 Chantiers', () => menu('[data-guide="bureau-nav.clients"]'), 'Chantiers', { largeur, capture: `XM01-chantiers-${s}` });
   await menu('[data-guide="bureau-nav.clients"]'); await pause(page, 700);
-  await page.locator('[data-guide="bureau-clients.crayon"]').nth(1).click(); await pause(page, 800);
+  await page.locator('[data-guide="bureau-clients.crayon"]').locator('visible=true').nth(1).click(); await pause(page, 800);
   check(/FICHE CLIENT/i.test(await fenetre(page).innerText()), `XM02 (${largeur}) : fiche client en page`);
   check((await deborde(page)) <= 1, `XM02 (${largeur}) : aucun défilement horizontal`);
   await image(page, `XM02-fiche-client-${s}`);
