@@ -143,19 +143,22 @@ const PLANCHE_LIGNE = [
   // Plus ⋯ : tout ce que la planche ne montre pas dans la ligne
   await page.click('[data-testid=bar-plus]'); await page.waitForTimeout(200);
   const plus = (await page.locator('[data-testid=menu-plus]').innerText()).replace(/\s+/g, ' ');
-  const attendues = ['Réserves', 'Pièces jointes', 'Coût chantiers', 'Envoyer par e-mail', 'Imprimer', 'Versions du planning', 'Interventions supprimées ou décalées', 'Légende', 'S\'abonner'];
+  // Retouches 3 : « Légende » (toujours sous la grille) et « Versions du planning » (retiré de l'interface v2, demande d'Ergun) ne sont plus dans « Plus ⋯ ».
+  const attendues = ['Réserves', 'Pièces jointes', 'Coût chantiers', 'Envoyer par e-mail', 'Imprimer', 'Interventions supprimées ou décalées', 'S\'abonner'];
   const manquent = attendues.filter((x) => !plus.includes(x));
-  check(manquent.length === 0 && !/Statistiques/.test(plus), `« Plus ⋯ » contient ${attendues.join(', ')} (Statistiques est l'onglet de la barre noire)${manquent.length ? ` — manquent : ${manquent.join(', ')}` : ''}`);
+  check(manquent.length === 0 && !/Statistiques|Légende|Versions du planning/.test(plus), `« Plus ⋯ » contient ${attendues.join(', ')} (Statistiques est l'onglet de la barre noire ; ni Légende ni Versions)${manquent.length ? ` — manquent : ${manquent.join(', ')}` : ''}`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   check(await page.locator('[data-testid=menu-plus]').count() === 0, 'Échap ferme « Plus ⋯ »');
-  // Compteur, haut DÉPLIÉ (retouches 2) : aucun panneau par-dessus le bandeau ; la liste « À relancer » se déplie DANS sa tuile (le panneau sous la barre
-  // noire reste pour le haut replié : voir plus bas et retouches-2-controles.mjs).
-  await page.click('[data-testid=stat-waiting]'); await page.waitForTimeout(250);
+  // Compteur, haut DÉPLIÉ (retouches 3) : aucun panneau par-dessus le bandeau ; la tuile « À relancer » montre TOUJOURS sa liste (deux lignes au plus) et le
+  // compteur la signale (anneau 1,2 s) sans la changer (le panneau sous la barre noire reste pour le haut replié : voir plus bas et parcours-secretaire.mjs).
   const menu = page.locator('[data-testid=menu-chiffres]');
   const dansTuile = page.locator('[data-testid=bandeau] [data-testid=stat-relance] [data-testid=relance-row]');
-  check(await menu.count() === 0 && await dansTuile.count() > 0, `haut déplié : un compteur déplie la liste « À relancer » dans sa tuile, sans panneau superposé (${await dansTuile.count()} ligne(s))`);
+  const avantClic = await dansTuile.count();
+  await page.click('[data-testid=stat-waiting]'); await page.waitForTimeout(250);
+  check(await menu.count() === 0 && avantClic > 0 && avantClic <= 2 && await dansTuile.count() === avantClic && await page.locator('[data-testid=bandeau] [data-testid=stat-relance][data-eclat]').count() === 1,
+    `haut déplié : la liste « À relancer » est déjà dans sa tuile (${avantClic} ligne(s)) ; le compteur la signale, sans panneau superposé`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
-  check(await dansTuile.count() === 0, 'Échap replie la liste de la tuile');
+  check(await dansTuile.count() === avantClic, 'Échap ne plie rien : la liste de la tuile reste');
   await page.click('[data-testid=haut-replier]'); await page.waitForTimeout(250);
   await page.click('[data-testid=stat-waiting]'); await page.waitForTimeout(250);
   const pos = await menu.boundingBox();
@@ -202,7 +205,7 @@ const PLANCHE_LIGNE = [
     return { dansBarre: !!b.closest('[data-testid=barre-noire]'), droite: Math.round(r.right), h: Math.round(r.height), avantAssistant: suivant?.dataset.testid === 'bar-assistant', bord: s.borderTopColor, fond: s.backgroundColor, couleur: s.color, rayon: s.borderTopLeftRadius, t: b.innerText };
   }, id);
   const avantRepli = await bouton('haut-replier');
-  check(!!avantRepli && avantRepli.dansBarre && avantRepli.avantAssistant && avantRepli.t === 'Replier ▴' && await page.locator('.dzp-cockpit button:not(.dzp-tuile):not(.dzp-tuile__ouvrir), [data-testid=barre-semaine] [data-testid=haut-replier]').count() === 0,
+  check(!!avantRepli && avantRepli.dansBarre && avantRepli.avantAssistant && avantRepli.t === 'Replier ▴' && await page.locator('.dzp-cockpit button:not([data-testid=relance-panel] *), [data-testid=barre-semaine] [data-testid=haut-replier]').count() === 0,
     `« Replier ▴ » est dans la barre noire, juste avant « ✦ Assistant » ; plus rien sous la ligne de semaine (${JSON.stringify(avantRepli)})`);
   await page.click('[data-testid=haut-replier]'); await page.mouse.move(2, 500); await page.waitForTimeout(300);
   const apresRepli = await bouton('haut-deplier');

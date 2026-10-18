@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { addDays, format } from 'date-fns';
+import { toast } from 'sonner';
 import { ActionDone } from '@/components/action-done';
 import { totauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
 import './bureau-jetons.css';
@@ -30,13 +31,12 @@ const LEGENDE: { k: string; l: string }[] = [
   { k: 'absence', l: 'Absence (rayée)' }, { k: 'clos', l: 'Mois clôturé (CLOS)' }, { k: 'reserve', l: 'Réserve à traiter' },
 ];
 
-/** La légende : la planche 2a ne la dessine pas au-dessus du planning ; elle s'ouvre depuis « Plus ⋯ » › Légende, sous la grille (Échap ou « LÉGENDE ▴ » la referme). */
-function Legende({ ouverte, fermer, toujours = false, astuce = null }: { ouverte: boolean; fermer: () => void; toujours?: boolean; astuce?: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (ouverte) ref.current?.scrollIntoView({ block: 'nearest' }); }, [ouverte]);
+/** La légende, toujours posée sous la grille (ordinateur et tablette) : aucun menu ne l'ouvre ni ne fait défiler la page jusqu'à elle. Au téléphone, le menu ☰
+ *  l'ouvre dans une petite feuille (menu-mobile-v2.tsx). */
+function Legende({ astuce = null }: { astuce?: React.ReactNode }) {
   return (
-    <div className="dzp-legende" ref={ref} data-open={ouverte || toujours ? '' : undefined} data-toujours={toujours ? '' : undefined} data-testid="legende">
-      {toujours ? <span className="dzp-legende__t">LÉGENDE</span> : <button type="button" className="dzp-legende__t" onClick={fermer} aria-expanded={true}>LÉGENDE ▴</button>}
+    <div className="dzp-legende" data-open="" data-toujours="" data-testid="legende">
+      <span className="dzp-legende__t">LÉGENDE</span>
       {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
       {/* Ordinateur : « Astuce : copier une case » au bout de la légende (le « ? » d'avant, retiré de l'en-tête de la grille ; même aide). */}
       {astuce ? <span className="dzp-legende__astuce" data-testid="legende-astuce">{astuce}</span> : null}
@@ -62,7 +62,58 @@ function Aide({ c }: { c: PlanningCtx }) {
   );
 }
 
+/** Les messages passagers disparaissent seuls : 6 s avec un bouton « Annuler », 3,5 s sinon ; la minuterie s'arrête au survol (ou pendant qu'on touche le
+ *  message) et repart à la sortie ; la croix ferme plus tôt. */
+const DUREE_ANNULER = 6000;
+const DUREE_SIMPLE = 3500;
+
+/** La carte « Fait — … · Annuler » du bas d'écran : 6 s, en pause au survol ; après un clic dedans (Annuler), 3,5 s pour lire le résultat. */
+function useMinuterie(cle: number | undefined, fermer: () => void) {
+  const reste = useRef(DUREE_ANNULER);
+  const depart = useRef(0);
+  const t = useRef<number | undefined>(undefined);
+  const fermerRef = useRef(fermer);
+  fermerRef.current = fermer;
+  const arreter = () => { if (t.current !== undefined) { window.clearTimeout(t.current); t.current = undefined; reste.current = Math.max(0, reste.current - (Date.now() - depart.current)); } };
+  const lancer = () => { if (t.current !== undefined) return; depart.current = Date.now(); t.current = window.setTimeout(() => { t.current = undefined; fermerRef.current(); }, reste.current); };
+  useEffect(() => {
+    if (cle === undefined) return;
+    reste.current = DUREE_ANNULER; t.current = undefined; lancer();
+    return () => { if (t.current !== undefined) window.clearTimeout(t.current); t.current = undefined; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cle]);
+  return {
+    onPointerEnter: arreter, onPointerLeave: lancer, onFocus: arreter, onBlur: lancer,
+    // Un clic dans la carte (Annuler) : le résultat reste 3,5 s, comptées à partir de la sortie du pointeur.
+    onClick: () => { arreter(); reste.current = DUREE_SIMPLE; },
+  };
+}
+
+/** Les retours passagers (Sonner) du bureau v2 : 3,5 s, 6 s s'ils portent un bouton, une croix pour fermer plus tôt ; Sonner les met déjà en pause au survol.
+ *  Le Toaster du site (app/layout.tsx, partagé par toutes les pages) ne change pas, ni rien du premier chargement : quand un retour apparaît à l'écran, il est
+ *  repris ici une fois (même identifiant) avec ces réglages. Un message d'erreur qui a demandé plus de temps (12 s : une explication à lire) le garde, avec la croix. */
+function useRetoursBureau() {
+  useEffect(() => {
+    const vus = new Set<string | number>();
+    const reprendre = () => {
+      for (const t of toast.getHistory()) {
+        if (vus.has(t.id)) continue;
+        vus.add(t.id);
+        if ('dismiss' in t || t.type === 'loading' || t.promise || t.delete) continue;
+        const long = typeof t.duration === 'number' && Number.isFinite(t.duration) && t.duration > DUREE_ANNULER;
+        toast(t.title as string, { ...t, id: t.id, closeButton: true, duration: long ? t.duration : (t.action || t.cancel ? DUREE_ANNULER : DUREE_SIMPLE) });
+      }
+    };
+    // Les retours déjà affichés avant l'ouverture du planning v2 gardent leurs réglages.
+    for (const t of toast.getHistory()) vus.add(t.id);
+    const mo = new MutationObserver(reprendre);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
+}
+
 function Dock({ c }: { c: PlanningCtx }) {
+  const minuterie = useMinuterie(c.undoCard?.key, () => c.setUndoCard(null));
   if (!c.selectMode && !c.undoCard) return null;
   const n = c.selIds.length;
   const idsSemaine: string[] = c.selectMode ? c.selectableIn((p: { user_id: string }) => c.displayWorkers.some((w) => w.id === p.user_id)) : [];
@@ -72,7 +123,7 @@ function Dock({ c }: { c: PlanningCtx }) {
   return (
     <div className="dzp-dock">
       {c.undoCard && (
-        <div className="dzp-undo" data-testid="undo-card" key={c.undoCard.key}>
+        <div className="dzp-undo" data-testid="undo-card" key={c.undoCard.key} {...minuterie}>
           <ActionDone message={c.undoCard.message} strongUndo={c.undoCard.strong} undo={c.undoCard.undo as never} />
           <button type="button" className="dzp-undo__x" aria-label="Fermer" title="Fermer" data-testid="undo-close" onClick={() => c.setUndoCard(null)}>✕</button>
         </div>
@@ -90,6 +141,17 @@ function Dock({ c }: { c: PlanningCtx }) {
       )}
     </div>
   );
+}
+
+/** Défilement doux jusqu'à la tuile « À relancer » du bandeau, puis anneau jaune discret 1,2 s (rien d'autre ne change). */
+function eclairerRelance() {
+  requestAnimationFrame(() => {
+    const t = document.querySelector<HTMLElement>('[data-testid=bandeau] [data-testid=stat-relance]');
+    if (!t) return;
+    t.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    t.removeAttribute('data-eclat'); void t.offsetWidth; t.setAttribute('data-eclat', '');
+    window.setTimeout(() => t.removeAttribute('data-eclat'), 1200);
+  });
 }
 
 const CLE_HAUT = 'bt-bureau-haut-replie';
@@ -143,16 +205,14 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
   const cRef = useRef(c);
   cRef.current = c;
   const [recherche, setRecherche] = useState('');
-  const [legende, setLegende] = useState(false);
   const ordi = useLargeur(REQ_ORDI);
   const [replie, poserReplie] = useHautReplie(c.user?.id);
-  // Échap ferme les menus, le tiroir Clients, le menu des chiffres, la légende, puis le plein écran (les fenêtres, elles, se ferment toutes seules : Radix).
+  // Échap ferme les menus, le tiroir Clients, le menu des chiffres, puis le plein écran (les fenêtres, elles, se ferment toutes seules : Radix).
   const { accountMenuOpen, chantierMenuOpen, statPanel, setAccountMenuOpen, setChantierMenuOpen, setStatPanel } = c;
   useEffect(() => {
     const f = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (accountMenuOpen || chantierMenuOpen || statPanel) { setAccountMenuOpen(false); setChantierMenuOpen(false); setStatPanel(null); return; }
-        if (legende) { setLegende(false); return; }
         if (pleinEcran && !document.querySelector('[role="dialog"],[role="alertdialog"]')) setPleinEcran(false);
         return;
       }
@@ -172,7 +232,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     };
     window.addEventListener('keydown', f);
     return () => window.removeEventListener('keydown', f);
-  }, [accountMenuOpen, chantierMenuOpen, statPanel, legende, pleinEcran, telephone, setAccountMenuOpen, setChantierMenuOpen, setStatPanel]);
+  }, [accountMenuOpen, chantierMenuOpen, statPanel, pleinEcran, telephone, setAccountMenuOpen, setChantierMenuOpen, setStatPanel]);
   const dates = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const totaux = useMemo(() => {
     const exclure = new Set<string>();
@@ -195,24 +255,24 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
   // Le menu ☰ (rendu par admin-planning.tsx) reçoit le même contexte, en lecture seule, pour offrir au téléphone tout ce que la barre et « Plus ⋯ » offrent.
   // Après CHAQUE rendu (pas de liste : le contexte change à chaque rendu de l'écran) ; rien n'est appelé ici, setRecherche est seulement prêté au menu.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { publierPont({ c, recherche, setRecherche, chiffres, legende: () => setLegende(true) }); });
+  useEffect(() => { publierPont({ c, recherche, setRecherche, chiffres }); });
   useEffect(() => () => publierPont(null), []);
-  // Haut DÉPLIÉ (ordinateur) : les tuiles sont déjà à l'écran ; un compteur de la barre noire n'ouvre AUCUN panneau superposé (plus de tuiles en double).
-  // « à relancer » : la liste se déplie DANS la tuile « À relancer » du bandeau, mise en évidence (anneau jaune 1,5 s, défilement doux si besoin).
-  // Les autres compteurs n'ont pas de tuile : ils mènent à leur liste (congés → Salariés, pièces → liste des pièces, réserves → Réserves).
+  // Les compteurs de la barre noire (ordinateur), UN geste chacun, haut déplié ou replié : congés → Salariés, pièces → liste des pièces, réserves → Réserves
+  // (ces trois-là n'ont pas de tuile). « à relancer » : haut DÉPLIÉ, défilement doux jusqu'à la tuile « À relancer » du bandeau et anneau jaune discret 1,2 s
+  // (ni sa taille ni son contenu ne changent, aucun panneau superposé) ; haut REPLIÉ, le panneau des tuiles sous la barre (un 2e clic le referme).
   const signaler = (id: string) => {
     if (id === 'compteur-conges') { c.setSalariesOpen(true); return; }
     if (id === 'compteur-reserves') { c.setReservesOpen(true); return; }
     if (id === 'compteur-pieces') { setStatPanel((p: string | null) => (p === 'docs' ? null : 'docs')); return; }
-    setStatPanel('waiting');
-    requestAnimationFrame(() => {
-      const t = document.querySelector<HTMLElement>('[data-testid=bandeau] [data-testid=stat-relance]');
-      if (!t) return;
-      t.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-      t.removeAttribute('data-eclat'); void t.offsetWidth; t.setAttribute('data-eclat', '');
-      window.setTimeout(() => t.removeAttribute('data-eclat'), 1500);
-    });
+    if (replie) setStatPanel((p: string | null) => (p === 'waiting' ? null : 'waiting'));
+    else eclairerRelance();
   };
+  // Une demande d'ouvrir la liste « À relancer » venue d'ailleurs (l'assistant) pendant que le haut est déplié : même geste que le compteur, rien ne s'ouvre en plus.
+  const deplie = ordi && !replie && !pleinEcran;
+  useEffect(() => {
+    if (deplie && statPanel === 'waiting') { setStatPanel(null); eclairerRelance(); }
+  }, [deplie, statPanel, setStatPanel]);
+  useRetoursBureau();
   return (
     <>
       <div className="dzp-bureau-desk" data-plein-ecran={pleinEcran ? '' : undefined} data-mise={ordi ? '1a' : '2a'} data-replie={ordi && replie ? '' : undefined}>
@@ -221,8 +281,8 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           : ordi ? (
             <>
               <div className="dzp-haut dzp-haut--1a">
-                <BarreNoire1a c={c} replie={replie} deplier={() => { setStatPanel(null); poserReplie(false); }} replier={() => { setStatPanel(null); poserReplie(true); }} recherche={recherche} setRecherche={setRecherche} signaler={replie ? undefined : signaler} />
-                {!replie && <LigneSemaine1a c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} legende={() => setLegende(true)} />}
+                <BarreNoire1a c={c} replie={replie} deplier={() => { setStatPanel(null); poserReplie(false); }} replier={() => { setStatPanel(null); poserReplie(true); }} recherche={recherche} setRecherche={setRecherche} signaler={signaler} />
+                {!replie && <LigneSemaine1a c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} />}
                 {replie && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
                 {c.statPanel === 'docs' && <ListePieces c={c} />}
               </div>
@@ -234,7 +294,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
             </>
           ) : (
             <div className="dzp-haut">
-              <BarreUnique c={telephone ? { ...c, printMenu: null } : c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} legende={() => setLegende(true)} />
+              <BarreUnique c={telephone ? { ...c, printMenu: null } : c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} />
               {!telephone && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
               {!telephone && c.statPanel === 'docs' && <ListePieces c={c} />}
             </div>
@@ -245,8 +305,8 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           <Aide c={c} />
           {ordi ? <Grille1a c={cGrille} totaux={totaux} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />
             : <Grille c={cGrille} totaux={totaux} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />}
-          {/* Ordinateur (planche 1a) : la légende est toujours posée sous la grille ; tablette (2a) : elle s'ouvre depuis « Plus ⋯ ». */}
-          <Legende ouverte={legende} toujours={ordi} fermer={() => setLegende(false)} astuce={ordi && c.workers.length > 0 ? c.copyTipHelpCorner : null} />
+          {/* Ordinateur et tablette : la légende est toujours posée sous la grille (le téléphone l'ouvre depuis le menu ☰, dans une feuille). */}
+          <Legende astuce={ordi && c.workers.length > 0 ? c.copyTipHelpCorner : null} />
         </div>
       </div>
       <Mobile c={c} gens={gens} nbRecherche={nbRecherche} />

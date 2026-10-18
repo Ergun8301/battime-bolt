@@ -9,12 +9,29 @@
 // (point rouge si une réponse arrive entre-temps) ; l'écran prend toute la place. Un clic sur la pastille rouvre le panneau, conversation intacte
 // (le panneau reste monté, il est seulement masqué par `data-dz-as-reduit` sur <html>). Fermer l'écran ne rouvre rien. Sans le drapeau : rien ne change.
 // Aucun appel au serveur, aucun registre, aucun guide touché : seuls l'affichage et l'appel à `onNavigate` sont enveloppés.
+//
+// Bureau v2 encore : « Versions du planning » n'est plus offert dans l'interface (demande d'Ergun). Le serveur, son registre et son empreinte ne changent
+// pas ; ici, sous le drapeau seulement, un bouton qui ouvrirait cet écran (lien `ouvrir:planning.versions`, guide `guide:versions`, lien « Versions de la
+// semaine » sous une action faite) n'est pas affiché, dans une réponse comme dans une conversation relue.
 import { useEffect, useRef, useState } from 'react';
 import AssistantPanel from '@/components/assistant-panel';
 import AssistantActionCard from '@/components/assistant-action-card';
-import { supabaseAssistantSource } from '@/lib/assistant';
-import { supabaseChatStore } from '@/lib/assistant-chats';
+import { supabaseAssistantSource, type AssistantSource } from '@/lib/assistant';
+import { supabaseChatStore, type ChatStore } from '@/lib/assistant-chats';
 import { makeActionExecutor, makeRemovalPreview, type ActionExtra } from '@/lib/assistant-actions';
+
+const bureauV2 = () => typeof document !== 'undefined' && document.documentElement.hasAttribute('data-dz-bureau');
+const VERSIONS = /^(ouvrir:planning\.versions(\?|$)|guide:versions$)/;
+const sansVersions = <T extends { action: string }>(liens: T[]): T[] => (bureauV2() ? liens.filter((l) => !VERSIONS.test(l.action)) : liens);
+const source: AssistantSource = {
+  demo: supabaseAssistantSource.demo,
+  ask: async (question, file, history) => { const r = await supabaseAssistantSource.ask(question, file, history); return r.links ? { ...r, links: sansVersions(r.links) } : r; },
+};
+const chats: ChatStore = {
+  list: () => supabaseChatStore.list(), remove: (id) => supabaseChatStore.remove(id), clear: () => supabaseChatStore.clear(),
+  append: (chatId, q, a, links) => supabaseChatStore.append(chatId, q, a, links),
+  load: async (id) => (await supabaseChatStore.load(id)).map((m) => (m.links ? { ...m, links: sansVersions(m.links) } : m)),
+};
 
 /** La réduction en pastille : bureau v2 seulement, hors téléphone (au téléphone, le panneau se ferme déjà en ouvrant un écran). */
 const reductionActive = () => typeof document !== 'undefined' && document.documentElement.hasAttribute('data-dz-bureau') && !window.matchMedia('(max-width: 640px)').matches;
@@ -111,9 +128,9 @@ export default function AssistantBureau({ user, open, onOpenChange, onNavigate, 
   return (
     <>
       <AssistantPanel
-        source={supabaseAssistantSource}
+        source={source}
         // Ici la source est toujours la vraie fonction : l'historique est donc le vrai aussi (la démo du bureau, /apercu/assistant, monte le panneau elle-même).
-        chats={supabaseChatStore}
+        chats={chats}
         memoryKey={`bureau:${user.id}`}
         attachments
         open={open}
@@ -131,7 +148,7 @@ export default function AssistantBureau({ user, open, onOpenChange, onNavigate, 
             execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
             preview={makeRemovalPreview({ company_id: user.company_id })}
             onDone={onDone}
-            onOpenVersions={onOpenVersions}
+            onOpenVersions={bureauV2() ? undefined : onOpenVersions}
           />
         )}
       />

@@ -5,7 +5,9 @@
 // 3. Exporter : bascule « Toute l'équipe | Un salarié » en haut du panneau, la liste sur place, rien de verrouillé ;
 // 4. tiroir Clients : « Autre lieu », « Lieu non listé : le salarié le précise », ligne d'aide, « + Nouveau client ou lieu » (la valeur en base reste « Autre ») ;
 // 5. « Plus ⋯ » entier à l'écran (1440 × 900, 1280 × 800, 1024 × 768), sans défilement ; la page ne défile pas tant qu'un menu est ouvert ;
-// 7. compteur « à relancer » : haut déplié → aucune seconde série de tuiles, la liste dans la tuile ; replié → le panneau, aucun texte coupé ;
+// 7. compteur « à relancer » : haut déplié → aucune seconde série de tuiles, la tuile signalée (sa liste y est toujours) ; replié → le panneau, aucun texte coupé ;
+// Retouches 3 (adaptations, voir docs/REPRISE.md) : le lien du bas « Un seul salarié ? » d'Exporter est retiré (doublon de la bascule du haut) ; la tuile
+// « À relancer » montre toujours sa liste (plus d'état déplié / replié) et l'anneau dure 1,2 s ; « Versions du planning » n'est plus dans « Plus ⋯ ».
 // 8. un clic dehors ferme un menu, un panneau ; il RÉDUIT l'assistant en pastille (conversation gardée).
 // Base SIMULÉE de bureau-sim.mjs (jeu « 2a », jeudi 15 octobre 2026, horloge figée ; aucune vraie base).
 import fs from 'node:fs'; import path from 'node:path';
@@ -128,11 +130,9 @@ for (const [l, h, tactile] of [[1440, 900, false], [1024, 768, false], [834, 111
   check(await page.locator('[data-testid=team-export]').count() === 0 && await page.locator('[role="dialog"]').count() >= 1, 'Exporter › Un salarié › choix : le panneau laisse place à la fiche du salarié');
   await verifierCroix(page, 'Fiche salarié (Feuille d’heures) 1440', 36);
   await echap(page, 2);
-  // L'ancienne fenêtre « Exporter un salarié » (toujours là : lien du bas, guide)
+  // Retouches 3 : le lien du bas « Un seul salarié ? » (qui ouvrait l'ancienne fenêtre « Exporter un salarié ») n'existe plus : la bascule du haut suffit.
   await page.click('[data-testid=bar-export]'); await pause(page, 800);
-  await page.click('[data-testid=export-one-worker]'); await pause(page, 800);
-  await verifierCroix(page, 'Exporter un salarié 1440', 36);
-  await image(page, 'exporter-salarie-croix');
+  check(await page.locator('[data-testid=export-one-worker]').count() === 0, 'Exporter : plus de lien du bas « Un seul salarié ? » (retouches 3 : doublon de la bascule)');
   await echap(page);
   // Clôture du mois (question)
   await page.click('[data-testid=bar-export]'); await pause(page, 800);
@@ -163,7 +163,9 @@ for (const [l, h, tactile] of [[1440, 900, false], [1024, 768, false], [834, 111
   await page.locator('[data-guide="bureau-clients.crayon"]:visible').nth(1).click(); await pause(page, 900);
   await verifierCroix(page, 'Fiche client 1440', 36);
   await echap(page);
-  for (const [id, nom] of [['menu-reserves', 'Réserves'], ['bar-cost', 'Coût chantiers'], ['bar-kiosk', 'Borne'], ['corner-versions', 'Versions'], ['menu-traces', 'Interventions supprimées']]) {
+  check(await page.evaluate(async () => { document.querySelector('[data-testid=bar-plus]')?.click(); await new Promise((r) => setTimeout(r, 300)); const n = document.querySelectorAll('[data-testid=corner-versions]').length; document.querySelector('[data-testid=bar-plus]')?.click(); return n; }) === 0, 'Plus ⋯ : plus de « Versions du planning » (retouches 3)');
+  await pause(page, 300);
+  for (const [id, nom] of [['menu-reserves', 'Réserves'], ['bar-cost', 'Coût chantiers'], ['bar-kiosk', 'Borne'], ['menu-traces', 'Interventions supprimées']]) {
     await page.locator('[data-testid=bar-plus]:visible').first().click(); await pause(page, 300);
     if (!(await page.locator(`[data-testid=${id}]`).count())) { await echap(page); continue; }
     await page.locator(`[data-testid=${id}]`).click(); await pause(page, 1000);
@@ -255,12 +257,12 @@ for (const [l, h] of [[1440, 900], [1280, 800], [1024, 768]]) {
       liste: !!document.querySelector('[data-testid=bandeau] [data-testid=stat-relance] [data-testid=relance-panel]'), eclat: !!document.querySelector('[data-testid=bandeau] [data-testid=stat-relance][data-eclat]'),
       bloque: getComputedStyle(document.documentElement).overflowY }));
     check(d.tuiles === 1 && d.menu === 0, `déplié + clic sur le compteur : aucun second jeu de tuiles (${d.tuiles} tuile « heures », ${d.menu} panneau superposé)`);
-    check(d.liste && d.eclat, 'déplié : la liste « Relancer » se déplie DANS la tuile À relancer, anneau jaune posé');
+    check(d.liste && d.eclat, 'déplié : la tuile À relancer (sa liste y est toujours) est signalée par l\'anneau jaune');
     await image(page, 'compteur-deplie-1440');
-    await pause(page, 1500);
-    check(!(await page.locator('[data-eclat]').count()), 'déplié : l\'anneau jaune disparaît après 1,5 s');
+    await pause(page, 1300);
+    check(!(await page.locator('[data-eclat]').count()), 'déplié : l\'anneau jaune disparaît après 1,2 s');
     await dehors(page);
-    check(!(await page.locator('[data-testid=bandeau] [data-testid=relance-panel]').count()), 'clic dehors : la liste de la tuile se replie');
+    check(await page.locator('[data-testid=bandeau] [data-testid=relance-panel]').count() === 1, 'clic dehors : la liste de la tuile reste (aucun état déplié / replié)');
     // Replié : le panneau des tuiles, sans texte coupé
     await page.click('[data-testid=haut-replier]'); await pause(page, 400);
     await page.click('[data-testid=stat-waiting]'); await pause(page, 400);

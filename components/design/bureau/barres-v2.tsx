@@ -2,7 +2,8 @@
 
 // Design du bureau (v2, planche d'essai 2a) · la barre UNIQUE de 64 px, « Plus ⋯ », le menu du compte, la pastille du plein écran et le tiroir Clients.
 // Un seul accès par fonction : tout ce qui n'est pas dans la barre est dans « Plus ⋯ » (Statistiques, Imprimer, Borne, Réserves, Pièces jointes, Formations,
-// Coût chantiers, Versions, Interventions supprimées, Envoyer par e-mail, Légende, essai) ; Réglages et Déconnexion dans le menu de l'avatar.
+// Coût chantiers, Interventions supprimées, Envoyer par e-mail, essai) ; Réglages et Déconnexion dans le menu de l'avatar. Chaque ligne d'un menu le FERME
+// avant d'ouvrir sa cible, et aucune ne fait défiler la page (la légende est toujours sous la grille ; « Versions du planning » n'est plus offert en v2).
 import { useEffect, useRef, useState } from 'react';
 import { addDays, format, getISOWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -74,7 +75,7 @@ function MenuCompte({ c }: { c: PlanningCtx }) {
  * « Plus ⋯ » (planche 2a : « Statistiques et les autres fonctions passent dans Plus ») : TOUT ce que les deux barres du lot 1 montraient et que la barre unique
  * ne garde pas, sans en perdre une. Groupes et intitulés de la planche (CHANTIERS, ÉQUIPE, PLANNING) ; une ligne est absente quand la fonction n'existe pas (migration, droits).
  */
-function MenuPlus({ c, fermer, legende, ordi = false }: { c: PlanningCtx; fermer: () => void; legende: () => void; ordi?: boolean }) {
+function MenuPlus({ c, fermer, ordi = false }: { c: PlanningCtx; fermer: () => void; ordi?: boolean }) {
   const go = (f: () => void) => () => { fermer(); f(); };
   const { trial } = c;
   const ref = useRef<HTMLDivElement>(null);
@@ -125,13 +126,9 @@ function MenuPlus({ c, fermer, legende, ordi = false }: { c: PlanningCtx; fermer
         <span className="dzp-menu__titre">Planning</span>
         <div className="dzp-menu__groupe">
           <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setPrintOpen(true))} data-testid="bar-print" disabled={c.displayWorkers.length === 0} title="Imprimer le planning">Imprimer<small>⌘P</small></button>
-          {c.versionsOn && c.isAdmin && (
-            <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setVersionsOpen(true))} data-testid="corner-versions" data-guide="bureau-nav.versions">Versions du planning<i aria-hidden="true">›</i></button>
-          )}
           {c.tracesOn && (
             <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setTracesOpen(true))} data-testid="menu-traces">Interventions supprimées ou décalées<i aria-hidden="true">›</i></button>
           )}
-          <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(legende)} data-testid="menu-legende">Légende<i aria-hidden="true">›</i></button>
         </div>
         </div>
       </div>
@@ -167,13 +164,16 @@ function Loupe({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   );
 }
 
-/** Compteur de la barre (masqué à 0) : un clic ouvre le menu des chiffres sous la barre. */
+/** Compteur de la barre (masqué à 0), un geste chacun, comme à l'ordinateur : « à relancer » ouvre (ou referme) le menu des chiffres sous la barre ;
+ *  congés → Salariés, pièces → liste des pièces, réserves → Réserves (le menu des chiffres ne les montre pas). */
 function Compteur({ n, unite, libelle, ton, c, testId, titre }: { n: number; unite?: string; libelle: string; ton?: 'relance'; c: PlanningCtx; testId: string; titre: string }) {
   if (n <= 0) return null;
   const ouvert = c.statPanel === 'waiting';
+  const geste = testId === 'compteur-conges' ? () => c.setSalariesOpen(true) : testId === 'compteur-reserves' ? () => c.setReservesOpen(true)
+    : testId === 'compteur-pieces' ? () => c.setStatPanel((p: string | null) => (p === 'docs' ? null : 'docs')) : () => c.setStatPanel((p: string | null) => (p === 'waiting' ? null : 'waiting'));
   return (
-    <button type="button" className="dzp-compteur" data-ton={ton} data-ouvre-chiffres="" aria-expanded={ouvert} data-testid={testId} data-guide={ton === 'relance' ? 'bureau-stat.relance' : undefined} title={titre}
-      onClick={() => c.setStatPanel((p: string | null) => (p === 'waiting' ? null : 'waiting'))}>
+    <button type="button" className="dzp-compteur" data-ton={ton} data-ouvre-chiffres="" aria-expanded={ton === 'relance' ? ouvert : undefined} data-testid={testId} data-guide={ton === 'relance' ? 'bureau-stat.relance' : undefined} title={titre}
+      onClick={geste}>
       {ton === 'relance' && <span className="dzp-compteur__point" aria-hidden="true" />}<b>{n}{unite ? ` ${unite}` : ''}</b><span className="dzp-compteur__l">{libelle}</span>
     </button>
   );
@@ -183,7 +183,7 @@ function Compteur({ n, unite, libelle, ton, c, testId, titre }: { n: number; uni
  * LA BARRE UNIQUE de la planche 2a (64 px, noire), dans l'ordre exact : logo | ← S-42 12–18 oct. → ACTUELLE | compteurs | (espace) | loupe, Clients, Salariés,
  * Sélectionner, Plus ⋯, ↓ Exporter, ✦, ⤢, avatar. Mêmes gestionnaires que les deux barres du lot 1 (rien de neuf côté données).
  */
-export function BarreUnique({ c, recherche, setRecherche, pleinEcran, legende }: { c: PlanningCtx; recherche: string; setRecherche: (v: string) => void; pleinEcran: () => void; legende: () => void }) {
+export function BarreUnique({ c, recherche, setRecherche, pleinEcran }: { c: PlanningCtx; recherche: string; setRecherche: (v: string) => void; pleinEcran: () => void }) {
   const [plusOuvert, setPlusOuvert] = useState(false);
   useEffect(() => {
     if (!plusOuvert) return;
@@ -212,10 +212,10 @@ export function BarreUnique({ c, recherche, setRecherche, pleinEcran, legende }:
       <span className="dzp-b-sep" aria-hidden="true" />
       <div className="dzp-b-compteurs">
         <Compteur c={c} n={c.cockpitStats.waiting} unite="j" libelle="à relancer" ton="relance" testId="stat-waiting"
-          titre={`${c.cockpitStats.waiting} journée(s) planifiée(s) non envoyée(s) en ${c.monthLabel} — cliquer pour les chiffres et la liste`} />
-        <Compteur c={c} n={conges} libelle={conges > 1 ? 'congés' : 'congé'} testId="compteur-conges" titre={`${conges} demande(s) de congé en attente (à traiter dans « Salariés ») — cliquer pour les chiffres`} />
-        <Compteur c={c} n={c.cockpitStats.docs} libelle={c.cockpitStats.docs > 1 ? 'pièces' : 'pièce'} testId="compteur-pieces" titre={`${c.cockpitStats.docs} pièce(s) jointe(s) — la liste est dans « Plus ⋯ » ; cliquer pour les chiffres`} />
-        <Compteur c={c} n={c.openReserves} libelle={c.openReserves > 1 ? 'réserves' : 'réserve'} testId="compteur-reserves" titre={`${c.openReserves} réserve(s) à traiter (« Plus ⋯ » › Réserves) — cliquer pour les chiffres`} />
+          titre={`${c.cockpitStats.waiting} journée(s) planifiée(s) non envoyée(s) en ${c.monthLabel} — cliquer pour voir qui relancer`} />
+        <Compteur c={c} n={conges} libelle={conges > 1 ? 'congés' : 'congé'} testId="compteur-conges" titre={`${conges} demande(s) de congé en attente — cliquer pour ouvrir « Salariés »`} />
+        <Compteur c={c} n={c.cockpitStats.docs} libelle={c.cockpitStats.docs > 1 ? 'pièces' : 'pièce'} testId="compteur-pieces" titre={`${c.cockpitStats.docs} pièce(s) jointe(s) — cliquer pour voir lesquelles`} />
+        <Compteur c={c} n={c.openReserves} libelle={c.openReserves > 1 ? 'réserves' : 'réserve'} testId="compteur-reserves" titre={`${c.openReserves} réserve(s) à traiter — cliquer pour ouvrir « Réserves »`} />
       </div>
       <span className="dzp-b-espace" />
       <div className="dzp-b-actions">
@@ -227,7 +227,7 @@ export function BarreUnique({ c, recherche, setRecherche, pleinEcran, legende }:
           title={c.selectMode ? 'Terminer la sélection' : 'Cocher des interventions pour les supprimer'} onClick={() => (c.selectMode ? c.exitSelect() : c.enterSelect())}>Sélectionner</button>
         <div className="dzp-relatif">
           <button type="button" className="dzp-b-pilule" aria-expanded={plusOuvert} aria-haspopup="menu" onClick={() => setPlusOuvert((o) => !o)} data-testid="bar-plus" data-guide="bureau-nav.plus">Plus ⋯</button>
-          {plusOuvert && <MenuPlus c={c} fermer={() => setPlusOuvert(false)} legende={legende} />}
+          {plusOuvert && <MenuPlus c={c} fermer={() => setPlusOuvert(false)} />}
           {c.printMenu}
         </div>
         <button type="button" className="dzp-b-pilule dzp-b-pilule--jaune" onClick={() => c.setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter">↓ Exporter</button>
@@ -299,10 +299,10 @@ export function BarreNoire1a({ c, replie, deplier, replier, recherche, setRecher
       </div>
       <div className="dzp-noire__c" data-testid="compteurs">
         <Compteur1a c={c} signaler={signaler} n={c.cockpitStats.waiting} unite="j" libelle="à relancer" ton="relance" testId="stat-waiting"
-          titre={`${c.cockpitStats.waiting} journée(s) planifiée(s) non envoyée(s) en ${c.monthLabel} — cliquer pour les chiffres et la liste`} />
-        <Compteur1a c={c} signaler={signaler} n={conges} libelle={conges > 1 ? 'congés en attente' : 'congé en attente'} testId="compteur-conges" titre={`${conges} demande(s) de congé en attente (à traiter dans « Salariés ») — cliquer pour les chiffres`} />
-        <Compteur1a c={c} signaler={signaler} n={c.cockpitStats.docs} libelle={c.cockpitStats.docs > 1 ? 'pièces' : 'pièce'} testId="compteur-pieces" titre={`${c.cockpitStats.docs} pièce(s) jointe(s) — la liste est dans « Plus ⋯ » ; cliquer pour les chiffres`} />
-        <Compteur1a c={c} signaler={signaler} n={c.openReserves} libelle="Réserves" testId="compteur-reserves" titre={`${c.openReserves} réserve(s) à traiter (« Plus ⋯ » › Réserves) — cliquer pour les chiffres`} />
+          titre={`${c.cockpitStats.waiting} journée(s) planifiée(s) non envoyée(s) en ${c.monthLabel} — cliquer pour voir qui relancer`} />
+        <Compteur1a c={c} signaler={signaler} n={conges} libelle={conges > 1 ? 'congés en attente' : 'congé en attente'} testId="compteur-conges" titre={`${conges} demande(s) de congé en attente — cliquer pour ouvrir « Salariés »`} />
+        <Compteur1a c={c} signaler={signaler} n={c.cockpitStats.docs} libelle={c.cockpitStats.docs > 1 ? 'pièces' : 'pièce'} testId="compteur-pieces" titre={`${c.cockpitStats.docs} pièce(s) jointe(s) — cliquer pour voir lesquelles`} />
+        <Compteur1a c={c} signaler={signaler} n={c.openReserves} libelle="Réserves" testId="compteur-reserves" titre={`${c.openReserves} réserve(s) à traiter — cliquer pour ouvrir « Réserves »`} />
       </div>
       <div className="dzp-noire__d">
         {replie && (
@@ -335,8 +335,8 @@ export function BarreNoire1a({ c, replie, deplier, replier, recherche, setRecher
  * un chantier… », puis Clients, Salariés (pastille), Sélectionner, | , Plus ⋯ (pastille rouge des réserves), ↓ Exporter, ⤢. Ce que la planche ne montre pas ici
  * (Réserves, Borne, Imprimer, Coût chantiers…) est dans « Plus ⋯ ». « Replier ▴ » (à la place de « Replier les chiffres » de la planche) est dans la barre noire.
  */
-export function LigneSemaine1a({ c, recherche, setRecherche, pleinEcran, legende }: {
-  c: PlanningCtx; recherche: string; setRecherche: (v: string) => void; pleinEcran: () => void; legende: () => void;
+export function LigneSemaine1a({ c, recherche, setRecherche, pleinEcran }: {
+  c: PlanningCtx; recherche: string; setRecherche: (v: string) => void; pleinEcran: () => void;
 }) {
   const [plusOuvert, setPlusOuvert] = useState(false);
   useEffect(() => {
@@ -378,7 +378,7 @@ export function LigneSemaine1a({ c, recherche, setRecherche, pleinEcran, legende
           <button type="button" className="dzp-pilule" aria-expanded={plusOuvert} aria-haspopup="menu" onClick={() => setPlusOuvert((o) => !o)} data-testid="bar-plus" data-guide="bureau-nav.plus">
             Plus ⋯{c.openReserves > 0 && <span className="dzp-pastille-plus" title={`${c.openReserves} réserve(s) à traiter`}>{c.openReserves}</span>}
           </button>
-          {plusOuvert && <MenuPlus c={c} fermer={() => setPlusOuvert(false)} legende={legende} ordi />}
+          {plusOuvert && <MenuPlus c={c} fermer={() => setPlusOuvert(false)} ordi />}
           {c.printMenu}
         </div>
         <button type="button" className="dzp-pilule dzp-pilule--jaune" onClick={() => c.setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter">↓ Exporter</button>

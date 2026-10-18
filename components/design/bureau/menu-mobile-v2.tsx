@@ -2,9 +2,11 @@
 
 // Design du bureau (v2) · le menu ☰ du téléphone (planche 2b : « ☰ en haut à droite ») : le point d'entrée UNIQUE de tout ce que l'ordinateur montre dans sa barre
 // et dans « Plus ⋯ » — semaine précédente / suivante, recherche, compteurs avec leur détail (les quatre tuiles du 1a), Clients, Salariés, Sélectionner, Exporter,
-// Imprimer, Réserves, Pièces jointes, Coût chantiers, Borne, Demandes de congé, Statistiques, Formations, Envoyer par e-mail, Versions, Interventions supprimées,
-// Légende, essai et S'abonner, Réglages, Déconnexion. Mêmes propriétés et mêmes gestes que le menu d'avant (components/admin-mobile-menu.tsx) ; le contexte du
-// planning arrive par le pont (pont-v2.ts), en lecture seule. Groupes et intitulés de « Plus ⋯ » (CHANTIERS, ÉQUIPE, PLANNING).
+// Imprimer, Réserves, Pièces jointes, Coût chantiers, Borne, Demandes de congé, Statistiques, Formations, Envoyer par e-mail, Interventions supprimées,
+// Légende, essai et S'abonner, Réglages, Déconnexion (« Versions du planning » n'est plus offert en v2). Mêmes propriétés et mêmes gestes que le menu d'avant
+// (components/admin-mobile-menu.tsx) ; le contexte du planning arrive par le pont (pont-v2.ts), en lecture seule. Groupes et intitulés de « Plus ⋯ ».
+// RÈGLE : chaque ligne FERME le menu avant d'ouvrir sa cible ; ce qui n'a pas d'écran à soi (chiffres, pièces jointes, légende) s'ouvre dans une petite
+// feuille du bas, jamais déplié dans le menu ni en faisant défiler la page.
 import { useState } from 'react';
 import { addDays, format, getISOWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -23,24 +25,28 @@ const LEGENDE: { k: string; l: string }[] = [
   { k: 'absence', l: 'Absence (rayée)' }, { k: 'clos', l: 'Mois clôturé (CLOS)' }, { k: 'reserve', l: 'Réserve à traiter' },
 ];
 
-function Rang({ onClick, children, ton, badge, testId, guide, ouvert, disabled }: { onClick: () => void; children: string; ton?: 'danger'; badge?: number | string; testId?: string; guide?: string; ouvert?: boolean; disabled?: boolean }) {
+function Rang({ onClick, children, ton, badge, testId, guide, disabled }: { onClick: () => void; children: string; ton?: 'danger'; badge?: number | string; testId?: string; guide?: string; disabled?: boolean }) {
   return (
-    <button type="button" className="dzp-mm__item" data-ton={ton} onClick={onClick} data-testid={testId} data-guide={guide} aria-expanded={ouvert} disabled={disabled}>
+    <button type="button" className="dzp-mm__item" data-ton={ton} onClick={onClick} data-testid={testId} data-guide={guide} disabled={disabled}>
       <span className="dzp-mm__txt">{children}</span>
       {badge ? <span className="dzp-mm__badge">{badge}</span> : null}
-      <i aria-hidden="true">{ouvert === undefined ? '›' : ouvert ? '▴' : '▾'}</i>
+      <i aria-hidden="true">›</i>
     </button>
   );
 }
+
+type Feuille = 'chiffres' | 'pieces' | 'legende';
+const TITRES: Record<Feuille, string> = { chiffres: 'Chiffres de la semaine', pieces: 'Pièces jointes', legende: 'Légende' };
 
 export default function MenuMobileV2(p: AdminMobileMenuProps) {
   const { open, onOpenChange } = p;
   const pont = usePont();
   const c = pont?.c;
-  const [legende, setLegende] = useState(false);
-  const [chiffres, setChiffres] = useState(false);
+  // La petite feuille ouverte depuis le menu (le menu, lui, est déjà fermé).
+  const [feuille, setFeuille] = useState<Feuille | null>(null);
   const go = (fn: () => void) => () => { onOpenChange(false); fn(); };
-  const fermerTout = () => { setLegende(false); setChiffres(false); if (c?.statPanel) c.setStatPanel(null); };
+  const ouvrirFeuille = (f: Feuille) => () => { onOpenChange(false); if (f === 'pieces') c?.setStatPanel('docs'); setFeuille(f); };
+  const fermerFeuille = () => { if (feuille === 'pieces' && c?.statPanel) c.setStatPanel(null); setFeuille(null); };
   const trial = p.trial;
   const sem = c ? getISOWeek(c.currentWeekStart) : null;
   const fin = c ? addDays(c.currentWeekStart, 6) : null;
@@ -51,9 +57,9 @@ export default function MenuMobileV2(p: AdminMobileMenuProps) {
     { n: c.cockpitStats.docs, l: c.cockpitStats.docs > 1 ? 'pièces' : 'pièce', id: 'mm-compteur-pieces' },
     { n: c.openReserves, l: c.openReserves > 1 ? 'réserves' : 'réserve', id: 'mm-compteur-reserves' },
   ].filter((x) => x.n > 0) : [];
-  const piecesOuvertes = c?.statPanel === 'docs';
   return (
-    <Sheet open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) fermerTout(); }}>
+    <>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="bt-skin dz-bureau dzp-mm" onCloseAutoFocus={(e) => { if (p.holdFocus?.()) e.preventDefault(); }}>
         <SheetHeader className="dzp-mm__tete">
           <SheetTitle className="dzp-mm__titre">Menu</SheetTitle>
@@ -89,16 +95,15 @@ export default function MenuMobileV2(p: AdminMobileMenuProps) {
 
           {c && pont && (
             <div className="dzp-mm__chiffres">
-              <button type="button" className="dzp-mm__compteurs" aria-expanded={chiffres} onClick={() => setChiffres((v) => !v)} data-testid="mm-chiffres" data-guide="bureau-stat.relance">
+              <button type="button" className="dzp-mm__compteurs" onClick={ouvrirFeuille('chiffres')} data-testid="mm-chiffres" data-guide="bureau-stat.relance">
                 <span className="dzp-mm__compteurs-t">Chiffres de la semaine</span>
                 <span className="dzp-mm__compteurs-l">
                   {compteurs.length === 0 ? <span className="dzp-mm__compteur">rien à signaler</span> : compteurs.map((x) => (
                     <span key={x.id} className="dzp-mm__compteur" data-ton={x.ton} data-testid={x.id}><b>{x.n}</b> {x.l}</span>
                   ))}
                 </span>
-                <i aria-hidden="true">{chiffres ? '▴' : '▾'}</i>
+                <i aria-hidden="true">›</i>
               </button>
-              {chiffres && <PanneauChiffres c={c} chiffres={pont.chiffres} fermer={() => onOpenChange(false)} />}
             </div>
           )}
 
@@ -109,24 +114,17 @@ export default function MenuMobileV2(p: AdminMobileMenuProps) {
             {p.onOpenSelect && <Rang onClick={go(p.onOpenSelect)} testId="mm-select" guide="bureau-nav.selection">Sélectionner des interventions</Rang>}
             <Rang onClick={go(p.onOpenExportTeam)} testId="mm-export" guide="bureau-nav.exporter">Exporter</Rang>
             {c && <Rang onClick={go(() => c.setPrintOpen(true))} testId="mm-print" disabled={c.displayWorkers.length === 0}>Imprimer</Rang>}
-            {p.onOpenVersions && <Rang onClick={go(p.onOpenVersions)} testId="mm-versions" guide="bureau-nav.versions">Versions du planning</Rang>}
             {p.onOpenTraces && <Rang onClick={go(p.onOpenTraces)} testId="mm-traces">Interventions supprimées ou décalées</Rang>}
-            <Rang onClick={() => setLegende((l) => !l)} testId="mm-legende" ouvert={legende}>Légende</Rang>
+            <Rang onClick={ouvrirFeuille('legende')} testId="mm-legende">Légende</Rang>
           </div>
-          {legende && (
-            <div className="dzp-mm__legende" data-testid="legende-mobile">
-              {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
-            </div>
-          )}
 
           <span className="dzp-menu__titre">Chantiers</span>
           <div className="dzp-mm__groupe">
             <Rang onClick={go(p.onOpenReserves)} guide="bureau-nav.reserves" badge={p.openReserves}>Réserves de chantier</Rang>
-            {c && <Rang onClick={() => c.setStatPanel(piecesOuvertes ? null : 'docs')} testId="mm-pieces" badge={c.cockpitStats.docs} ouvert={piecesOuvertes}>Pièces jointes</Rang>}
+            {c && <Rang onClick={ouvrirFeuille('pieces')} testId="mm-pieces" badge={c.cockpitStats.docs}>Pièces jointes</Rang>}
             <Rang onClick={go(p.onOpenCost)} guide="bureau-nav.couts">Coût chantiers</Rang>
             {p.onOpenKiosk && <Rang onClick={go(p.onOpenKiosk)} testId="mm-kiosk" guide="bureau-nav.borne">Borne</Rang>}
           </div>
-          {c && piecesOuvertes && <div className="dzp-mm__pieces"><ListePieces c={c} /></div>}
 
           <span className="dzp-menu__titre">Équipe</span>
           <div className="dzp-mm__groupe">
@@ -144,5 +142,22 @@ export default function MenuMobileV2(p: AdminMobileMenuProps) {
         </nav>
       </SheetContent>
     </Sheet>
+    <Sheet open={feuille !== null} onOpenChange={(o) => { if (!o) fermerFeuille(); }}>
+      <SheetContent side="bottom" className="bt-skin dz-bureau dzp-mm dzp-mm--feuille" data-testid={feuille ? `mm-feuille-${feuille}` : undefined}>
+        <SheetHeader className="dzp-mm__tete">
+          <SheetTitle className="dzp-mm__titre">{feuille ? TITRES[feuille] : ''}</SheetTitle>
+        </SheetHeader>
+        <div className="dzp-mm__corps">
+          {feuille === 'chiffres' && c && pont && <PanneauChiffres c={c} chiffres={pont.chiffres} fermer={fermerFeuille} />}
+          {feuille === 'pieces' && c && <div className="dzp-mm__pieces"><ListePieces c={c} /></div>}
+          {feuille === 'legende' && (
+            <div className="dzp-mm__legende" data-testid="legende-mobile">
+              {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+    </>
   );
 }

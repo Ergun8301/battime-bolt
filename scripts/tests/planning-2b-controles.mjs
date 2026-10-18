@@ -132,20 +132,27 @@ console.log(`fonctions de la barre, de « Plus ⋯ » et du compte à l'ordinate
     const cle = EQUIV[f] || f;
     if (!texte.toLowerCase().includes(cle.toLowerCase())) manquent.push(f);
   }
-  check(fonctionsOrdinateur.length >= 20 && manquent.length === 0, `☰ donne accès aux ${fonctionsOrdinateur.length} fonctions de la barre, de « Plus ⋯ » et du compte${manquent.length ? ` — manquent : ${manquent.join(', ')}` : ''}`);
+  // Retouches 3 : 19 (« Légende » et « Versions du planning » ne sont plus dans « Plus ⋯ » ; la légende reste offerte par le ☰, dans une feuille).
+  check(fonctionsOrdinateur.length >= 19 && manquent.length === 0, `☰ donne accès aux ${fonctionsOrdinateur.length} fonctions de la barre, de « Plus ⋯ » et du compte${manquent.length ? ` — manquent : ${manquent.join(', ')}` : ''}`);
   check(await page.locator('[data-testid=m-assistant]').count() === 1, '✦ (Assistant) reste dans l’en-tête ; ⤢ (plein écran) n’a pas d’objet au téléphone, qui montre déjà le planning seul');
   const petitesM = await petitesCibles(page, '.dzp-mm');
   check(petitesM.length === 0, `menu ☰ : cibles ≥ 44 px (${petitesM.slice(0, 6).join(' | ')})`);
   await capture(page, '2b-menu-390.png');
-  // les chiffres et leurs tuiles
-  await page.click('[data-testid=mm-chiffres]'); await page.waitForTimeout(250);
-  const tuiles = await menu.locator('.dzp-tuile').count();
-  check(tuiles === 4 && await menu.locator('[data-testid=relance-row]').count() > 0, `les compteurs ouvrent les quatre tuiles du 1a, avec la liste « À relancer » (${tuiles})`);
-  await page.click('[data-testid=mm-chiffres]'); await page.waitForTimeout(150);
+  // les chiffres et leurs tuiles — retouches 3 : chaque ligne du menu le FERME puis ouvre sa cible ; les chiffres et les pièces jointes s'ouvrent dans une
+  // petite feuille du bas (plus dépliés dans le menu)
+  const feuilleC = page.locator('[data-testid=mm-feuille-chiffres]');
+  await page.click('[data-testid=mm-chiffres]'); await page.waitForTimeout(700);
+  const tuiles = await feuilleC.locator('.dzp-tuile').count();
+  check(tuiles === 4 && await feuilleC.locator('[data-testid=relance-row]').count() > 0 && await page.locator('.dzp-mm:not(.dzp-mm--feuille)[data-state=open]').count() === 0,
+    `les compteurs ouvrent les quatre tuiles du 1a dans une feuille, avec la liste « À relancer » ; le menu est fermé (${tuiles})`);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(400);
   // pièces jointes
-  await page.click('[data-testid=mm-pieces]'); await page.waitForTimeout(400);
-  check(await menu.locator('[data-testid=liste-pieces]').count() === 1 && /Villa Exemple/i.test(await menu.locator('[data-testid=liste-pieces]').innerText()), 'Pièces jointes : la liste par chantier s’ouvre dans le menu');
-  await page.click('[data-testid=mm-pieces]'); await page.waitForTimeout(150);
+  await page.click('[data-testid=m-menu]'); await page.waitForTimeout(500);
+  await page.click('[data-testid=mm-pieces]'); await page.waitForTimeout(700);
+  const feuilleP = page.locator('[data-testid=mm-feuille-pieces] [data-testid=liste-pieces]');
+  check(await feuilleP.count() === 1 && /Villa Exemple/i.test(await feuilleP.innerText()), 'Pièces jointes : la liste par chantier s’ouvre dans une feuille (le menu se ferme)');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+  await page.click('[data-testid=m-menu]'); await page.waitForTimeout(500);
   // semaine suivante puis retour
   await menu.getByRole('button', { name: 'Semaine suivante' }).click(); await page.waitForTimeout(500);
   const s43 = (await menu.locator('.dzp-mm__sem').innerText()).replace(/\s+/g, ' ');

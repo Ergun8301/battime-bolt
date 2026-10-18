@@ -98,7 +98,8 @@ export default function ExporterV2(p: ExporterV2Props) {
   // L'alerte de verrouillage v2 se charge pendant qu'on choisit la période (jamais au premier affichage de /admin).
   useEffect(() => { void import('./verrou-v2'); }, []);
   // EN HAUT du panneau : « Toute l'équipe | Un salarié ». Présentation seulement : « Toute l'équipe » est le contenu d'avant (mêmes gestionnaires, même
-  // verrou) ; « Un salarié » montre la liste de « Exporter un salarié » sur place (même choix : la fiche du salarié, rien n'est verrouillé).
+  // verrou) ; « Un salarié » montre la liste de « Exporter un salarié » sur place (même choix : la fiche du salarié, rien n'est verrouillé). C'est le SEUL
+  // accès à l'export d'un salarié dans ce panneau : l'ancien lien du bas « Un seul salarié ? » (doublon de la bascule) est retiré.
   const [mode, setMode] = useState<'equipe' | 'salarie'>('equipe');
   useEffect(() => { if (p.open) setMode('equipe'); }, [p.open]);
   const avecSalarie = !!p.workers && !!p.onChoisirSalarie;
@@ -183,13 +184,6 @@ export default function ExporterV2(p: ExporterV2Props) {
             </li>
           ))}
         </ul>
-      </div>
-
-      <div className="dz-hb-carte">
-        <button type="button" className="dz-hb-lien-carte" data-testid="export-one-worker" data-guide="bureau-export.un-salarie" onClick={p.onUnSalarie}>
-          <span><b>Un seul salarié ?</b><small>Exportez-le depuis sa fiche, sans verrou.</small></span>
-          <i aria-hidden="true">›</i>
-        </button>
       </div>
       </>)}
     </PanneauB>

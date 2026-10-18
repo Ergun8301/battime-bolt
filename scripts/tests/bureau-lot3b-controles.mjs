@@ -159,44 +159,20 @@ const ouvreur = (desk, mob) => async (page, w) => { if (w < 1024) await mob(page
 await largeurs('ST03 / XM06 Coût chantiers', ouvreur((p) => plus(p, 'bar-cost'), (p) => mobileMenu(p, 'Coût chantiers')), 'cout-v2', { pleinEcran: true, tel: 'impl-XM06' });
 
 // ═════ ST05 à ST08 · Versions du planning ═════════════════════════════════════════════════════════════════════════════
-{
+// Retouches 3 (demande d'Ergun) : « Versions du planning » n'est plus offert dans l'interface v2 — ni dans « Plus ⋯ », ni dans le menu ☰, ni par l'assistant.
+// Le code serveur, les tables et la v1 ne changent pas ; l'habillage v2 du panneau (planning-versions-dialog.tsx) reste dans le code, sans accès. Contrôlé ici :
+// aucune entrée à 1440 (Plus ⋯), 834 (Plus ⋯) et 390 (☰). Les contrôles d'avant (liste, « Garder », aperçu, retour) ne s'appliquent plus en v2.
+for (const [w, h] of [[1440, 900], [834, 1112], [390, 844]]) {
   preparer();
-  const { page, ctx, erreurs } = await sim.page({ ui: 2 });
+  const { page, ctx, erreurs } = await sim.page({ ui: 2, largeur: w, hauteur: h, hasTouch: w < 1024, attente: w < 768 ? '[data-testid=planning-mobile]' : (w < 1024 ? '.dzp-table [data-testid=bubble]:visible' : undefined) });
   await routes(ctx);
-  await plus(page, 'corner-versions');
-  const f = fenetre(page, 'versions-dialog');
-  check(await f.count() === 1 && await f.locator('.dz-fenetre__titre').innerText() === 'Versions du planning', 'ST05 Plus ⋯ › Versions du planning ouvre le panneau v2');
-  check(await f.locator('[data-testid=versions-item]').count() === 2, 'ST05 deux versions listées (V1, V2)');
-  await capture(page, 'impl-ST05');
-  const k0 = writes((x) => x.m === 'POST' && x.t === 'planning_versions');
-  await f.locator('[data-testid=versions-keep]').click(); await page.waitForTimeout(800);
-  check(writes((x) => x.m === 'POST' && x.t === 'planning_versions') === k0 + 1, '« Garder cette version » (bas du panneau) écrit dans planning_versions (saveVersion, comme en v1)');
-  await f.locator('[data-testid=versions-view]').last().click(); await page.waitForTimeout(1200);
-  const prev = await f.locator('[data-testid=versions-preview]').innerText().catch(() => '');
-  check(/Revenir à la V|Rien à changer/.test(prev), `ST06 « Voir » montre l’aperçu de la version, rien n’est écrit : « ${prev.replace(/\s+/g, ' ').slice(0, 90)}… »`);
-  if (await f.locator('[data-testid=versions-chiffres]').count()) check(true, 'ST07 chiffres REMISES / RETIRÉES / GARDÉES de l’aperçu');
-  await capture(page, 'impl-ST07');
-  const conf = f.locator('[data-testid=versions-confirm]');
-  if (await conf.count()) {
-    const n = sim.log.writes.length;
-    await conf.click(); await page.waitForTimeout(1500);
-    check(sim.log.writes.length > n, 'ST07 « Revenir à la V… » lance le retour (restoreVersion : version gardée d’abord, puis le planning)');
-    await capture(page, 'impl-ST08');
-  }
-  check(await fermerX(page, 'versions-dialog'), 'ST05 ✕ ferme le panneau');
-  await plus(page, 'corner-versions'); check(await fermerEchap(page, 'versions-dialog'), 'ST05 Échap ferme le panneau');
-  check(erreurs.length === 0, `ST05 aucune erreur de page (${erreurs.join(' | ')})`);
+  const rond = page.locator('button[aria-label="Menu"]:visible');
+  if (await rond.count()) { await rond.first().click(); await page.waitForTimeout(600); } else { await page.locator('[data-testid=bar-plus]:visible').first().click(); await page.waitForTimeout(300); }
+  const texte = (await page.locator(w < 768 ? '.dzp-mm' : '[data-testid=menu-plus]').innerText()).replace(/\s+/g, ' ');
+  check(!/Versions du planning/.test(texte) && await page.locator('[data-testid=corner-versions], [data-testid=mm-versions]').count() === 0, `ST05 à ${w} px : « Versions du planning » n'est plus offert en v2 (retouches 3)`);
+  check(erreurs.length === 0, `ST05 à ${w} px : aucune erreur de page (${erreurs.join(' | ')})`);
   await ctx.close();
-  preparer(); sim.D.planning_versions.splice(0);
-  const b = await sim.page({ ui: 2 });
-  await routes(b.ctx);
-  // la table est là (versionsAvailable) mais vide pour cette semaine
-  sim.D.planning_versions.push({ id: 'pv-autre', company_id: CO, week_start: '2026-09-28', number: 1, kind: 'initial', created_by: null, created_at: '2026-09-28T06:00:00Z', request: null, note: null, cells: [] });
-  await plus(b.page, 'corner-versions');
-  check(await b.page.locator('[data-testid=versions-empty]').count() === 1, 'ST05 état vide : « Aucune version pour cette semaine… »');
-  await b.ctx.close();
 }
-await largeurs('ST05 / XM13 Versions du planning', ouvreur((p) => plus(p, 'corner-versions'), (p) => mobileMenu(p, 'Versions du planning')), 'versions-dialog', { pleinEcran: true, tel: 'impl-XM13' });
 
 // ═════ ST09 · Interventions supprimées ou décalées ═══════════════════════════════════════════════════════════════════
 {

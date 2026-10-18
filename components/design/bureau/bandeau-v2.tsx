@@ -7,7 +7,6 @@ import { Fragment, useEffect, useRef } from 'react';
 import { Building2, FileText, Image as ImageIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { resumeRelance } from '@/supabase/functions/_shared/bureau-vue';
 import { degradeJour } from './grille-v2';
 import { useBloquePage } from './barres-v2';
 import type { PlanningCtx } from './contexte-v2';
@@ -36,16 +35,18 @@ function useClicDehors(ref: React.RefObject<HTMLElement>, fermer: () => void, ac
   }, [ref, fermer, actif]);
 }
 
+/** Au plus deux lignes de la liste « À relancer » ; au-delà, « + N autres » ouvre Salariés (où chaque salarié a son bouton « Relancer »). */
+const LIGNES_RELANCE = 2;
+
 /**
- * Les quatre tuiles du 1a. `enLigne` (ordinateur, haut déplié) : le BANDEAU posé sous la ligne de semaine, sans la liste ; la tuile « À relancer » y est un bouton
- * qui ouvre le menu des chiffres (avec la liste), comme les compteurs de la barre noire. Sinon : le menu des chiffres, posé sous la barre noire.
+ * Les quatre tuiles du 1a. `enLigne` (ordinateur, haut déplié) : le BANDEAU posé sous la ligne de semaine. Sinon : le menu des chiffres, posé sous la barre noire
+ * (haut replié, tablette) ou dans la feuille du téléphone. Dans les deux cas, la tuile « À relancer » est la MÊME : sa liste toujours visible (deux lignes au plus,
+ * puis « + N autres »), aucun état ouvert ou fermé ; seuls « Relancer » et « + N autres » agissent.
  */
 export function PanneauChiffres({ c, chiffres, fermer, enLigne = false }: { c: PlanningCtx; chiffres: Chiffres; fermer: () => void; enLigne?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  // Bandeau (haut déplié) : la liste « À relancer » se déplie DANS sa tuile ; un clic dehors la replie. Menu des chiffres : un clic dehors le ferme.
-  const listeOuverte = enLigne && c.statPanel === 'waiting';
-  useClicDehors(ref, fermer, !enLigne || listeOuverte);
-  // Le menu des chiffres (haut replié, tablette) est un menu déroulant : la page derrière ne défile pas tant qu'il est ouvert.
+  // Menu des chiffres : un clic dehors le ferme, la page derrière ne défile pas tant qu'il est ouvert. Le bandeau, lui, fait partie de la page.
+  useClicDehors(ref, fermer, !enLigne);
   useBloquePage(!enLigne);
   const sem = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const indexAuj = sem.indexOf(c.todayStr);
@@ -56,7 +57,10 @@ export function PanneauChiffres({ c, chiffres, fermer, enLigne = false }: { c: P
   const premierNom = premier ? c.displayWorkers.find((w) => w.id === premier.user_id) : undefined;
   const absents = c.displayWorkers.filter((w) => c.todayAbsence.has(w.id));
   const nb = c.cockpitStats.waiting;
-  const resume = resumeRelance(chiffres.relances.map((r) => ({ prenom: r.name.split(' ')[0], jours: r.days.length })));
+  // Les lignes de l'écran d'avant (mêmes gestionnaires : Relancer, « ✓ relancé ») ; le nom n'ouvre rien ici (voir onClickCapture).
+  const lignes = c.renderRelanceRows(fermer);
+  const toutes = Array.isArray(lignes) ? lignes : [];
+  const autres = toutes.length - LIGNES_RELANCE;
   return (
     <div className={`dzp-chiffres${enLigne ? ' dzp-chiffres--ligne' : ''}`} ref={ref} role="region" aria-label="Chiffres de la semaine" data-testid={enLigne ? 'bandeau' : 'menu-chiffres'}>
       <div className="dzp-tuile dzp-tuile--sombre" data-testid="stat-heures">
@@ -70,32 +74,30 @@ export function PanneauChiffres({ c, chiffres, fermer, enLigne = false }: { c: P
             <div key={sem[i]} className="dzp-barre" data-auj={i === indexAuj ? '' : undefined}>
               <span className="dzp-barre__n">{Math.round(m / 60)}h</span>
               <div className="dzp-barre__b" style={{ height: `${Math.round((m / max) * 58)}px`, background: degradeJour(i, 180) }} />
-              {/* Menu des chiffres (plus étroit) : la lettre seule, jamais coupée ; le bandeau garde « L 12 ». */}
-              <span className="dzp-barre__l" title={format(c.weekDays[i], 'EEEE d', { locale: fr })}>{enLigne ? `${LETTRES[i]} ${format(c.weekDays[i], 'd')}` : LETTRES[i]}</span>
+              {/* « L 12 » quand la colonne a la place, sinon la lettre seule (règle CSS sur la largeur de la colonne) : jamais coupé. */}
+              <span className="dzp-barre__l" title={format(c.weekDays[i], 'EEEE d', { locale: fr })}>{LETTRES[i]}<span className="dzp-barre__j"> {format(c.weekDays[i], 'd')}</span></span>
             </div>
           ))}
         </div>
       </div>
 
-      {enLigne ? (
-        // Bandeau : la tuile se déplie sur place (la liste « Prénom Nom · 7 j · Relancer » dessous) ; aucun panneau par-dessus, aucune tuile en double.
-        <div className="dzp-tuile dzp-tuile--relance dzp-tuile--depliable" data-testid="stat-relance" data-ouverte={listeOuverte ? '' : undefined}>
-          <button type="button" className="dzp-tuile__ouvrir" data-ouvre-chiffres="" aria-expanded={listeOuverte}
-            title={nb === 0 ? `Tout est envoyé en ${c.monthLabel}` : 'Cliquer pour savoir qui relancer'} onClick={() => c.setStatPanel((p: string | null) => (p === 'waiting' ? null : 'waiting'))}>
-            <span className="dzp-tuile__k">À relancer</span>
-            <span className="dzp-tuile__v"><b>{nb}</b><span>journée{nb > 1 ? 's' : ''}</span></span>
-            <span className="dzp-tuile__s">{nb === 0 ? `Tout est envoyé en ${c.monthLabel}.` : `${resume}. Planifiées sans heures envoyées.`}</span>
-          </button>
-          {listeOuverte && <div className="dzp-tuile__liste" data-testid="relance-panel">{c.renderRelanceRows(fermer)}</div>}
-        </div>
-      ) : (
-        <div className="dzp-tuile dzp-tuile--relance" data-testid="stat-relance" data-guide="bureau-stat.relance">
-          <span className="dzp-tuile__k">À relancer</span>
-          <span className="dzp-tuile__v"><b>{nb}</b><span>journée{nb > 1 ? 's' : ''}</span></span>
-          <span className="dzp-tuile__s">{nb === 0 ? `Tout est envoyé en ${c.monthLabel}.` : `${resume}. Planifiées sans heures envoyées.`}</span>
-          <div className="dzp-tuile__liste" data-testid="relance-panel" data-guide="bureau-stat.liste">{c.renderRelanceRows(fermer)}</div>
-        </div>
-      )}
+      <div className="dzp-tuile dzp-tuile--relance" data-testid="stat-relance" data-guide={enLigne ? undefined : 'bureau-stat.relance'}>
+        <span className="dzp-tuile__k">À relancer</span>
+        <span className="dzp-tuile__v"><b>{nb}</b><span>journée{nb > 1 ? 's' : ''}</span></span>
+        {toutes.length === 0 ? (
+          <span className="dzp-tuile__s">{nb === 0 ? `Tout est envoyé en ${c.monthLabel}.` : 'Planifiées sans heures envoyées.'}</span>
+        ) : (
+          <div className="dzp-tuile__liste" data-testid="relance-panel" data-guide={enLigne ? undefined : 'bureau-stat.liste'}
+            onClickCapture={(e) => { if ((e.target as HTMLElement).closest('.bt-pl-sp-who')) { e.preventDefault(); e.stopPropagation(); } }}>
+            {toutes.slice(0, LIGNES_RELANCE)}
+            {autres > 0 && (
+              <button type="button" className="dzp-tuile__autres" data-testid="relance-autres" onClick={() => { if (!enLigne) fermer(); c.setSalariesOpen(true); }}>
+                + {autres} autre{autres > 1 ? 's' : ''}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="dzp-tuile dzp-tuile--direct" data-testid="stat-direct">
         <span className="dzp-tuile__k">En direct</span>

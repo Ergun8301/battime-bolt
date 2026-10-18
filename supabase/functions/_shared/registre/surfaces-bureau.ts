@@ -511,7 +511,10 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'dialogue:components/admin-mobile-menu#open',
     // Design du bureau v2 : le MÊME menu ☰, habillé par la planche (components/design/bureau/menu-mobile-v2.tsx) ; les mêmes lignes, les mêmes gestes.
     'dialogue:components/design/bureau/menu-mobile-v2#open',
-    'ancre-dynamique:components/design/bureau/menu-mobile-v2.tsx:28',
+    // Retouches 3 (?ui=2) : chaque ligne du menu le ferme avant d'ouvrir sa cible ; les chiffres, les pièces jointes et la légende s'ouvrent dans une petite
+    // feuille du bas (plus dépliés dans le menu) : le même point d'entrée, la même lecture.
+    'dialogue:components/design/bureau/menu-mobile-v2#feuille !== null',
+    'ancre-dynamique:components/design/bureau/menu-mobile-v2.tsx:30',
     // Design du bureau, lot 3 A (?ui=2) : les briques d'affichage (components/design/bureau/lot3a-ui.tsx : ligne, liste, champ, onglets) relaient la prop
     // `guide` de leurs appelants, comme le menu ☰ v2 ci-dessus ; leurs valeurs sont les guide="…" littéraux des fenêtres v2, déjà comptés comme ancres.
     'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:143',

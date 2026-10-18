@@ -1057,16 +1057,19 @@ html[data-dz-bureau][data-dz-as-reduit] .as-panel { transform: translate(24px, 2
 }
 .dzp-menu-compte .dzp-menu__item { min-height: 40px; }
 
-/* 7. Bandeau (haut déplié) : la tuile « À relancer » se déplie sur place ; un compteur de la barre noire la met en évidence (anneau jaune 1,5 s). */
-.dzp-tuile--depliable { padding: 0; gap: 0; }
-.dzp-tuile__ouvrir { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 16px 18px; background: transparent; border: 0; border-radius: inherit; text-align: left; font: inherit; color: inherit; cursor: pointer; min-width: 0; }
-.dzp-tuile--depliable > .dzp-tuile__liste { margin: 0 12px 12px; }
-.dzp-tuile[data-eclat] { box-shadow: 0 0 0 4px #FFC21A, 0 0 0 7px rgba(255,194,26,.35); transition: box-shadow .2s ease; }
-@media (min-width: 1024px) and (max-width: 1279px) { .dzp-chiffres--ligne .dzp-tuile--depliable { padding: 0; } .dzp-chiffres--ligne .dzp-tuile__ouvrir { padding: 14px; } }
-.dzp-chiffres--ligne .dzp-tuile__ouvrir .dzp-tuile__k, .dzp-chiffres--ligne .dzp-tuile__ouvrir .dzp-tuile__s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 7. Tuile « À relancer » (bandeau, menu des chiffres, feuille du téléphone) : sa liste toujours visible, deux lignes au plus puis « + N autres » ; aucun état
+   ouvert ou fermé. Le nom du salarié n'y ouvre rien (seuls « Relancer » et « + N autres » agissent). Un compteur de la barre noire la signale (anneau 1,2 s). */
+.dzp-tuile--relance .dzp-tuile__liste { max-height: none; overflow: visible; }
+.dzp-tuile--relance .bt-pl-sp-who { pointer-events: none; cursor: default; }
+.dzp-tuile__autres { display: block; width: 100%; min-height: 32px; margin-top: 2px; padding: 4px 8px; border: 0; border-top: 1px solid #F0B8AE; background: transparent; color: #8E1B14; font: inherit; font-size: 12.5px; font-weight: 800; text-align: left; cursor: pointer; border-radius: 0 0 8px 8px; }
+.dzp-tuile__autres:hover { background: #FCE4E1; }
+.dzp-tuile__autres:focus-visible { outline: 2px solid #15120F; outline-offset: -2px; }
+.dzp-tuile[data-eclat] { box-shadow: 0 0 0 3px rgba(255,194,26,.9), 0 0 0 6px rgba(255,194,26,.25); transition: box-shadow .2s ease; }
 @media (prefers-reduced-motion: reduce) { .dzp-tuile[data-eclat] { transition: none; } }
-/* Menu des chiffres (haut replié) : sous chaque barre, la lettre du jour seule, centrée, jamais coupée. */
-.dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-barre__l { text-align: center; overflow: visible; }
+/* Barres des heures : « L 12 » quand la colonne a la place, sinon la lettre seule, centrée, jamais coupée (même règle au bandeau, au menu et au téléphone). */
+.dzp-barre { container-type: inline-size; }
+.dzp-barre__l { text-align: center; overflow: visible; }
+@container (max-width: 24px) { .dzp-barre__j { display: none; } }
 
 /* 4. Tiroir Clients : la ligne d'aide sur les lieux fixes, sous la recherche. */
 .dzp-tiroir__lieux { font-size: var(--dz-fs-12); line-height: 1.35; color: var(--dz-texte-2); margin-top: -4px; }
@@ -1096,5 +1099,5 @@ html[data-dz-bureau] .as-panel .as-x svg { width: 16px; height: 16px; }
   .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-barres { gap: 5px; }
   .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-barre__n { font-size: 9px; letter-spacing: -.03em; overflow: visible; }
 }
-/* Bandeau : la tuile « À relancer » dépliée prend un peu plus de place (les noms de la liste restent lisibles). */
-@media (min-width: 1024px) { .dzp-chiffres--ligne:has(.dzp-tuile--depliable[data-ouverte]) { grid-template-columns: 1.7fr 1.5fr .9fr .9fr; } }
+/* Bandeau : la tuile « À relancer » montre toujours sa liste ; elle a un peu plus de place (les noms restent lisibles). */
+@media (min-width: 1024px) { .dzp-chiffres--ligne:has(.dzp-tuile__liste) { grid-template-columns: 1.7fr 1.5fr .9fr .9fr; } }

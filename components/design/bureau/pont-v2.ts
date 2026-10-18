@@ -30,7 +30,6 @@ export interface Pont {
   recherche: string;
   setRecherche: (v: string) => void;
   chiffres: Chiffres;
-  legende: () => void;
 }
 
 let pont: Pont | null = null;
