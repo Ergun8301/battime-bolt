@@ -38,7 +38,7 @@ export function raisonDeRefus(c: PlanningCtx, w: string, d: string): string | nu
   return cible;
 }
 
-function CaseDrop({ c, w, d, auj, live, clos, children }: { c: PlanningCtx; w: string; d: string; auj: boolean; live: boolean; clos: boolean; children: ReactNode }) {
+export function CaseDrop({ c, w, d, auj, live, clos, children }: { c: PlanningCtx; w: string; d: string; auj: boolean; live: boolean; clos: boolean; children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${w}|${d}` });
   const refus = isOver ? raisonDeRefus(c, w, d) : null;
   const libelle = c.activeDrag?.type === 'new' ? 'Déposer ici · sans horaire' : null;

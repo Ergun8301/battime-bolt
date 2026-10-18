@@ -1,6 +1,8 @@
 'use client';
 
-// Design du bureau (v2) · LE PLANNING, planche d'essai 2a (« Bureau · barre unique + plein écran ») posée sur la base du lot 1. Chargé À LA DEMANDE par admin-planning.tsx quand le drapeau `?ui=2` est actif (jamais dans le premier chargement).
+// Design du bureau (v2) · LE PLANNING. Ordinateur (1 024 px et plus) : maquette 1a de la planche d'essai (barre noire, ligne de semaine, bandeau de chiffres, grille du
+// lot 1), avec « Replier ▴ » et le plein écran ; tablette (768 à 1 023 px) : barre unique et grille compacte 2a ; téléphone : planche 2b.
+// Chargé À LA DEMANDE par admin-planning.tsx quand le drapeau `?ui=2` est actif (jamais dans le premier chargement).
 // Ce morceau ne lit rien et n'écrit rien : il reçoit de l'écran existant ses états et ses gestionnaires (contexte-v2.ts) et dessine la planche du designer.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
@@ -9,11 +11,12 @@ import { ActionDone } from '@/components/action-done';
 import { totauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
 import './bureau-jetons.css';
 import './planning-v2.css';
-import { BarreUnique, PastillePleinEcran, TiroirClients } from './barres-v2';
+import { BarreNoire1a, BarreUnique, LigneSemaine1a, PastillePleinEcran, TiroirClients } from './barres-v2';
 import { ListePieces, PanneauChiffres } from './bandeau-v2';
 import { chargeJours, Grille } from './grille-v2';
+import { Grille1a } from './grille-1a';
 import { Mobile } from './mobile-v2';
-import { publierPont, useLargeur, REQ_TELEPHONE } from './pont-v2';
+import { publierPont, useLargeur, REQ_ORDI, REQ_TELEPHONE } from './pont-v2';
 import type { PlanningCtx } from './contexte-v2';
 
 export { default as MenuMobileV2 } from './menu-mobile-v2';
@@ -28,12 +31,12 @@ const LEGENDE: { k: string; l: string }[] = [
 ];
 
 /** La légende : la planche 2a ne la dessine pas au-dessus du planning ; elle s'ouvre depuis « Plus ⋯ » › Légende, sous la grille (Échap ou « LÉGENDE ▴ » la referme). */
-function Legende({ ouverte, fermer }: { ouverte: boolean; fermer: () => void }) {
+function Legende({ ouverte, fermer, toujours = false }: { ouverte: boolean; fermer: () => void; toujours?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { if (ouverte) ref.current?.scrollIntoView({ block: 'nearest' }); }, [ouverte]);
   return (
-    <div className="dzp-legende" ref={ref} data-open={ouverte ? '' : undefined} data-testid="legende">
-      <button type="button" className="dzp-legende__t" onClick={fermer} aria-expanded={true}>LÉGENDE ▴</button>
+    <div className="dzp-legende" ref={ref} data-open={ouverte || toujours ? '' : undefined} data-toujours={toujours ? '' : undefined} data-testid="legende">
+      {toujours ? <span className="dzp-legende__t">LÉGENDE</span> : <button type="button" className="dzp-legende__t" onClick={fermer} aria-expanded={true}>LÉGENDE ▴</button>}
       {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
     </div>
   );
@@ -87,6 +90,20 @@ function Dock({ c }: { c: PlanningCtx }) {
   );
 }
 
+const CLE_HAUT = 'bt-bureau-haut-replie';
+/** « Replier ▴ » (ordinateur) : le choix est gardé par utilisateur dans ce navigateur, comme l'était le repli des chiffres du lot 1 (localStorage, jamais bloquant). */
+function useHautReplie(userId: string | undefined): [boolean, (v: boolean) => void] {
+  const [replie, setReplie] = useState(false);
+  useEffect(() => {
+    try { setReplie(window.localStorage.getItem(`${CLE_HAUT}:${userId || ''}`) === '1'); } catch { /* stockage indisponible : déplié */ }
+  }, [userId]);
+  const poser = (v: boolean) => {
+    setReplie(v);
+    try { if (v) window.localStorage.setItem(`${CLE_HAUT}:${userId || ''}`, '1'); else window.localStorage.removeItem(`${CLE_HAUT}:${userId || ''}`); } catch { /* ignoré */ }
+  };
+  return [replie, poser];
+}
+
 /** Une frappe dans un champ de saisie (la touche F n'y passe jamais en plein écran). */
 const dansUnChamp = (t: EventTarget | null) => {
   const e = t as HTMLElement | null;
@@ -110,6 +127,8 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
   const [pleinEcran, setPleinEcran] = useState(false);
   const [recherche, setRecherche] = useState('');
   const [legende, setLegende] = useState(false);
+  const ordi = useLargeur(REQ_ORDI);
+  const [replie, poserReplie] = useHautReplie(c.user?.id);
   // Échap ferme les menus, le tiroir Clients, le menu des chiffres, la légende, puis le plein écran (les fenêtres, elles, se ferment toutes seules : Radix).
   const { accountMenuOpen, chantierMenuOpen, statPanel, setAccountMenuOpen, setChantierMenuOpen, setStatPanel } = c;
   useEffect(() => {
@@ -155,10 +174,28 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
   useEffect(() => () => publierPont(null), []);
   return (
     <>
-      <div className="dzp-bureau-desk" data-plein-ecran={pleinEcran ? '' : undefined}>
+      <div className="dzp-bureau-desk" data-plein-ecran={pleinEcran ? '' : undefined} data-mise={ordi ? '1a' : '2a'} data-replie={ordi && replie ? '' : undefined}>
         {pleinEcran
-          ? <PastillePleinEcran c={c} quitter={() => setPleinEcran(false)} />
-          : (
+          ? <PastillePleinEcran c={c} quitter={() => setPleinEcran(false)} ordi={ordi} />
+          : ordi ? (
+            <>
+              <div className="dzp-haut dzp-haut--1a">
+                <BarreNoire1a c={c} replie={replie} deplier={() => poserReplie(false)} recherche={recherche} setRecherche={setRecherche} />
+                {!replie && <LigneSemaine1a c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} legende={() => setLegende(true)} />}
+                {c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
+                {c.statPanel === 'docs' && <ListePieces c={c} />}
+              </div>
+              {!replie && (
+                <section className="dzp-cockpit" aria-label="Chiffres de la semaine">
+                  <div className="dzp-cockpit__replier">
+                    <button type="button" className="dzp-replier" onClick={() => { setStatPanel(null); poserReplie(true); }} aria-expanded={true} data-testid="haut-replier"
+                      title="Masquer la ligne de semaine et les chiffres (la barre noire garde la semaine, la recherche et Exporter)">Replier ▴</button>
+                  </div>
+                  <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} enLigne />
+                </section>
+              )}
+            </>
+          ) : (
             <div className="dzp-haut">
               <BarreUnique c={telephone ? { ...c, printMenu: null } : c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} legende={() => setLegende(true)} />
               {!telephone && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
@@ -166,11 +203,12 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
             </div>
           )}
         <TiroirClients c={c} />
-        {c.workers.length > 0 && !c.selectMode && <div className="dzp-astuce">{c.copyTipDesk}</div>}
+        {c.workers.length > 0 && !c.selectMode && !(ordi && pleinEcran) && <div className="dzp-astuce">{c.copyTipDesk}</div>}
         <div className="dzp-zone">
           <Aide c={c} />
-          <Grille c={cGrille} totaux={totaux} recherche={recherche.trim()} />
-          <Legende ouverte={legende} fermer={() => setLegende(false)} />
+          {ordi ? <Grille1a c={cGrille} totaux={totaux} recherche={recherche.trim()} /> : <Grille c={cGrille} totaux={totaux} recherche={recherche.trim()} />}
+          {/* Ordinateur (planche 1a) : la légende est toujours posée sous la grille ; tablette (2a) : elle s'ouvre depuis « Plus ⋯ ». */}
+          <Legende ouverte={legende} toujours={ordi} fermer={() => setLegende(false)} />
         </div>
       </div>
       <Mobile c={c} gens={gens} nbRecherche={nbRecherche} />

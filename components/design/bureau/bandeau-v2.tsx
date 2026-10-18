@@ -21,8 +21,9 @@ export interface Chiffres {
 }
 
 /** Ferme au clic dehors (hors du panneau et hors des déclencheurs marqués `data-ouvre-chiffres`) ; Échap est géré par PlanningV2. */
-function useClicDehors(ref: React.RefObject<HTMLElement>, fermer: () => void) {
+function useClicDehors(ref: React.RefObject<HTMLElement>, fermer: () => void, actif = true) {
   useEffect(() => {
+    if (!actif) return;
     const f = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t || ref.current?.contains(t) || t.closest('[data-ouvre-chiffres]') || t.closest('[role="dialog"],[role="alertdialog"]')) return;
@@ -30,12 +31,16 @@ function useClicDehors(ref: React.RefObject<HTMLElement>, fermer: () => void) {
     };
     document.addEventListener('pointerdown', f, true);
     return () => document.removeEventListener('pointerdown', f, true);
-  }, [ref, fermer]);
+  }, [ref, fermer, actif]);
 }
 
-export function PanneauChiffres({ c, chiffres, fermer }: { c: PlanningCtx; chiffres: Chiffres; fermer: () => void }) {
+/**
+ * Les quatre tuiles du 1a. `enLigne` (ordinateur, haut déplié) : le BANDEAU posé sous la ligne de semaine, sans la liste ; la tuile « À relancer » y est un bouton
+ * qui ouvre le menu des chiffres (avec la liste), comme les compteurs de la barre noire. Sinon : le menu des chiffres, posé sous la barre noire.
+ */
+export function PanneauChiffres({ c, chiffres, fermer, enLigne = false }: { c: PlanningCtx; chiffres: Chiffres; fermer: () => void; enLigne?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  useClicDehors(ref, fermer);
+  useClicDehors(ref, fermer, !enLigne);
   const sem = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const indexAuj = sem.indexOf(c.todayStr);
   const max = Math.max(1, ...chiffres.charge);
@@ -47,7 +52,7 @@ export function PanneauChiffres({ c, chiffres, fermer }: { c: PlanningCtx; chiff
   const nb = c.cockpitStats.waiting;
   const resume = resumeRelance(chiffres.relances.map((r) => ({ prenom: r.name.split(' ')[0], jours: r.days.length })));
   return (
-    <div className="dzp-chiffres" ref={ref} role="region" aria-label="Chiffres de la semaine" data-testid="menu-chiffres">
+    <div className={`dzp-chiffres${enLigne ? ' dzp-chiffres--ligne' : ''}`} ref={ref} role="region" aria-label="Chiffres de la semaine" data-testid={enLigne ? 'bandeau' : 'menu-chiffres'}>
       <div className="dzp-tuile dzp-tuile--sombre" data-testid="stat-heures">
         <div className="dzp-total">
           <span className="dzp-tuile__k">Heures envoyées · S-{format(c.currentWeekStart, 'I')}</span>
@@ -65,12 +70,21 @@ export function PanneauChiffres({ c, chiffres, fermer }: { c: PlanningCtx; chiff
         </div>
       </div>
 
-      <div className="dzp-tuile dzp-tuile--relance" data-testid="stat-relance" data-guide="bureau-stat.relance">
-        <span className="dzp-tuile__k">À relancer</span>
-        <span className="dzp-tuile__v"><b>{nb}</b><span>journée{nb > 1 ? 's' : ''}</span></span>
-        <span className="dzp-tuile__s">{nb === 0 ? `Tout est envoyé en ${c.monthLabel}.` : `${resume}. Planifiées sans heures envoyées.`}</span>
-        <div className="dzp-tuile__liste" data-testid="relance-panel" data-guide="bureau-stat.liste">{c.renderRelanceRows(fermer)}</div>
-      </div>
+      {enLigne ? (
+        <button type="button" className="dzp-tuile dzp-tuile--relance" data-testid="stat-relance" data-ouvre-chiffres="" aria-expanded={c.statPanel === 'waiting'}
+          title={nb === 0 ? `Tout est envoyé en ${c.monthLabel}` : 'Cliquer pour savoir qui relancer'} onClick={() => c.setStatPanel((p: string | null) => (p === 'waiting' ? null : 'waiting'))}>
+          <span className="dzp-tuile__k">À relancer</span>
+          <span className="dzp-tuile__v"><b>{nb}</b><span>journée{nb > 1 ? 's' : ''}</span></span>
+          <span className="dzp-tuile__s">{nb === 0 ? `Tout est envoyé en ${c.monthLabel}.` : `${resume}. Planifiées sans heures envoyées.`}</span>
+        </button>
+      ) : (
+        <div className="dzp-tuile dzp-tuile--relance" data-testid="stat-relance" data-guide="bureau-stat.relance">
+          <span className="dzp-tuile__k">À relancer</span>
+          <span className="dzp-tuile__v"><b>{nb}</b><span>journée{nb > 1 ? 's' : ''}</span></span>
+          <span className="dzp-tuile__s">{nb === 0 ? `Tout est envoyé en ${c.monthLabel}.` : `${resume}. Planifiées sans heures envoyées.`}</span>
+          <div className="dzp-tuile__liste" data-testid="relance-panel" data-guide="bureau-stat.liste">{c.renderRelanceRows(fermer)}</div>
+        </div>
+      )}
 
       <div className="dzp-tuile dzp-tuile--direct" data-testid="stat-direct">
         <span className="dzp-tuile__k">En direct</span>

@@ -1,6 +1,6 @@
 // Banc de démonstration du BUREAU (/admin) : une base SIMULÉE avec état (aucune vraie base, aucun e-mail), les données de la planche du designer
 // (semaine S-42, 12 – 18 octobre 2026, jeudi 15 octobre 2026), et le serveur du dossier `out/`. Utilisé par fidelite-bureau.mjs.
-// `jeu: '2a'` : les données de la maquette 2a de la planche d'essai (planning-2a-controles.mjs).
+// `jeu: '2a'` : les données de la maquette 2a de la planche d'essai (planning-1a-controles.mjs, planning-2b-controles.mjs).
 //   const sim = await demarrer({ out: 'out', port: 4421 });  const { page, ctx } = await sim.page({ ui: 2, largeur: 1440, hauteur: 900 });
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 let chromium;
@@ -104,7 +104,7 @@ export const fraiche = () => {
 };
 
 // ── Jeu de données « planche 2a » (docs/design-brief/designer-essai, script `ROWS`) : mêmes huit salariés, mêmes chantiers, mêmes cases, même ordre.
-//    Utilisé par planning-2a-controles.mjs pour l'image « planche | écran » : `demarrer({ jeu: '2a' })`.
+//    Utilisé par planning-1a-controles.mjs et planning-2b-controles.mjs pour l'image « planche | écran » : `demarrer({ jeu: '2a' })`.
 export const CLIENTS_2A = {
   V: { id: idPour('v2a', 0), client_name: 'Villa Exemple', product_type: 'Fenêtres', city: 'Lyon' },
   M: { id: idPour('m2a', 1), client_name: 'Maison Démo', product_type: 'Volets', city: 'Bron' },

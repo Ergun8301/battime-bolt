@@ -1,5 +1,6 @@
 // Planning du bureau, planche d'essai TOUR 2 : contrôles et captures de l'étape TÉLÉPHONE + TABLETTE (/admin?ui=2).
-//   2b « Bureau · téléphone » (390 × 844), 2c « Panneau sous 1024 px » (la fiche en feuille du bas), tablette 834 × 1194 et 1024 × 768 (grille de l'ordinateur).
+//   2b « Bureau · téléphone » (390 × 844), 2c « Panneau sous 1024 px » (la fiche en feuille du bas), tablette 834 × 1194 (grille compacte 2a) ; 1024 × 768 : la fiche
+//   en feuille sur l'ordinateur 1a (planning-1a-controles.mjs contrôle sa barre et sa grille).
 //   node scripts/tests/planning-2b-controles.mjs <out> <dossier-de-captures> [port]
 //   BASE_URL=http://localhost:3100 node scripts/tests/planning-2b-controles.mjs - <dossier>      (serveur de développement au lieu de out/)
 //   PLANCHE_DIR=<dossier>  : sortie de `planche-essai-2a.mjs <dossier> --telephone` (planche-2b-jour.png, planche-2c.png) → écrit aussi
@@ -16,7 +17,7 @@ const check = (c, m) => { if (c) { ok++; console.log('✅', m); } else { ko++; c
 const sim = await demarrer({ out: OUT, port: Number(PORT), base: BASE, jeu: '2a' });
 const ouvrir = async (largeur, hauteur, opts = {}) => {
   sim.reinitialiser(); if (opts.avant) opts.avant(sim.D);
-  const r = await sim.page({ ui: 2, largeur, hauteur, hasTouch: !!opts.tactile, attente: largeur < 768 ? '.dzp-m-carte' : '.dzp-table .dzp-carte' });
+  const r = await sim.page({ ui: 2, largeur, hauteur, hasTouch: !!opts.tactile, attente: largeur < 768 ? '.dzp-m-carte' : '.dzp-table [data-testid=bubble]' });
   // L'astuce « Copier une case » (mémorisée une fois « Compris ») : on la referme pour que les captures montrent le planning.
   for (const id of ['copy-tip-ok-m', 'copy-tip-ok']) {
     const b = r.page.locator(`[data-testid=${id}]:visible`);
@@ -48,8 +49,10 @@ const couleur = (page, sel, prop = 'backgroundColor') => page.locator(sel).first
 const fonctionsOrdinateur = [];
 {
   const { page, ctx } = await ouvrir(1440, 900);
-  for (const lib of ['Clients', 'Salariés', 'Sélectionner', 'Exporter']) if (await page.locator('[data-testid=barre-noire] .dzp-b-actions').getByRole('button', { name: new RegExp(lib) }).count()) fonctionsOrdinateur.push(lib);
-  if (await page.locator('[data-testid=bar-recherche]').count()) fonctionsOrdinateur.push('Chercher');
+  // Ordinateur = maquette 1a : Clients, Salariés, Sélectionner, Exporter et la recherche sont dans la ligne de semaine ; Statistiques est un onglet de la barre noire.
+  for (const lib of ['Clients', 'Salariés', 'Sélectionner', 'Exporter']) if (await page.locator('[data-testid=barre-semaine]').getByRole('button', { name: new RegExp(lib) }).count()) fonctionsOrdinateur.push(lib);
+  if (await page.locator('[data-testid=barre-semaine] [data-testid=recherche-champ]').count()) fonctionsOrdinateur.push('Chercher');
+  if (await page.locator('[data-testid=barre-noire] [data-testid=stat-stats]').count()) fonctionsOrdinateur.push('Statistiques');
   if (await page.locator('[data-testid=stat-waiting]').count()) fonctionsOrdinateur.push('Chiffres');
   if (await page.locator('[data-testid=barre-semaine] [aria-label="Semaine précédente"]').count()) fonctionsOrdinateur.push('Semaine précédente', 'Semaine suivante');
   await page.click('[data-testid=bar-plus]'); await page.waitForTimeout(200);
@@ -224,7 +227,7 @@ const feuille = async (page, largeur, hauteur, ouvrirBulle, nomCapture) => {
 {
   const { page, ctx, erreurs } = await ouvrir(1024, 768, { tactile: true });
   check(await hScroll(page) <= 0, `1024 × 768 : aucun défilement horizontal (${await hScroll(page)} px)`);
-  check(await page.locator('.dzp-table').isVisible() && await page.locator('[data-testid=barre-noire]').isVisible(), '1024 × 768 : la grille 2a de l’ordinateur');
+  check(await page.locator('.dzp-table').isVisible() && await page.locator('[data-testid=barre-noire]').isVisible() && await page.locator('.dzp-semaine').isVisible(), '1024 × 768 : la grille de l’ordinateur (maquette 1a)');
   const bulle = () => page.locator('.dzp-table tbody tr').first().locator('.dzp-td').nth(3).locator('.dzp-prise').first().click();
   await feuille(page, 1024, 768, bulle, '2c-feuille-1024.png');
   check(erreurs.length === 0, `1024 : aucune erreur de page (${erreurs.join(' | ')})`);

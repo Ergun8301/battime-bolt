@@ -44,7 +44,7 @@ function MenuCompte({ c }: { c: PlanningCtx }) {
  * « Plus ⋯ » (planche 2a : « Statistiques et les autres fonctions passent dans Plus ») : TOUT ce que les deux barres du lot 1 montraient et que la barre unique
  * ne garde pas, sans en perdre une. Groupes et intitulés de la planche (CHANTIERS, ÉQUIPE, PLANNING) ; une ligne est absente quand la fonction n'existe pas (migration, droits).
  */
-function MenuPlus({ c, fermer, legende }: { c: PlanningCtx; fermer: () => void; legende: () => void }) {
+function MenuPlus({ c, fermer, legende, ordi = false }: { c: PlanningCtx; fermer: () => void; legende: () => void; ordi?: boolean }) {
   const go = (f: () => void) => () => { fermer(); f(); };
   const { trial } = c;
   return (
@@ -74,7 +74,8 @@ function MenuPlus({ c, fermer, legende }: { c: PlanningCtx; fermer: () => void; 
         </div>
         <span className="dzp-menu__titre">Équipe</span>
         <div className="dzp-menu__groupe">
-          <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setStatsOpen(true))} data-testid="stat-stats" title="Statistiques de l'équipe — lecture seule">Statistiques<i aria-hidden="true">›</i></button>
+          {/* Ordinateur (1a) : Statistiques est un onglet de la barre noire ; un seul accès. */}
+          {!ordi && <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setStatsOpen(true))} data-testid="stat-stats" title="Statistiques de l'équipe — lecture seule">Statistiques<i aria-hidden="true">›</i></button>}
           {c.trainingsOn && (
             <button type="button" role="menuitem" className="dzp-menu__item" onClick={go(() => c.setTrainingsOpen(true))} onPointerEnter={c.preloadTrainings} onFocus={c.preloadTrainings} data-testid="menu-trainings">Formations<i aria-hidden="true">›</i></button>
           )}
@@ -207,10 +208,145 @@ export function BarreUnique({ c, recherche, setRecherche, pleinEcran, legende }:
   );
 }
 
-/** Plein écran : seule reste la pastille flottante de la planche (S-42, ←, →, « ⤡ Quitter · Échap »). */
-export function PastillePleinEcran({ c, quitter }: { c: PlanningCtx; quitter: () => void }) {
+/* ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ * ORDINATEUR (1 024 px et plus) : planche d'essai, maquette 1a « Bureau · ordinateur 1440 » (cockpit allumé, envoyées sombres), retenue par Ergun.
+ * Barre noire de 60 px (logo, onglets, compteurs, ✦ Assistant, compte) ; ligne de semaine (S-42, ← →, Aujourd'hui, recherche, Clients, Salariés, Sélectionner,
+ * Plus ⋯, ↓ Exporter, ⤢). « Replier ▴ » masque la ligne de semaine ET le bandeau : la barre noire reprend alors, compacts (pilules de la barre 2a), la semaine,
+ * la loupe, Exporter et « Déplier ▾ ». Mêmes gestionnaires que la barre unique 2a (rien de neuf côté données).
+ * ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** Compteur de la barre noire du 1a (36 px, chiffre jaune en mono ; masqué à 0) : un clic ouvre le menu des chiffres sous la barre, comme dans la barre 2a. */
+function Compteur1a({ n, unite, libelle, ton, c, testId, titre }: { n: number; unite?: string; libelle: string; ton?: 'relance'; c: PlanningCtx; testId: string; titre: string }) {
+  if (n <= 0) return null;
   return (
-    <div className="dzp-pastille-pe dz-sombre" role="toolbar" aria-label="Plein écran" data-testid="pastille-plein-ecran">
+    <button type="button" className="dzp-n-compteur" data-ton={ton} data-ouvre-chiffres="" aria-expanded={c.statPanel === 'waiting'} data-testid={testId}
+      data-guide={ton === 'relance' ? 'bureau-stat.relance' : undefined} title={titre} onClick={() => c.setStatPanel((p: string | null) => (p === 'waiting' ? null : 'waiting'))}>
+      {ton === 'relance' && <span className="dzp-n-compteur__point" aria-hidden="true" />}<b>{n}{unite ? ` ${unite}` : ''}</b><span className="dzp-n-compteur__l">{libelle}</span>
+    </button>
+  );
+}
+
+/** « 12–18 oct. » (sur deux mois : « 28 sept.–4 oct. »), comme la barre 2a. */
+function datesCourtes(debut: Date) {
+  const fin = addDays(debut, 6);
+  const meme = fin.getMonth() === debut.getMonth();
+  return `${format(debut, meme ? 'd' : 'd MMM', { locale: fr })}–${format(fin, 'd MMM', { locale: fr })}`;
+}
+
+export function BarreNoire1a({ c, replie, deplier, recherche, setRecherche }: {
+  c: PlanningCtx; replie: boolean; deplier: () => void; recherche: string; setRecherche: (v: string) => void;
+}) {
+  const conges = c.pendingLeaves;
+  return (
+    <header className="dzp-noire dz-sombre" data-testid="barre-noire" data-replie={replie ? '' : undefined}>
+      <div className="dzp-noire__g">
+        <span className="dzp-logo">BEME<b>X</b>O</span>
+        <nav className="dzp-onglets" aria-label="Pages du bureau">
+          <span className="dzp-onglet" aria-current="page">Planning</span>
+          <button type="button" className="dzp-onglet" onClick={() => c.setStatsOpen(true)} data-testid="stat-stats" title="Statistiques de l'équipe — lecture seule">Statistiques</button>
+        </nav>
+        {replie && (
+          <div className="dzp-b-semaine" data-testid="semaine-compacte" data-guide="bureau-semaine.nav">
+            <button type="button" className="dzp-b-fleche" aria-label="Semaine précédente" onClick={() => c.changeWeek(addDays(c.currentWeekStart, -7))}>←</button>
+            <span className="dzp-b-s" title={periodeSemaine(c.currentWeekStart)}>S-{getISOWeek(c.currentWeekStart)}</span>
+            <span className="dzp-b-dates">{datesCourtes(c.currentWeekStart)}</span>
+            <button type="button" className="dzp-b-fleche" aria-label="Semaine suivante" onClick={() => c.changeWeek(addDays(c.currentWeekStart, 7))}>→</button>
+          </div>
+        )}
+      </div>
+      <div className="dzp-noire__c" data-testid="compteurs">
+        <Compteur1a c={c} n={c.cockpitStats.waiting} unite="j" libelle="à relancer" ton="relance" testId="stat-waiting"
+          titre={`${c.cockpitStats.waiting} journée(s) planifiée(s) non envoyée(s) en ${c.monthLabel} — cliquer pour les chiffres et la liste`} />
+        <Compteur1a c={c} n={conges} libelle={conges > 1 ? 'congés en attente' : 'congé en attente'} testId="compteur-conges" titre={`${conges} demande(s) de congé en attente (à traiter dans « Salariés ») — cliquer pour les chiffres`} />
+        <Compteur1a c={c} n={c.cockpitStats.docs} libelle={c.cockpitStats.docs > 1 ? 'pièces' : 'pièce'} testId="compteur-pieces" titre={`${c.cockpitStats.docs} pièce(s) jointe(s) — la liste est dans « Plus ⋯ » ; cliquer pour les chiffres`} />
+        <Compteur1a c={c} n={c.openReserves} libelle="Réserves" testId="compteur-reserves" titre={`${c.openReserves} réserve(s) à traiter (« Plus ⋯ » › Réserves) — cliquer pour les chiffres`} />
+      </div>
+      <div className="dzp-noire__d">
+        {replie && (
+          <>
+            <Loupe q={recherche} setQ={setRecherche} />
+            <button type="button" className="dzp-b-pilule dzp-b-pilule--jaune" onClick={() => c.setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter">↓ Exporter</button>
+            <button type="button" className="dzp-b-pilule" onClick={deplier} aria-expanded={false} data-testid="haut-deplier" title="Afficher la ligne de semaine et les chiffres">Déplier ▾</button>
+          </>
+        )}
+        {c.aiOn && c.isAdmin && (
+          <button type="button" className="dzp-assistant" onClick={() => c.setAssistantOpen(true)} title="Assistant BEMEXO" aria-label="Assistant BEMEXO" data-testid="bar-assistant" data-guide="bureau-nav.assistant">✦<span className="dzp-assistant__l">{'\u00a0'}Assistant</span></button>
+        )}
+        <div className="dzp-compte">
+          <button type="button" className="dzp-compte__btn" onClick={() => c.setAccountMenuOpen(!c.accountMenuOpen)} aria-expanded={c.accountMenuOpen} title="Compte entreprise" data-guide="bureau-nav.compte" data-testid="bar-compte">
+            <span className="dzp-avatar">{c.companyLogo ? <img src={c.companyLogo} alt="" /> : c.companyInitials}</span>
+            <span>{c.companyLabel}</span><span aria-hidden="true">▾</span>
+          </button>
+          <MenuCompte c={c} />
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/**
+ * La LIGNE DE SEMAINE du 1a, dans l'ordre exact de la planche : SEMAINE ACTUELLE / S-42 12 – 18 octobre 2026, ← →, Aujourd'hui, le champ « Chercher un salarié,
+ * un chantier… », puis Clients, Salariés (pastille), Sélectionner, | , Plus ⋯ (pastille rouge des réserves), ↓ Exporter, ⤢. Ce que la planche ne montre pas ici
+ * (Réserves, Borne, Imprimer, Coût chantiers…) est dans « Plus ⋯ ». « Replier ▴ » (à la place de « Replier les chiffres » de la planche) est posé sous la ligne.
+ */
+export function LigneSemaine1a({ c, recherche, setRecherche, pleinEcran, legende }: {
+  c: PlanningCtx; recherche: string; setRecherche: (v: string) => void; pleinEcran: () => void; legende: () => void;
+}) {
+  const [plusOuvert, setPlusOuvert] = useState(false);
+  useEffect(() => {
+    if (!plusOuvert) return;
+    const f = (e: KeyboardEvent) => { if (e.key === 'Escape') setPlusOuvert(false); };
+    window.addEventListener('keydown', f);
+    return () => window.removeEventListener('keydown', f);
+  }, [plusOuvert]);
+  const sem = getISOWeek(c.currentWeekStart);
+  const kicker = c.isCurrentWeek ? 'Semaine actuelle' : c.currentWeekStart < c.thisWeekStart ? 'Semaine passée' : 'Semaine à venir';
+  const attente = c.pendingLeaves + c.pendingInvites;
+  return (
+    <div className="dzp-semaine" data-testid="barre-semaine">
+      <div className="dzp-semaine__t" data-guide="bureau-semaine.nav">
+        <span className="dzp-kicker">{kicker}</span>
+        <div className="dzp-semaine__nb"><span className="dzp-semaine__s">S-{sem}</span><span className="dzp-semaine__p">{periodeSemaine(c.currentWeekStart)}</span></div>
+      </div>
+      <div className="dzp-fleches">
+        <button type="button" className="dzp-rond" aria-label="Semaine précédente" onClick={() => c.changeWeek(addDays(c.currentWeekStart, -7))}>←</button>
+        <button type="button" className="dzp-rond" aria-label="Semaine suivante" onClick={() => c.changeWeek(addDays(c.currentWeekStart, 7))}>→</button>
+        <button type="button" className="dzp-pilule dzp-pilule--noire" onClick={() => c.changeWeek(c.thisWeekStart)} aria-disabled={c.isCurrentWeek} data-courante={c.isCurrentWeek ? '' : undefined}
+          title={c.isCurrentWeek ? undefined : 'Revenir à la semaine actuelle'}>Aujourd&apos;hui</button>
+      </div>
+      <label className="dzp-recherche" data-actif={recherche ? '' : undefined}>
+        <span className="dzp-recherche__i" aria-hidden="true">⌕</span>
+        <input type="search" value={recherche} placeholder="Chercher un salarié, un chantier…" aria-label="Chercher un salarié, un chantier" data-testid="recherche-champ"
+          onChange={(e) => setRecherche(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape' && recherche) { e.stopPropagation(); setRecherche(''); } }} />
+        {recherche && <button type="button" className="dzp-loupe__x" aria-label="Effacer la recherche" onClick={() => setRecherche('')}>✕</button>}
+      </label>
+      <div className="dzp-semaine__d">
+        <button type="button" className="dzp-pilule" aria-expanded={c.chantierMenuOpen} onClick={() => { c.setChantierMenuOpen(!c.chantierMenuOpen); c.setClientsQuery(''); }} data-guide="bureau-nav.clients">Clients</button>
+        <button type="button" className={`dzp-pilule${attente > 0 ? ' dzp-pilule--badge' : ''}`} onClick={() => c.setSalariesOpen(true)} data-guide="bureau-nav.salaries">
+          Salariés{attente > 0 && <span className="dzp-badge" title={`${c.pendingLeaves} demande(s) de congé, ${c.pendingInvites} invitation(s) en attente`}>{attente}</span>}
+        </button>
+        <button type="button" className="dzp-pilule" data-ordi-etroit-cache="" aria-pressed={c.selectMode} data-testid="bar-select" data-guide="bureau-nav.selection"
+          title={c.selectMode ? 'Terminer la sélection' : 'Cocher des interventions pour les supprimer'} onClick={() => (c.selectMode ? c.exitSelect() : c.enterSelect())}>Sélectionner</button>
+        <span className="dzp-sep" aria-hidden="true" />
+        <div className="dzp-relatif">
+          <button type="button" className="dzp-pilule" aria-expanded={plusOuvert} aria-haspopup="menu" onClick={() => setPlusOuvert((o) => !o)} data-testid="bar-plus" data-guide="bureau-nav.plus">
+            Plus ⋯{c.openReserves > 0 && <span className="dzp-pastille-plus" title={`${c.openReserves} réserve(s) à traiter`}>{c.openReserves}</span>}
+          </button>
+          {plusOuvert && <MenuPlus c={c} fermer={() => setPlusOuvert(false)} legende={legende} ordi />}
+          {c.printMenu}
+        </div>
+        <button type="button" className="dzp-pilule dzp-pilule--jaune" onClick={() => c.setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter">↓ Exporter</button>
+        <button type="button" className="dzp-rond" onClick={pleinEcran} aria-label="Planning en plein écran" title="Plein écran (F)" data-testid="bar-plein-ecran">⤢</button>
+      </div>
+    </div>
+  );
+}
+
+/** Plein écran : seule reste la pastille flottante de la planche (S-42, ←, →, « ⤡ Quitter · Échap »). */
+export function PastillePleinEcran({ c, quitter, ordi = false }: { c: PlanningCtx; quitter: () => void; ordi?: boolean }) {
+  // Ordinateur (planche 1a) : en bas à droite ; tablette (planche 2a) : en haut à droite.
+  return (
+    <div className="dzp-pastille-pe dz-sombre" role="toolbar" aria-label="Plein écran" data-testid="pastille-plein-ecran" data-ordi={ordi ? '' : undefined}>
       <span className="dzp-pastille-pe__s">S-{getISOWeek(c.currentWeekStart)}</span>
       <button type="button" aria-label="Semaine précédente" onClick={() => c.changeWeek(addDays(c.currentWeekStart, -7))}>←</button>
       <button type="button" aria-label="Semaine suivante" onClick={() => c.changeWeek(addDays(c.currentWeekStart, 7))}>→</button>

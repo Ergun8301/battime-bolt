@@ -5,6 +5,9 @@
 // Écrit <sortie>/planche-2a-1440.png (la maquette 1440 × 900 découpée) et <sortie>/planche-2a-mesures.json (boîtes de la barre, des en-têtes, de la 1re ligne).
 // --telephone : découpe les deux téléphones du TOUR 2 (cadre de 390 × 844, coque comprise) : planche-2b-jour.png (2b « Bureau · téléphone », vue Jour),
 // planche-2b-semaine.png (la même après « Semaine »), planche-2c.png (2c « Panneau sous 1024 px ») et planche-2b-mesures.json (boîtes de l'écran 2b et de la feuille 2c).
+//   LIBS_DIR=<dossier> node scripts/tests/planche-essai-2a.mjs <dossier-de-sortie> --1a
+// --1a : la maquette 1a du TOUR 1 (« Bureau · ordinateur 1440 », réglages par défaut : cockpit et envoyées sombres allumés) : planche-1a-1440.png (le cadre de
+// 1 440 px entier, hauteur réelle) et planche-1a-mesures.json (boîtes de la barre noire, de la ligne de semaine, des tuiles, des en-têtes et des lignes).
 // Réseau fermé : React 18.3.1, ReactDOM 18.3.1 et Babel 7.29.0 (demandés par support.js à unpkg.com) sont servis depuis LIBS_DIR
 // (`npm pack react@18.3.1 react-dom@18.3.1 @babel/standalone@7.29.0` puis extraire : react.production.min.js, react-dom.production.min.js, babel.min.js).
 // Les polices Google (Archivo, JetBrains Mono) sont remplacées par les MÊMES fichiers, auto-hébergés dans public/fonts : la comparaison porte aussi sur le dessin des lettres.
@@ -22,6 +25,7 @@ const args = process.argv.slice(2);
 const sortie = args.find((a) => !a.startsWith('--')) || 'planche-2a';
 const plein = args.includes('--plein-ecran');
 const telephone = args.includes('--telephone');
+const un_a = args.includes('--1a');
 const PORT = Number(process.env.PORT_PLANCHE || 4998);
 const T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2' };
 const srv = http.createServer((q, r) => {
@@ -42,6 +46,30 @@ await pg.route(/unpkg\.com/, (r) => { const n = r.request().url().split('/').pop
 await pg.goto(`http://localhost:${PORT}/`, { waitUntil: 'load', timeout: 120000 });
 await pg.waitForFunction(() => !!document.querySelector('#\\32 a table tbody tr'), null, { timeout: 120000 });
 await pg.evaluate(() => document.fonts.ready);
+if (un_a) {
+  await pg.waitForFunction(() => !!document.querySelector('#\\31 a table tbody tr'), null, { timeout: 120000 });
+  await pg.waitForTimeout(1200);
+  const m = await pg.evaluate(() => {
+    const z = document.getElementById('1a');
+    const cadre = [...z.querySelectorAll('div')].find((d) => Math.round(d.getBoundingClientRect().width) === 1440 && d.getBoundingClientRect().height >= 900);
+    const o = cadre.getBoundingClientRect();
+    const box = (e) => { const r = e.getBoundingClientRect(); return { t: (e.innerText || e.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 40), x: Math.round(r.x - o.x), y: Math.round(r.y - o.y), w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 }; };
+    const enfants = [...cadre.children].filter((e) => e.getBoundingClientRect().height > 0);
+    const noire = enfants.find((e) => Math.round(e.getBoundingClientRect().height) === 60);
+    const ligne = noire?.nextElementSibling;
+    return {
+      cadre: { x: o.x + scrollX, y: o.y + scrollY, width: 1440, height: Math.round(o.height) },
+      noire: noire ? [...noire.querySelectorAll('button, span')].filter((e) => e.closest('button') === e || e.tagName === 'BUTTON' || (!e.closest('button') && e.children.length === 0)).map(box) : [],
+      ligne: ligne ? [...ligne.querySelectorAll('button, div')].filter((e) => e.tagName === 'BUTTON' || /Chercher/.test(e.textContent) && e.children.length <= 1).map(box) : [],
+      entetes: [...cadre.querySelectorAll('thead th')].map(box),
+      lignes: [...cadre.querySelectorAll('tbody tr')].map(box),
+    };
+  });
+  await pg.screenshot({ path: path.join(sortie, 'planche-1a-1440.png'), clip: m.cadre, fullPage: true });
+  fs.writeFileSync(path.join(sortie, 'planche-1a-mesures.json'), JSON.stringify(m, null, 1));
+  console.log(`planche 1a : cadre 1440 × ${m.cadre.height}, ${m.ligne.length} éléments de ligne de semaine, ${m.lignes.length} lignes`);
+  await b.close(); srv.close(); process.exit(0);
+}
 if (telephone) {
   // Le cadre du téléphone : le premier <div> de 390 × 844 de la zone (coque noire de 10 px comprise, écran de 370 × 824).
   const cadre = (id) => pg.evaluate((id) => {

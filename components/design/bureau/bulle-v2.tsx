@@ -75,9 +75,15 @@ export function CaseCoche({ sel, classe = 'dzp-bulle__case' }: { sel: SelState; 
   return <span className={classe} aria-hidden="true">{sel.lock ? '–' : sel.on ? <Check className="h-3 w-3" strokeWidth={3.5} /> : null}</span>;
 }
 
-/** Le contenu visuel d'une bulle (sans glisser-déposer). `grand` : téléphone. */
-export function CarteBulle({ d, sel, grand, raison }: { d: DonneesBulle; sel?: SelState; grand?: boolean; raison?: string | null }) {
-  const b = lireBulle(d);
+/** Étiquettes de la carte 1a (`styleItem`) : la planche ne redit pas « ENVOYÉ » (l'horaire « ✓ … » le dit) ; « EN DIRECT » seul (l'horaire dit « ● depuis … »). */
+function etiquettes1a(e: Etiquette[]): Etiquette[] {
+  return e.filter((x) => x.ton !== 'envoye').map((x) => (x.ton === 'direct' ? { ...x, texte: 'En direct' } : x.ton === 'reserve' ? { ...x, texte: '⚠ Réserve à traiter' } : x));
+}
+
+/** Le contenu visuel d'une bulle (sans glisser-déposer). `grand` : téléphone. `planche1a` : la grille de l'ordinateur (titre, horaire et étiquettes écrits comme la carte 1a). */
+export function CarteBulle({ d, sel, grand, raison, planche1a = false }: { d: DonneesBulle; sel?: SelState; grand?: boolean; raison?: string | null; planche1a?: boolean }) {
+  const b0 = lireBulle(d);
+  const b = planche1a ? (() => { const x = lireBulle2a(d); return { ...b0, titre: x.titre, heure: x.heure, etiquettes: etiquettes1a(b0.etiquettes) }; })() : b0;
   return (
     <div className={`dzp-bulle dzp-c${b.couleur}`} data-etat={b.etat} data-creneau={b.creneau} data-grand={grand ? '' : undefined} data-withdrawn={b.etat === 'retiree' ? '1' : undefined} data-testid="bubble">
       <span className="dzp-bulle__bande" aria-hidden="true" />
@@ -151,8 +157,10 @@ export function Carte2a({ etat, creneau, titre, heure, etiquette, sel, testId = 
 }
 
 /** Une bulle de la grille : on la prend (déplacer, copier) et on peut la viser (réordonner). Mêmes identifiants et repères que la bulle d'avant. */
-export function BulleV2({ d, sel, onEdit, onToggle, raison }: {
+export function BulleV2({ d, sel, onEdit, onToggle, raison, mise = '2a' }: {
   d: DonneesBulle; sel?: SelState; onEdit: (p: PlanningWithWorksite) => void; onToggle?: (p: PlanningWithWorksite, lock: string | null) => void; raison?: string | null;
+  /** '1a' : la bulle du lot 1 (ordinateur, 1 024 px et plus) ; '2a' : la carte compacte de la planche 2a (tablette). */
+  mise?: '1a' | '2a';
 }) {
   const { p } = d;
   const drag = useDraggable({ id: p.id, data: { type: 'move' }, disabled: !!sel });
@@ -164,8 +172,12 @@ export function BulleV2({ d, sel, onEdit, onToggle, raison }: {
       <div ref={drag.setNodeRef} {...drag.attributes} {...drag.listeners} className="dzp-prise"
         onClick={(e) => { e.stopPropagation(); if (sel) onToggle?.(p, sel.lock); else onEdit(p); }}
         title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : ''}>
-        {(() => { const b = lireBulle2a(d); return <Carte2a etat={b.etat} creneau={b.creneau} titre={b.titre} heure={b.heure} etiquette={b.etiquette} sel={sel} title={b.sous || undefined} />; })()}
-        {raison ? <span className="dzp-bulle__raison" role="status">{raison}</span> : null}
+        {mise === '1a' ? <CarteBulle d={d} sel={sel} raison={raison} planche1a /> : (
+          <>
+            {(() => { const b = lireBulle2a(d); return <Carte2a etat={b.etat} creneau={b.creneau} titre={b.titre} heure={b.heure} etiquette={b.etiquette} sel={sel} title={b.sous || undefined} />; })()}
+            {raison ? <span className="dzp-bulle__raison" role="status">{raison}</span> : null}
+          </>
+        )}
       </div>
     </div>
   );

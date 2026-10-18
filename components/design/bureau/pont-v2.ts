@@ -14,6 +14,8 @@ import type { Chiffres } from './bandeau-v2';
 export const REQ_TELEPHONE = '(max-width: 767px)';
 /** Feuille du bas (planche 2c) : le panneau de droite devient une feuille à 1 024 px et moins (tablette en paysage comprise). */
 export const REQ_FEUILLE = '(max-width: 1024px)';
+/** Ordinateur (maquette 1a de la planche d'essai) : 1 024 px et plus. En dessous, la tablette garde la barre unique et la grille compacte 2a. */
+export const REQ_ORDI = '(min-width: 1024px)';
 
 export function useLargeur(requete: string): boolean {
   return useSyncExternalStore(
