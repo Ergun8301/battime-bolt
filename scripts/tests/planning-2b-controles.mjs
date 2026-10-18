@@ -249,6 +249,28 @@ const feuille = async (page, largeur, hauteur, ouvrirBulle, nomCapture) => {
     return { barre: b.height, deborde, table: t.right, col: Math.round(document.querySelector('.dzp-th-nom').getBoundingClientRect().width), lignes: document.querySelectorAll('.dzp-table tbody tr').length, mobile: getComputedStyle(document.querySelector('.dzp-mobile')).display };
   });
   check(g.barre === 64 && g.deborde === 0 && g.table <= 834 && g.col === 176 && g.lignes === 8 && g.mobile === 'none', `834 : barre de 64 px sans débord, grille 2a (colonne 176 px, 8 salariés) dans l'écran (${JSON.stringify(g)})`);
+  // Aucun mot coupé en plein milieu : dans la barre, les en-têtes et la grille, chaque retour à la ligne tombe sur une espace ; les absences ne sont pas tronquées ;
+  // titres et horaires des cartes restent sur une ligne (« … » permis), comme à 1 024 px.
+  const coupes = await page.evaluate(() => {
+    const out = [];
+    for (const zone of document.querySelectorAll('[data-testid=barre-noire], .dzp-table')) {
+      const w = document.createTreeWalker(zone, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        const t = n.textContent; if (!t.trim() || n.parentElement?.offsetParent === null) continue;
+        let haut = null;
+        for (let i = 0; i < t.length; i++) {
+          const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1);
+          const b = [...r.getClientRects()].find((x) => x.width > 0); if (!b) continue;
+          if (haut !== null && b.top > haut + 3 && /\S/.test(t[i]) && i > 0 && /\S/.test(t[i - 1]) && !/[-–·/]/.test(t[i - 1])) { out.push(t.trim().slice(0, 30)); break; }
+          haut = b.top;
+        }
+      }
+    }
+    for (const b of document.querySelectorAll('.dzp-absence b')) if (b.scrollWidth > b.clientWidth + 1) out.push(`absence tronquée : ${b.textContent}`);
+    for (const e of document.querySelectorAll('.dzp-carte__titre, .dzp-carte__heure')) { const r = e.getClientRects(); if (r.length && e.getBoundingClientRect().height > parseFloat(getComputedStyle(e).lineHeight || '16') * 1.6) out.push(`sur plusieurs lignes : ${e.textContent.slice(0, 24)}`); }
+    return out;
+  });
+  check(coupes.length === 0, `834 : aucun mot coupé en plein milieu, absences entières, titres et horaires sur une ligne (${coupes.slice(0, 6).join(' | ')})`);
   await page.click('[data-testid=bar-plus]'); await page.waitForTimeout(250);
   const plus = (await page.locator('[data-testid=menu-plus]').innerText()).replace(/\s+/g, ' ');
   check(/Clients/.test(plus) && /Salariés/.test(plus) && /Sélectionner/.test(plus), '834 : Clients, Salariés et Sélectionner (retirés de la barre faute de place) sont dans « Plus ⋯ »');

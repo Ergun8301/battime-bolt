@@ -491,10 +491,11 @@ button.dzp-b-actuelle { background: transparent; border: 1px solid #FFC21A; colo
   .dzp-jour__h { margin-left: 0; flex-basis: 100%; }
   .dzp-td { padding: 4px; }
   .dzp-carte { padding: 6px 6px 7px 10px; }
-  .dzp-carte__titre, .dzp-carte__heure { white-space: normal; overflow-wrap: break-word; hyphens: auto; }
-  .dzp-carte__titre { font-size: 12px; }
-  .dzp-carte__heure { font-size: 10.5px; }
-  .dzp-carte__tag { white-space: normal; }
+  /* Comme à 1 024 px : titre et horaire sur UNE ligne coupée par « … » ; étiquettes sur deux lignes au plus, coupées entre deux mots seulement. */
+  .dzp-carte__tag { white-space: normal; overflow-wrap: normal; word-break: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+  /* Absences : le libellé passe à la ligne entre deux mots (« ABSENT · / MALADIE »), jamais au milieu d'un mot ; lettres moins espacées pour que « INTEMPÉRIE » tienne. */
+  .dzp-absence { padding: 6px 4px; }
+  .dzp-absence b { white-space: normal; overflow: visible; text-overflow: clip; letter-spacing: .04em; line-height: 1.3; }
 }
 
 /* ── Menu ☰ du téléphone, ajouts de la planche 2b : semaine, recherche, chiffres (tuiles du 1a), pièces jointes ── */
