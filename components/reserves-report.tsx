@@ -17,7 +17,7 @@
 //     courir après sa réserve serait courir après rien.
 // Même règle que partout ailleurs — voir lib/status.ts.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/auth-provider';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -31,6 +31,10 @@ import { fetchAllPaged } from '@/lib/fetch-all';
 import { isReserveLifted, liftedAt, liftedBy, liftedNote, RESERVE_LIFT_LABEL } from '@/lib/reserves';
 import { liftReserve, reopenReserve, liftErrorMessage } from '@/lib/reserve-lift';
 import { toast } from 'sonner';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau, lot 3 A (?ui=2 sur aperçu seulement) : la même liste habillée v2, chargée en différé seulement quand le drapeau est actif.
+const ReservesV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.ReservesV2 })));
 
 export interface ReserveRow {
   id: string;
@@ -117,12 +121,14 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
   // Réserve dont le formulaire « Lever la réserve » est ouvert.
   const [resolving, setResolving] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadErr, setLoadErr] = useState(false); // v2 : « illisible » se dit dans le panneau (le toast d'avant reste)
 
   const load = useCallback(async (initial = false) => {
     if (!companyId) return;
     // « Chargement… » à l'ouverture seulement : après un geste, la liste se met
     // à jour en place (pas de clignotement, règle du lot 10).
     if (initial) setLoading(true);
+    setLoadErr(false);
     // Lecture PAGINÉE. Le registre couvre toute la vie de l'entreprise, pas une
     // période : une requête simple s'arrêterait au plafond PostgREST (1000
     // lignes par défaut) SANS erreur. `id` départage les ex æquo de date.
@@ -144,6 +150,7 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
       // Une liste vide voudrait dire « aucune réserve » : c'est le mensonge à
       // éviter ici. On le dit, et on ne montre rien plutôt que rien à tort.
       toast.error('Réserves illisibles pour le moment. Réessayez.');
+      setLoadErr(true);
       setLoading(false);
       return;
     }
@@ -276,6 +283,17 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
   };
 
   const fmtDay = (d: string) => format(parseISO(d), 'EEE d MMM yyyy', { locale: fr });
+
+  const ui2 = useBureauUi2();
+  if (ui2) {
+    return (
+      <Suspense fallback={null}>
+        <ReservesV2 open={open} onOpenChange={onOpenChange} tab={tab} setTab={setTab} loading={loading} erreur={loadErr} openRows={openRows} doneRows={doneRows}
+          photos={photos} resolving={resolving} setResolving={setResolving} busy={busy} lift={lift} reopen={reopen} confirmReopen={confirmReopen}
+          setConfirmReopen={setConfirmReopen} onOpenDocs={onOpenDocs} recharger={() => load(true)} />
+      </Suspense>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

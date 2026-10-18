@@ -19,7 +19,7 @@
 //  - Lot 13 (lib/training-videos.ts) : vidéo filmée ou fichier, aperçu, durée, taille, refus clair au-delà de 50 Mo ou du quota,
 //    barre de progression réelle avec « Annuler l'envoi ». Hébergée dans le bucket privé « formations » (forfait gratuit) ;
 //    lue dans l'appli (« Regarder »). Tant que la migration du lot 13 manque, « Filmer » et « Fichier » n'existent pas.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { format, parseISO } from 'date-fns';
 import dynamic from 'next/dynamic';
 import { CirclePlay, FileText, FolderOpen, Link2, Loader2, Video, type LucideIcon } from 'lucide-react';
@@ -41,6 +41,11 @@ import {
   checkVideoFile, leftoverNote, leftoverSummary, quotaFull, quotaNear, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, videoSummary, type FileAudit, type Limits,
 } from '@/supabase/functions/_shared/training-videos';
 import { pickRecorderMime, REC_AUTO_TEXT, recorderAvailable, type RecAuto } from '@/supabase/functions/_shared/video-recorder';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau, lot 3 A (?ui=2 sur aperçu seulement) : la même fenêtre dans la coque v2 (panneau, liseré, ✕), contenu identique habillé par
+// components/design/bureau/heures-v2.css (bloc « Lot 3 A ») ; chargée en différé seulement quand le drapeau est actif.
+const CoqueV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.Coque })));
 
 // Lot 13 : le panneau d'envoi et le lecteur ne se chargent qu'à l'ouverture.
 const Waiting = () => <p className="bt-fo-muted"><Loader2 className="inline h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Chargement…</p>;
@@ -137,6 +142,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   workers: User[];
 }) {
   // Jamais un salarié de démonstration (« demo-… », aperçu) : ce ne sont pas des comptes.
+  const ui2 = useBureauUi2();
   const team = useMemo(() => workers.filter((w) => !!w.id && !w.id.startsWith('demo-') && (w.role === 'worker' || w.role === 'lead') && w.is_active !== false), [workers]);
   const [list, setList] = useState<{ trainings: OfficeTraining[]; views: ViewRow[] } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -595,12 +601,9 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   const locked = !!progress || recording; // envoi ou prise en cours : les choix et « Annuler » ne bougent plus
   const firstChoice = allowed[0];
 
-  return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o && recording) return; onOpenChange(o); }}>
-      <DialogContent className="bt-skin max-w-lg max-h-[85vh] overflow-y-auto max-sm:p-4" data-testid="trainings-dialog">
-        <style dangerouslySetInnerHTML={CSS_HTML} />
-        <DialogHeader><DialogTitle>Formations</DialogTitle></DialogHeader>
+  const corps = (
         <div className="bt-fo">
+
           {!formOpen && !loadError && active.length > 0 && (
             <div className="bt-fo-top">
               <button type="button" className="bt-fo-btn ghost lg" onClick={() => setAdding(true)} data-testid="tr-add-open">+ Ajouter</button>
@@ -730,6 +733,23 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
           )}
           {videosOn && audit && <VideoOrphans audit={audit} quotaBytes={lim.quotaBytes} />}
         </div>
+  );
+  if (ui2) {
+    return (
+      <Suspense fallback={null}>
+        <CoqueV2 open={open} onOpenChange={(o) => { if (!o && recording) return; onOpenChange(o); }} forme="panneau" largeur={640} kicker="Équipe" titre="Formations" testId="trainings-dialog">
+          <style dangerouslySetInnerHTML={CSS_HTML} />
+          {corps}
+        </CoqueV2>
+      </Suspense>
+    );
+  }
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && recording) return; onOpenChange(o); }}>
+      <DialogContent className="bt-skin max-w-lg max-h-[85vh] overflow-y-auto max-sm:p-4" data-testid="trainings-dialog">
+        <style dangerouslySetInnerHTML={CSS_HTML} />
+        <DialogHeader><DialogTitle>Formations</DialogTitle></DialogHeader>
+        {corps}
       </DialogContent>
     </Dialog>
   );

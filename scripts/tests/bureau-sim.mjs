@@ -144,6 +144,8 @@ export async function demarrer({ out = 'out', port = 4421, now = NOW, base = nul
   const embed = (t, row, sel) => {
     const o = { ...row };
     if (t === 'planning') { if (sel.includes('worksite:worksites')) o.worksite = D.worksites.find((w) => w.id === row.worksite_id) || null; if (sel.includes('user:users')) o.user = D.users.find((x) => x.id === row.user_id) || null; }
+    // Registre des réserves (lot 3 A ; seule lecture qui demande `owner:users`) : le chantier et le salarié de la ligne d'heures.
+    if (t === 'time_entries' && sel.includes('owner:users')) { if (sel.includes('worksite:worksites')) o.worksite = D.worksites.find((w) => w.id === row.worksite_id) || null; if (sel.includes('owner:users')) o.owner = D.users.find((x) => x.id === row.user_id) || null; }
     return o;
   };
   async function installer(ctx) {

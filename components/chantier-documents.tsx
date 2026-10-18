@@ -30,7 +30,7 @@
 //   chantier n'ont pas de jour : elles sont rangées à part, sans qu'on leur
 //   invente une date.
 
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { DOC_CATEGORY_LABEL } from '@/supabase/functions/_shared/worker-assistant-core';
@@ -46,6 +46,10 @@ import {
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau, lot 3 A (?ui=2 sur aperçu, BUREAU seulement) : le même panneau habillé v2, chargé en différé seulement quand le drapeau est actif.
+const DocumentsV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.DocumentsV2 })));
 // Sa feuille de style est components/chantier-documents.css, importée au niveau des ROUTES qui l'affichent (app/poseur/layout.tsx, app/admin/layout.tsx) :
 // un import ici ferait une feuille chargée à part avec chaque morceau différé (et alourdirait le chargeur de TOUTES les pages).
 
@@ -101,6 +105,8 @@ export default function ChantierDocuments({
   const office = user?.role === 'admin';
   // ?ui=2 : feuille du bas pour le salarié (le bureau garde sa fenêtre ; `feuille` n'est passée que par « Ma journée »).
   const ui2 = !!feuille && !office;
+  const ui2b = useBureauUi2() && office && !feuille;
+  const [refus, setRefus] = useState<string | null>(null); // v2 bureau : un fichier refusé se dit dans le panneau (le toast d'avant reste)
   const { ready: catReady, settled: catSettled } = useDocCategoryReady(open);
   const [catDoc, setCatDoc] = useState<DocRow | null>(null);
   const canCat = (d: DocRow) => catReady && canEditCategory({ office, userId: user?.id, uploadedBy: d.uploaded_by, current: d.category });
@@ -212,7 +218,11 @@ export default function ChantierDocuments({
 
   const onPick = async (file: File | undefined) => {
     if (!file || !worksiteId || !user?.company_id || !user?.id) return;
-    if (file.size > DOC_MAX_BYTES) { toast.error('Fichier trop lourd (15 Mo max).'); return; }
+    setRefus(null);
+    if (file.size > DOC_MAX_BYTES) {
+      setRefus(`${file.name} pèse ${(file.size / 1024 / 1024).toFixed(1).replace('.', ',')} Mo. La limite est de 15 Mo par fichier.`);
+      toast.error('Fichier trop lourd (15 Mo max).'); return;
+    }
     setUploading(true);
     try {
       // Même geste que l'Assistant BEMEXO : lib/chantier-docs.ts.
@@ -271,6 +281,28 @@ export default function ChantierDocuments({
     }
     return Array.from(m.entries());
   }, [shown]);
+
+  if (ui2b) {
+    const sheet = <DocumentCategorySheet doc={catDoc} office={office} onClose={() => setCatDoc(null)}
+      onChanged={(id, cat) => setDocs((p) => p.map((x) => (x.id === id ? { ...x, category: cat } : x)))}
+      onGone={() => { void fetchDocs(); }} />;
+    return (
+      <Suspense fallback={null}>
+        <DocumentsV2 open={open} onOpenChange={(o) => { if (!o) setRefus(null); onOpenChange(o); }} chantier={worksiteName} tab={tab} setTab={setTab} nPhotos={photos.length} nFichiers={files.length}
+          chargement={loading || !catSettled} uploading={uploading} refus={refus} onPick={onPick} supprimer={(id) => { const d = docs.find((x) => x.id === id); if (d) del(d); }}
+          rattache={workDate ? <>Rattaché au <b>{format(parseISO(workDate), 'EEEE d MMMM', { locale: fr })}</b>{timeEntryId ? <> et à <b>cette intervention</b></> : null}.</> : 'Rattaché au chantier, sans jour précis.'}
+          groupes={byDay.map(([day, items]) => [day, items.map((d) => ({
+            id: d.id, nom: d.label || d.file_name || 'Document', url: urls[d.file_path], photo: isPhoto(d), qui: uploaderName(d), jour: d.work_date, taille: d.size_bytes,
+            quand: new Date(d.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+            ici: !!timeEntryId && d.time_entry_id === timeEntryId, categorie: d.category ?? null,
+            cat: canCat(d) ? <DocCategoryButton label={categoryText(d.category)} current={d.category} docName={d.label || d.file_name || 'Document'} onClick={() => setCatDoc(d)} />
+              : d.category && d.category !== 'photo' ? <span className="dz-l3-badge" data-ton={d.category === 'facture_payee' ? 'ok' : 'jaune'}>{DOC_CATEGORY_LABEL[d.category] ?? d.category}</span> : null,
+          }))])}
+          nDocs={docs.length} clientEmail={clientEmail} editingEmail={editingEmail} setEditingEmail={setEditingEmail} emailInput={emailInput} setEmailInput={setEmailInput}
+          savingEmail={savingEmail} saveClientEmail={saveClientEmail} sending={sending} openMail={openMail} copyMessage={copyMessage} feuilleCategorie={sheet} />
+      </Suspense>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

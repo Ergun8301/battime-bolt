@@ -54,6 +54,9 @@ import type { FicheHeuresCtx } from '@/components/design/bureau/feuille-heures-v
 // Elle reçoit les MÊMES états et les MÊMES gestes que l'écran d'avant (ci-dessous) : aucune logique n'est copiée.
 const FicheHeuresV2 = lazy(() => import('@/components/design/bureau/feuille-heures-v2'));
 const OngletsFicheV2 = lazy(() => import('@/components/design/bureau/onglets-fiche-v2'));
+// Lot 3 A : l'onglet « Gérer » habillé v2 (mêmes états, mêmes gestes), dans le morceau différé du lot.
+const GererV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.GererV2 })));
+const CoutReelV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.CoutReelV2 })));
 
 function formatMinutesToHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -205,6 +208,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // « Archiver » d'un salarié dont les heures ne sont pas clôturées : on lui
   // propose d'abord de les clôturer (le geste naturel d'une fin de contrat).
   const [archiveAsk, setArchiveAsk] = useState(false);
+  const [closeErr, setCloseErr] = useState<string | null>(null); // v2 : le refus du serveur reste dans la fenêtre (le toast d'avant reste)
 
   const [missing, setMissing] = useState<string[]>([]);
 
@@ -784,6 +788,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     if (!worker) return;
     setClosePickOpen(false);
     setArchiveAsk(false);
+    setCloseErr(null);
     const { count } = await supabase.from('time_entries')
       .select('id', { count: 'exact', head: true })
       .eq('company_id', worker.company_id).eq('user_id', worker.id).eq('status', 'draft')
@@ -812,6 +817,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       // Le message du serveur est écrit pour être lu tel quel (« pointage
       // encore ouvert », « après aujourd'hui ») ; un refus de droits, non.
       const msg = (err as { message?: string })?.message || '';
+      setCloseErr(/clôturer|pointage|aujourd/i.test(msg) ? msg : 'Impossible de clôturer ses heures');
       toast.error(/clôturer|pointage|aujourd/i.test(msg) ? msg : 'Impossible de clôturer ses heures');
     } finally {
       setCloseBusy(false);
@@ -953,6 +959,22 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       cBadStart, cBadEnd, setCBadStart, setCBadEnd, cPauseErr, setCPauseErr, cSaving, cReturning, mealOn, previousEnd, actionErr, setActionErr, doCorrection, doReturn,
     };
     return <Suspense fallback={null}><FicheHeuresV2 ctx={ctx} /></Suspense>;
+  }
+
+  if (ui2 && modeEff === 'manage' && worker) {
+    return (
+      <Suspense fallback={null}>
+        <GererV2 c={{
+          worker, onOpenChange, allerHeures: () => setModeV2('hours'), mFirst, setMFirst, mLast, setMLast, mPhone, setMPhone, mRate, setMRate, mWeekly, setMWeekly, companyWeeklyHours,
+          mNir, setMNir, mHireDate, setMHireDate, mContract, setMContract, matriculeDispo, mMatricule, setMMatricule, certs, certLabels: CERT_LABEL, certTypes: CERT_TYPES,
+          certAdding, setCertAdding, certType, setCertType, certLabel, setCertLabel, certExpiry, setCertExpiry, certSaving, addCert, deleteCert,
+          saveWorker, mSaving, mBusy, onArchiveClick, toggleArchive, deleteWorker, closureDispo, closedUntil, closeBusy, doReopen,
+          askCloseUntil: (d, a) => { void askCloseUntil(d, a); }, closeTarget, setCloseTarget, confirmCloseUntil: () => { void confirmCloseUntil(); }, closeErr,
+          archiveAsk, setArchiveAsk, missingOpen,
+          coutReel: <RealCostSection companyId={worker.company_id} userId={worker.id} firstName={worker.first_name} v2={CoutReelV2} />,
+        }} />
+      </Suspense>
+    );
   }
 
   return (
