@@ -366,6 +366,8 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'fenetre:team-stats',
     'rpc:my_worksite_labour',
     'ecriture:lib/team-stats#loadTeamStats',
+    // Design du bureau v2 (?ui=2) : la page « Statistiques » re-dessinée lit les mêmes tables et la même fonction de coût (lecture seule).
+    'ecriture:lib/statistiques-v2#lireStatsV2',
   ],
   // B52 · Coût par chantier et dépenses
   B52: [

@@ -32,6 +32,7 @@
   "components/design/bureau/mobile-v2.tsx": 13,
   "components/design/bureau/onglets-fiche-v2.tsx": 2,
   "components/design/bureau/planning-v2.tsx": 10,
+  "components/design/bureau/statistiques-v2.tsx": 16,
   "components/design/bureau/verrou-v2.tsx": 2,
   "components/design/salarie/page-plus.tsx": 2,
   "components/design/salarie/shell-v2.tsx": 4,
