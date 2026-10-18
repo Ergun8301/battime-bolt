@@ -142,9 +142,16 @@ console.log(`fonctions de la barre, de « Plus ⋯ » et du compte à l'ordinate
   // petite feuille du bas (plus dépliés dans le menu)
   const feuilleC = page.locator('[data-testid=mm-feuille-chiffres]');
   await page.click('[data-testid=mm-chiffres]'); await page.waitForTimeout(700);
+  // Retouches 4 : aucune liste de noms dans les tuiles au repos ; un toucher sur « À relancer » ouvre sa liste sous la tuile ; Échap la ferme d'abord (la
+  // feuille reste), un 2e Échap ferme la feuille.
   const tuiles = await feuilleC.locator('.dzp-tuile').count();
-  check(tuiles === 4 && await feuilleC.locator('[data-testid=relance-row]').count() > 0 && await page.locator('.dzp-mm:not(.dzp-mm--feuille)[data-state=open]').count() === 0,
-    `les compteurs ouvrent les quatre tuiles du 1a dans une feuille, avec la liste « À relancer » ; le menu est fermé (${tuiles})`);
+  const auRepos = await feuilleC.locator('[data-testid=relance-row]').count();
+  await feuilleC.locator('[data-testid=stat-relance] .dzp-tuile__corps').click(); await page.waitForTimeout(300);
+  check(tuiles === 4 && auRepos === 0 && await feuilleC.locator('[data-testid=liste-deroulante] [data-testid=relance-row]').count() > 0 && await page.locator('.dzp-mm:not(.dzp-mm--feuille)[data-state=open]').count() === 0,
+    `les compteurs ouvrent les quatre tuiles du 1a dans une feuille (aucun nom au repos) ; « À relancer » touchée : sa liste déroulante ; le menu est fermé (${tuiles})`);
+  await capture(page, '2b-chiffres-relance-390.png');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  check(await feuilleC.locator('[data-testid=liste-deroulante]').count() === 0 && await feuilleC.count() === 1, 'Échap ferme d’abord la liste déroulante, la feuille reste');
   await page.keyboard.press('Escape'); await page.waitForTimeout(400);
   // pièces jointes
   await page.click('[data-testid=m-menu]'); await page.waitForTimeout(500);

@@ -4,6 +4,8 @@
 //   BASE_URL=http://localhost:3100 node scripts/tests/planning-1a-controles.mjs - <dossier>      (serveur de développement au lieu de out/)
 //   PLANCHE_DIR=<dossier>  : sortie de `planche-essai-2a.mjs <dossier> --1a` (planche-1a-1440.png) → écrit aussi compare-1a-1440.png (planche | écran déplié, même échelle).
 // Données : bureau-sim.mjs, jeu « 2a » (les huit salariés et les cases du script de la planche), horloge figée au jeudi 15 octobre 2026, 9 h 30.
+// Retouches 4 (adaptations) : la tuile « À relancer » n'a plus de liste au repos ; haut déplié, le compteur ouvre sa liste déroulante et Échap la ferme ; les
+// tuiles cliquables (bouton `.dzp-tuile__corps`) ne comptent pas comme « bouton sous la ligne de semaine ».
 import fs from 'node:fs'; import path from 'node:path';
 import { demarrer } from './bureau-sim.mjs';
 
@@ -149,20 +151,21 @@ const PLANCHE_LIGNE = [
   check(manquent.length === 0 && !/Statistiques|Légende|Versions du planning/.test(plus), `« Plus ⋯ » contient ${attendues.join(', ')} (Statistiques est l'onglet de la barre noire ; ni Légende ni Versions)${manquent.length ? ` — manquent : ${manquent.join(', ')}` : ''}`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   check(await page.locator('[data-testid=menu-plus]').count() === 0, 'Échap ferme « Plus ⋯ »');
-  // Compteur, haut DÉPLIÉ (retouches 3) : aucun panneau par-dessus le bandeau ; la tuile « À relancer » montre TOUJOURS sa liste (deux lignes au plus) et le
-  // compteur la signale (anneau 1,2 s) sans la changer (le panneau sous la barre noire reste pour le haut replié : voir plus bas et parcours-secretaire.mjs).
+  // Compteur, haut DÉPLIÉ (retouches 4) : aucun panneau par-dessus le bandeau ; aucune liste de noms dans la tuile au repos ; le compteur ouvre la liste
+  // déroulante de la tuile « À relancer », juste sous elle (le panneau sous la barre noire reste pour le haut replié : voir plus bas et parcours-secretaire.mjs).
   const menu = page.locator('[data-testid=menu-chiffres]');
   const dansTuile = page.locator('[data-testid=bandeau] [data-testid=stat-relance] [data-testid=relance-row]');
   const avantClic = await dansTuile.count();
   await page.click('[data-testid=stat-waiting]'); await page.waitForTimeout(250);
-  check(await menu.count() === 0 && avantClic > 0 && avantClic <= 2 && await dansTuile.count() === avantClic && await page.locator('[data-testid=bandeau] [data-testid=stat-relance][data-eclat]').count() === 1,
-    `haut déplié : la liste « À relancer » est déjà dans sa tuile (${avantClic} ligne(s)) ; le compteur la signale, sans panneau superposé`);
+  const ouverte = await dansTuile.count();
+  check(await menu.count() === 0 && avantClic === 0 && ouverte > 0 && await page.locator('[data-testid=bandeau] [data-testid=stat-relance] [data-testid=liste-deroulante]').count() === 1,
+    `haut déplié : rien au repos, le compteur ouvre la liste déroulante de la tuile (${ouverte} ligne(s)), sans panneau superposé`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
-  check(await dansTuile.count() === avantClic, 'Échap ne plie rien : la liste de la tuile reste');
+  check(await dansTuile.count() === 0 && await page.locator('[data-testid=bandeau]').count() === 1, 'Échap ferme la liste déroulante (le bandeau reste)');
   await page.click('[data-testid=haut-replier]'); await page.waitForTimeout(250);
   await page.click('[data-testid=stat-waiting]'); await page.waitForTimeout(250);
   const pos = await menu.boundingBox();
-  check(await menu.count() === 1 && pos && Math.round(pos.y) === 60 && await menu.locator('[data-testid=relance-row]').count() > 0, `haut replié : un compteur ouvre le détail sous la barre noire, avec la liste « À relancer » (y = ${pos && pos.y})`);
+  check(await menu.count() === 1 && pos && Math.round(pos.y) === 60 && await menu.locator('[data-testid=stat-relance] button.dzp-tuile__corps').count() === 1, `haut replié : un compteur ouvre le détail sous la barre noire, tuile « À relancer » cliquable (y = ${pos && pos.y})`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   check(await menu.count() === 0, 'Échap ferme le détail des chiffres');
   await page.click('[data-testid=haut-deplier]'); await page.waitForTimeout(250);
@@ -205,7 +208,7 @@ const PLANCHE_LIGNE = [
     return { dansBarre: !!b.closest('[data-testid=barre-noire]'), droite: Math.round(r.right), h: Math.round(r.height), avantAssistant: suivant?.dataset.testid === 'bar-assistant', bord: s.borderTopColor, fond: s.backgroundColor, couleur: s.color, rayon: s.borderTopLeftRadius, t: b.innerText };
   }, id);
   const avantRepli = await bouton('haut-replier');
-  check(!!avantRepli && avantRepli.dansBarre && avantRepli.avantAssistant && avantRepli.t === 'Replier ▴' && await page.locator('.dzp-cockpit button:not([data-testid=relance-panel] *), [data-testid=barre-semaine] [data-testid=haut-replier]').count() === 0,
+  check(!!avantRepli && avantRepli.dansBarre && avantRepli.avantAssistant && avantRepli.t === 'Replier ▴' && await page.locator('.dzp-cockpit button:not(.dzp-tuile__corps):not([data-testid=relance-panel] *), [data-testid=barre-semaine] [data-testid=haut-replier]').count() === 0,
     `« Replier ▴ » est dans la barre noire, juste avant « ✦ Assistant » ; plus rien sous la ligne de semaine (${JSON.stringify(avantRepli)})`);
   await page.click('[data-testid=haut-replier]'); await page.mouse.move(2, 500); await page.waitForTimeout(300);
   const apresRepli = await bouton('haut-deplier');

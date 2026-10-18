@@ -256,10 +256,10 @@ export function BarreUnique({ c, recherche, setRecherche, pleinEcran }: { c: Pla
  * ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
 
 /** Compteur de la barre noire du 1a (36 px, chiffre jaune en mono ; masqué à 0) : un clic ouvre le menu des chiffres sous la barre, comme dans la barre 2a. */
-function Compteur1a({ n, unite, libelle, ton, c, testId, titre, signaler }: { n: number; unite?: string; libelle: string; ton?: 'relance'; c: PlanningCtx; testId: string; titre: string; signaler?: (id: string) => void }) {
+function Compteur1a({ n, unite, libelle, ton, c, testId, titre, signaler, ouvert }: { n: number; unite?: string; libelle: string; ton?: 'relance'; c: PlanningCtx; testId: string; titre: string; signaler?: (id: string) => void; ouvert?: boolean }) {
   if (n <= 0) return null;
   return (
-    <button type="button" className="dzp-n-compteur" data-ton={ton} data-ouvre-chiffres="" aria-expanded={signaler ? undefined : c.statPanel === 'waiting'} data-testid={testId}
+    <button type="button" className="dzp-n-compteur" data-ton={ton} data-ouvre-chiffres="" aria-expanded={ton === 'relance' ? (ouvert ?? c.statPanel === 'waiting') : undefined} data-testid={testId}
       data-guide={ton === 'relance' ? 'bureau-stat.relance' : undefined} title={titre}
       onClick={() => (signaler ? signaler(testId) : c.setStatPanel((p: string | null) => (p === 'waiting' ? null : 'waiting')))}>
       {ton === 'relance' && <span className="dzp-n-compteur__point" aria-hidden="true" />}<b>{n}{unite ? ` ${unite}` : ''}</b><span className="dzp-n-compteur__l">{libelle}</span>
@@ -274,10 +274,12 @@ function datesCourtes(debut: Date) {
   return `${format(debut, meme ? 'd' : 'd MMM', { locale: fr })}–${format(fin, 'd MMM', { locale: fr })}`;
 }
 
-export function BarreNoire1a({ c, replie, deplier, replier, recherche, setRecherche, signaler }: {
+export function BarreNoire1a({ c, replie, deplier, replier, recherche, setRecherche, signaler, relanceOuverte }: {
   c: PlanningCtx; replie: boolean; deplier: () => void; replier: () => void; recherche: string; setRecherche: (v: string) => void;
-  /** Haut déplié : un compteur met en évidence sa tuile (ou ouvre sa liste) au lieu d'ouvrir le panneau des tuiles par-dessus (voir PlanningV2). */
+  /** Un compteur ouvre sa liste (haut déplié : la liste déroulante de la tuile « À relancer ») au lieu du panneau des tuiles par-dessus (voir PlanningV2). */
   signaler?: (id: string) => void;
+  /** La liste « À relancer » est ouverte (liste déroulante ou panneau des tuiles) : `aria-expanded` du compteur. */
+  relanceOuverte?: boolean;
 }) {
   const conges = c.pendingLeaves;
   return (
@@ -298,7 +300,7 @@ export function BarreNoire1a({ c, replie, deplier, replier, recherche, setRecher
         )}
       </div>
       <div className="dzp-noire__c" data-testid="compteurs">
-        <Compteur1a c={c} signaler={signaler} n={c.cockpitStats.waiting} unite="j" libelle="à relancer" ton="relance" testId="stat-waiting"
+        <Compteur1a c={c} signaler={signaler} ouvert={relanceOuverte} n={c.cockpitStats.waiting} unite="j" libelle="à relancer" ton="relance" testId="stat-waiting"
           titre={`${c.cockpitStats.waiting} journée(s) planifiée(s) non envoyée(s) en ${c.monthLabel} — cliquer pour voir qui relancer`} />
         <Compteur1a c={c} signaler={signaler} n={conges} libelle={conges > 1 ? 'congés en attente' : 'congé en attente'} testId="compteur-conges" titre={`${conges} demande(s) de congé en attente — cliquer pour ouvrir « Salariés »`} />
         <Compteur1a c={c} signaler={signaler} n={c.cockpitStats.docs} libelle={c.cockpitStats.docs > 1 ? 'pièces' : 'pièce'} testId="compteur-pieces" titre={`${c.cockpitStats.docs} pièce(s) jointe(s) — cliquer pour voir lesquelles`} />
@@ -413,8 +415,8 @@ export function NavSemainePleinEcran({ c }: { c: PlanningCtx }) {
   );
 }
 
-/** Le texte affiché d'un client : le chantier « Autre » (son NOM EN BASE, comparé partout dans la logique et lu par l'assistant) s'affiche « Autre lieu ». */
-const nomAffiche = (ws: Worksite) => (ws.client_name === 'Autre' ? 'Autre lieu' : ws.client_name);
+/** Le texte affiché d'un client : le chantier « Autre » (son NOM EN BASE, comparé partout dans la logique et lu par l'assistant) s'affiche « Autre lieu / client ». */
+const nomAffiche = (ws: Worksite) => (ws.client_name === 'Autre' ? 'Autre lieu / client' : ws.client_name);
 
 /** Une ligne du tiroir : on l'attrape (glisser → crée une intervention). Mêmes identifiants que la ligne d'avant : `palette-new-<id>`. */
 function LigneClient({ ws }: { ws: Worksite }) {

@@ -8,6 +8,11 @@
 // Gestes : chaque compteur (haut déplié puis replié), clic sur la tuile « À relancer », chaque ligne de « Plus ⋯ », du menu du compte et du menu ☰,
 // Exporter dans les deux modes, copier une intervention puis attendre le message, l'assistant puis un écran ouvert depuis l'assistant, clic dehors,
 // plein écran aller-retour, recherche. Base SIMULÉE de bureau-sim.mjs (jeu « 2a », jeudi 15 octobre 2026, horloge pilotée ; aucune vraie base).
+// Retouches 4 : les quatre tuiles compactes (≤ 170 px à 1440, largeurs égales à ±1 px, 2 × 2 à la tablette), aucune liste visible au repos ; clic sur la tuile
+// « À relancer » → liste déroulante JUSTE SOUS la tuile (tuile inchangée), refermée par un 2e clic, Échap ou un clic dehors ; compteur déplié → la même liste ;
+// jeu « 2a-relances » (15 salariés à relancer) : la liste reste bornée (≈ 5 lignes), défile seule, la page ne bouge pas.
+// Adaptations (comportement des retouches 3 remplacé) : « liste toujours visible, 2 lignes, + N autres » → aucune liste au repos, liste déroulante au clic ;
+// « anneau jaune 1,2 s » du compteur déplié → la liste déroulante ; « Échap ne plie rien » → Échap ferme la liste (d'abord elle, puis le panneau ou la feuille).
 import fs from 'node:fs'; import path from 'node:path';
 import { demarrer } from './bureau-sim.mjs';
 
@@ -73,6 +78,23 @@ const echap = async (page, n = 1) => { for (let i = 0; i < n; i++) { await page.
 const fermerTout = async (page) => { for (let i = 0; i < 4; i++) { if ((await etat(page)).ouverts.length === 0) return; await echap(page); } };
 const dehors = async (page) => { const b = await page.locator('.dzp-logo:visible, .dzp-m2-tete').first().boundingBox(); await page.mouse.click(b.x + 8, b.y + 8); await pause(page, 400); };
 const boite = async (page, sel) => page.locator(sel).first().evaluate((e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), w: Math.round(r.width), t: e.innerText.replace(/\s+/g, ' ').trim() }; });
+/** Retouches 4 : les quatre tuiles d'un jeu (bandeau ou menu des chiffres) : largeur et hauteur (au dixième), position. */
+const tuiles = (page, jeu) => page.evaluate((s) => [...document.querySelectorAll(`${s} > .dzp-tuile`)].map((e) => { const r = e.getBoundingClientRect(); return { id: e.dataset.testid, w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10, x: Math.round(r.left), y: Math.round(r.top) }; }), jeu);
+/** Ce qui est visible de listes dans un jeu de tuiles au repos : lignes de noms ou liste déroulante (il n'en faut aucune). */
+const repos = (page, jeu) => page.evaluate((s) => [...document.querySelectorAll(`${s} [data-testid=liste-deroulante], ${s} .bt-pl-sp-row, ${s} [data-testid=relance-panel]`)].filter((e) => e.getClientRects().length > 0).length, jeu);
+/** La liste déroulante ouverte sous une tuile : position par rapport à la tuile, taille, défilement, première ligne ; null si fermée. */
+const deroulant = (page, sel) => page.evaluate((s) => {
+  const t = document.querySelector(s); const l = t?.querySelector('[data-testid=liste-deroulante]'); if (!l) return null;
+  const tr = t.getBoundingClientRect(); const lr = l.getBoundingClientRect(); const li = l.querySelector('.dzp-deroulant__liste');
+  const rangs = [...li.querySelectorAll('.bt-pl-sp-row')]; const p = rangs[0];
+  const sonde = document.elementFromPoint(lr.left + lr.width / 2, lr.bottom - 8);
+  return {
+    ecart: Math.round(lr.top - tr.bottom), gauche: Math.round(lr.left - tr.left), w: Math.round(lr.width), tw: Math.round(tr.width), h: Math.round(lr.height),
+    hl: Math.round(li.clientHeight), sh: li.scrollHeight, n: rangs.length, ligneH: p ? Math.round(p.getBoundingClientRect().height) : 0, overscroll: getComputedStyle(li).overscrollBehaviorY,
+    dessus: !!sonde && l.contains(sonde), tous: !!l.querySelector('[data-testid=relance-tous]'),
+    premiere: p ? { t: p.innerText.replace(/\s+/g, ' ').trim(), relancer: !!p.querySelector('[data-testid=relance-btn], [data-testid=relance-done]'), jours: /^[a-zé]{3}\.? \d+/.test((p.querySelector('.sub')?.innerText || '').trim()) } : null,
+  };
+}, sel);
 
 // ═════════════ ORDINATEUR 1440 ═════════════
 {
@@ -80,51 +102,80 @@ const boite = async (page, sel) => page.locator(sel).first().evaluate((e) => { c
   await apres(page, '1440 · arrivée', { max: 0, y: 0 });
   check(await page.locator('[data-testid=legende][data-toujours]').isVisible(), '1440 · la légende est posée sous la grille');
 
-  // ── Tuile « À relancer » : toujours sa liste, deux lignes au plus, « + N autres » ; un clic sur la tuile ne change rien ──
+  // ── Les quatre tuiles (retouches 4) : compactes (170 px au plus), même largeur (±1 px), aucune liste de noms au repos ──
   const tuile = '[data-testid=bandeau] [data-testid=stat-relance]';
-  const t0 = await boite(page, tuile);
-  const lignes = await page.locator(`${tuile} [data-testid=relance-row]`).count();
-  const autres = await page.locator(`${tuile} [data-testid=relance-autres]`).count();
-  const nRel = await page.evaluate(() => document.querySelectorAll('[data-testid=bandeau] [data-testid=relance-row]').length);
-  check(lignes >= 1 && lignes <= 2, `tuile À relancer : sa liste est visible d'emblée (${lignes} ligne(s), 2 au plus)`);
-  check(await page.locator(`${tuile} button[aria-expanded], ${tuile} .dzp-tuile__ouvrir`).count() === 0, 'tuile À relancer : aucun bouton pour la plier ou la déplier');
-  await page.locator(`${tuile} .dzp-tuile__k`).click(); await pause(page, 400);
-  const t1 = await boite(page, tuile);
+  const m0 = await tuiles(page, '[data-testid=bandeau]');
+  check(m0.length === 4 && m0.every((x) => x.h <= 170), `1440 · tuiles compactes : ${m0.map((x) => x.h).join(' / ')} px de haut (170 au plus)`);
+  check(Math.max(...m0.map((x) => x.w)) - Math.min(...m0.map((x) => x.w)) <= 1, `1440 · quatre largeurs égales à ±1 px (${m0.map((x) => x.w).join(' / ')} px)`);
+  check(await repos(page, '[data-testid=bandeau]') === 0, '1440 · au repos : aucune liste visible dans les tuiles (ni noms, ni liste déroulante)');
+  const t0 = await boite(page, `${tuile} .dzp-tuile__corps`);
+  check(/^À RELANCER \d+ journées? \d+ salariés? concernés?$/.test(t0.t), `tuile À relancer : titre, chiffre, une ligne (« ${t0.t} »)`);
+  // Clic sur la tuile → la liste déroulante JUSTE SOUS la tuile, par-dessus la grille ; la tuile ne change ni de taille ni de forme
+  await page.locator(`${tuile} .dzp-tuile__corps`).click(); await pause(page, 400);
+  const d1 = await deroulant(page, tuile);
+  const t1 = await boite(page, `${tuile} .dzp-tuile__corps`);
   await apres(page, 'clic sur la tuile À relancer', { max: 0, y: 0 });
-  check(t1.h === t0.h && t1.t === t0.t, `clic sur la tuile : ni sa taille ni son contenu ne changent (${t0.h} → ${t1.h} px)`);
+  check(!!d1 && d1.ecart >= 0 && d1.ecart <= 12 && d1.gauche >= -4 && d1.gauche <= 2 && d1.w >= d1.tw - 1 && d1.w <= d1.tw + 120, `clic sur la tuile : liste déroulante juste sous la tuile, de sa largeur ou un peu plus (écart ${d1?.ecart} px, ${d1?.w} px pour une tuile de ${d1?.tw})`);
+  check(!!d1 && d1.dessus, 'liste déroulante : par-dessus la grille (rien ne la recouvre)');
+  check(t1.h === t0.h && t1.w === t0.w && (await tuiles(page, '[data-testid=bandeau]')).every((x, i) => x.h === m0[i].h && x.w === m0[i].w), `clic sur la tuile : aucune tuile ne change de taille (${t0.w} × ${t0.h} → ${t1.w} × ${t1.h})`);
+  check(!!d1 && d1.premiere && /\d+ j/.test(d1.premiere.t) && d1.premiere.relancer && d1.premiere.jours, `une ligne par salarié : nom, jours, « N j », « Relancer » (« ${d1?.premiere?.t} »)`);
+  check(!!d1 && d1.tous, '« Voir tous dans Salariés » en bas de la liste');
+  await image(page, 'parcours-relancer-ouvert-1440');
   await page.locator(`${tuile} .bt-pl-sp-who`).first().click({ force: true }); await pause(page, 500);
-  await apres(page, 'clic sur un nom de la liste', { max: 0, y: 0 });
-  if (autres) {
-    check(/^\+ \d+ autres?$/.test((await page.locator(`${tuile} [data-testid=relance-autres]`).innerText()).trim()), `« ${(await page.locator(`${tuile} [data-testid=relance-autres]`).innerText()).trim()} » sous les deux lignes`);
-    await page.locator(`${tuile} [data-testid=relance-autres]`).click(); await pause(page, 900);
-    await apres(page, '« + N autres »', { attendu: /Salari|salaries|equipe|panneau/i, y: 0 });
-    await fermerTout(page);
-  } else check(nRel <= 2, `pas de « + N autres » : ${nRel} salarié(s) à relancer`);
-  // Le graphique des heures : jours entiers (« L 12 » ou la lettre seule), rien de coupé
+  await apres(page, 'clic sur un nom de la liste (n’ouvre rien)', { max: 0, y: 0 });
+  // Fermetures : recliquer sur la tuile, Échap, clic dehors
+  await page.locator(`${tuile} .dzp-tuile__corps`).click(); await pause(page, 300);
+  check(!(await deroulant(page, tuile)), 'recliquer sur la tuile : la liste se ferme');
+  await page.locator(`${tuile} .dzp-tuile__corps`).click(); await pause(page, 300);
+  await echap(page);
+  check(!(await deroulant(page, tuile)) && await page.locator('[data-testid=bandeau]').count() === 1, 'Échap : la liste se ferme (le bandeau reste)');
+  await page.locator(`${tuile} .dzp-tuile__corps`).click(); await pause(page, 300);
+  await dehors(page);
+  check(!(await deroulant(page, tuile)), 'clic dehors : la liste se ferme');
+  await apres(page, 'liste refermée', { max: 0, y: 0 });
+  // « Voir tous dans Salariés » : la liste se ferme, Salariés s'ouvre
+  await page.locator(`${tuile} .dzp-tuile__corps`).click(); await pause(page, 300);
+  await page.click(`${tuile} [data-testid=relance-tous]`); await pause(page, 900);
+  await apres(page, '« Voir tous dans Salariés »', { attendu: /Salari|salaries|equipe|panneau/i, y: 0 });
+  check(!(await deroulant(page, tuile)), '« Voir tous dans Salariés » : la liste déroulante est fermée');
+  await fermerTout(page);
+  // En direct et Absents : leur liste au clic quand il y a des noms
+  for (const id of ['stat-direct', 'stat-absents']) {
+    const sel = `[data-testid=bandeau] [data-testid=${id}]`;
+    const bouton = await page.locator(`${sel} button.dzp-tuile__corps`).count();
+    if (!bouton) { check(true, `${id} : personne à montrer, aucun clic`); continue; }
+    await page.locator(`${sel} .dzp-tuile__corps`).click(); await pause(page, 300);
+    const d = await deroulant(page, sel);
+    check(!!d && d.ecart >= 0 && d.ecart <= 12 && d.n > 0, `${id} : sa liste déroulante sous la tuile (${d?.n} nom(s) ; « ${d?.premiere?.t} »)`);
+    await echap(page);
+    check(!(await deroulant(page, sel)), `${id} : Échap la ferme`);
+  }
+  // Le graphique des heures : jours entiers (« L 12 » ou la lettre seule), rien de coupé ; barres de 40 px au plus
   const jours = await page.evaluate(() => [...document.querySelectorAll('[data-testid=bandeau] .dzp-barre__l, [data-testid=bandeau] .dzp-barre__n')].map((e) => ({ t: e.innerText.trim(), coupe: e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().width > e.parentElement.getBoundingClientRect().width + 1 })));
   const etiquettes = jours.filter((j, i) => i % 2).map((j) => j.t);
   check(jours.length === 14 && jours.every((j) => !j.coupe), `1440 · graphique : étiquettes entières (${etiquettes.join(' ')})`);
   check(etiquettes.join(' ') === 'L 12 M 13 M 14 J 15 V 16 S 17 D 18', '1440 · graphique : la place suffit, « L 12 » (la lettre seule seulement quand la colonne est trop étroite)');
+  const hb = await page.evaluate(() => Math.max(...[...document.querySelectorAll('[data-testid=bandeau] .dzp-barre__b')].map((e) => e.getBoundingClientRect().height)));
+  check(hb <= 41 && hb >= 30, `1440 · graphique : barres d'environ 40 px (la plus haute : ${Math.round(hb)} px)`);
 
-  // ── Compteurs, haut DÉPLIÉ ──
+  // ── Compteurs, haut DÉPLIÉ : « à relancer » ouvre la MÊME liste déroulante sous la tuile ──
   if (await page.locator('[data-testid=stat-waiting]').count()) {
-    await page.click('[data-testid=stat-waiting]'); await pause(page, 200);
-    const eclat = await page.locator(`${tuile}[data-eclat]`).count();
-    const t2 = await boite(page, tuile);
-    await apres(page, 'déplié · compteur « à relancer »', { max: 0 });
-    check(eclat === 1 && t2.h === t0.h && t2.t === t0.t, `déplié · compteur : anneau jaune sur la tuile, même taille et même contenu (${t2.h} px)`);
-    await image(page, 'parcours-compteur-deplie-1440');
-    await pause(page, 1300);
-    check(await page.locator('[data-eclat]').count() === 0, 'déplié · l’anneau jaune disparaît après 1,2 s');
     await page.click('[data-testid=stat-waiting]'); await pause(page, 300);
-    const t3 = await boite(page, tuile);
-    await apres(page, 'déplié · compteur « à relancer », 2e clic', { max: 0 });
-    check(t3.h === t0.h && t3.t === t0.t, 'déplié · 2e clic : toujours le même geste (rien ne se plie ni ne se déplie)');
+    const d2 = await deroulant(page, tuile);
+    const t2 = await boite(page, `${tuile} .dzp-tuile__corps`);
+    await apres(page, 'déplié · compteur « à relancer »', { max: 0, y: 0 });
+    check(!!d2 && d2.ecart >= 0 && d2.ecart <= 12 && d2.n === d1?.n && t2.h === t0.h && t2.w === t0.w, `déplié · compteur : la même liste déroulante sous la tuile, la tuile inchangée (${d2?.n} ligne(s), ${t2.w} × ${t2.h})`);
+    check(await page.locator('[data-testid=stat-waiting]').getAttribute('aria-expanded') === 'true' && await page.locator('[data-testid=menu-chiffres]').count() === 0, 'déplié · compteur : aria-expanded, aucun panneau des tuiles par-dessus');
+    await image(page, 'parcours-compteur-deplie-1440');
+    await page.click('[data-testid=stat-waiting]'); await pause(page, 300);
+    check(!(await deroulant(page, tuile)), 'déplié · 2e clic sur le compteur : la liste se ferme');
+    await apres(page, 'déplié · compteur « à relancer », 2e clic', { max: 0, y: 0 });
     // Défilement doux jusqu'à la tuile quand elle n'est pas à l'écran (fenêtre basse)
     await page.setViewportSize({ width: 1440, height: 480 }); await page.evaluate(() => window.scrollTo(0, 260)); await pause(page, 300);
     await page.click('[data-testid=stat-waiting]'); await pause(page, 900);
-    const vue = await page.evaluate((s) => { const b = document.querySelector(s).getBoundingClientRect(); const h = document.querySelector('.dzp-haut').getBoundingClientRect(); return { haut: Math.round(b.top), bas: Math.round(b.bottom), sousBarre: b.top >= h.bottom - 1 || b.bottom <= innerHeight }; }, tuile);
-    check(vue.bas <= 480 && vue.haut >= 0, `déplié · fenêtre basse : la page défile doucement jusqu'à la tuile (haut ${vue.haut}, bas ${vue.bas})`);
+    const vue = await page.evaluate((s) => { const b = document.querySelector(s).getBoundingClientRect(); return { haut: Math.round(b.top), bas: Math.round(b.bottom) }; }, tuile);
+    check(vue.bas <= 480 && vue.haut >= 0 && !!(await deroulant(page, tuile)), `déplié · fenêtre basse : la page défile doucement jusqu'à la tuile, sa liste ouverte (haut ${vue.haut}, bas ${vue.bas})`);
+    await echap(page);
     await page.setViewportSize({ width: 1440, height: 900 }); await page.evaluate(() => window.scrollTo(0, 0)); await pause(page, 300);
   }
   for (const [id, re] of [['compteur-conges', /Salari|salaries/i], ['compteur-pieces', /liste-pieces/], ['compteur-reserves', /serves|reserves/i]]) {
@@ -141,7 +192,15 @@ const boite = async (page, sel) => page.locator(sel).first().evaluate((e) => { c
     await page.click('[data-testid=stat-waiting]'); await pause(page, 400);
     await apres(page, 'replié · compteur « à relancer »', { attendu: /menu-chiffres/, y: 0 });
     const mc = '[data-testid=menu-chiffres] [data-testid=stat-relance]';
-    check(await page.locator(`${mc} [data-testid=relance-row]`).count() <= 2, `replié · même tuile À relancer : ${await page.locator(`${mc} [data-testid=relance-row]`).count()} ligne(s) au plus 2`);
+    const mr = await tuiles(page, '[data-testid=menu-chiffres]');
+    check(mr.length === 4 && mr.every((x) => x.h <= 170) && Math.max(...mr.map((x) => x.w)) - Math.min(...mr.map((x) => x.w)) <= 1 && await repos(page, '[data-testid=menu-chiffres]') === 0,
+      `replié · panneau des tuiles compact aussi : ${mr.map((x) => `${x.w} × ${x.h}`).join(' / ')}, aucune liste au repos`);
+    await page.locator(`${mc} .dzp-tuile__corps`).click(); await pause(page, 300);
+    const dr = await deroulant(page, mc);
+    check(!!dr && dr.ecart >= 0 && dr.ecart <= 12 && dr.n > 0 && (await tuiles(page, '[data-testid=menu-chiffres]')).every((x, i) => x.h === mr[i].h), `replié · clic sur la tuile : la même liste déroulante sous la tuile (${dr?.n} ligne(s)), tuiles inchangées`);
+    await apres(page, 'replié · liste déroulante ouverte', { attendu: /menu-chiffres/, y: 0 });
+    await echap(page);
+    check(!(await deroulant(page, mc)) && await page.locator('[data-testid=menu-chiffres]').count() === 1, 'replié · Échap ferme d’abord la liste déroulante (le panneau reste)');
     const coupes = await page.evaluate(() => [...document.querySelectorAll('[data-testid=menu-chiffres] .dzp-barre__l, [data-testid=menu-chiffres] .dzp-barre__n')].filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent));
     check(coupes.length === 0, `replié · graphique : rien de coupé${coupes.length ? ` (${coupes.join(' ')})` : ''}`);
     await page.click('[data-testid=stat-waiting]'); await pause(page, 400);
@@ -298,10 +357,64 @@ const boite = async (page, sel) => page.locator(sel).first().evaluate((e) => { c
   await r.ctx.close();
 }
 
+// ═════════════ 1440 · 15 SALARIÉS À RELANCER (jeu « 2a-relances ») : la liste déroulante reste bornée et défile seule ═════════════
+{
+  sim.reinitialiser('2a-relances');
+  const r = await ouvrir(1440, 900); const { page } = r;
+  const tuile = '[data-testid=bandeau] [data-testid=stat-relance]';
+  const m = await tuiles(page, '[data-testid=bandeau]');
+  const s = (await page.locator(`${tuile} .dzp-tuile__s`).innerText()).trim();
+  check(s === '15 salariés concernés' && m.every((x) => x.h <= 170) && await repos(page, '[data-testid=bandeau]') === 0, `15 à relancer · la tuile reste compacte, sans noms (« ${s} », ${m.map((x) => x.h).join(' / ')} px)`);
+  await page.locator(`${tuile} .dzp-tuile__corps`).click(); await pause(page, 400);
+  const d = await deroulant(page, tuile);
+  check(!!d && d.n === 15, `15 à relancer · une ligne par salarié dans la liste (${d?.n})`);
+  check(!!d && d.hl >= 4 * d.ligneH && d.hl <= 6 * d.ligneH && d.h <= 360, `15 à relancer · hauteur bornée : ${d?.hl} px de lignes (≈ ${d ? (d.hl / d.ligneH).toFixed(1) : '?'} lignes de ${d?.ligneH} px), ${d?.h} px en tout`);
+  check(!!d && d.sh > d.hl + 10 && d.overscroll === 'contain' && d.tous, `15 à relancer · le reste défile dans la liste seulement (${d?.sh} px de contenu, overscroll ${d?.overscroll}), « Voir tous dans Salariés » en bas`);
+  check(!!d && d.ecart >= 0 && d.ecart <= 12 && d.dessus, '15 à relancer · juste sous la tuile, par-dessus la grille');
+  await image(page, 'parcours-relancer-15-1440');
+  const box = await page.locator(`${tuile} .dzp-deroulant__liste`).boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, 300); await pause(page, 300);
+  const w1 = await page.evaluate((s) => ({ l: Math.round(document.querySelector(`${s} .dzp-deroulant__liste`).scrollTop), y: Math.round(scrollY) }), tuile);
+  await page.mouse.wheel(0, 3000); await pause(page, 400);
+  const w2 = await page.evaluate((s) => { const l = document.querySelector(`${s} .dzp-deroulant__liste`); return { bas: Math.abs(l.scrollHeight - l.clientHeight - l.scrollTop) <= 2, y: Math.round(scrollY) }; }, tuile);
+  check(w1.l > 0 && w1.y === 0 && w2.bas && w2.y === 0, `15 à relancer · la molette fait défiler la liste (${w1.l} px), jamais la page (y = ${w1.y} puis ${w2.y}, même au bout de la liste)`);
+  await page.locator(`${tuile} .dzp-tuile__corps`).click(); await pause(page, 300);
+  check(!(await deroulant(page, tuile)), '15 à relancer · recliquer sur la tuile : fermée');
+  await page.locator(`${tuile} .dzp-tuile__corps`).click(); await pause(page, 300); await echap(page);
+  check(!(await deroulant(page, tuile)), '15 à relancer · Échap : fermée');
+  await page.locator(`${tuile} .dzp-tuile__corps`).click(); await pause(page, 300); await dehors(page);
+  check(!(await deroulant(page, tuile)), '15 à relancer · clic dehors : fermée');
+  await page.click('[data-testid=stat-waiting]'); await pause(page, 300);
+  const d2 = await deroulant(page, tuile);
+  check(!!d2 && d2.n === 15 && d2.hl === d.hl, `15 à relancer · compteur (haut déplié) : la même liste déroulante (${d2?.n} lignes, ${d2?.hl} px)`);
+  await apres(page, '15 à relancer · compteur', { max: 0, y: 0 });
+  await r.ctx.close();
+  sim.reinitialiser('2a');
+}
+
 // ═════════════ TABLETTE 834 (contrôle de cohérence : mêmes règles que l'ordinateur) ═════════════
 {
   const r = await ouvrir(834, 1112, true); const { page } = r;
   check(await page.locator('[data-testid=legende]').isVisible(), '834 · la légende est posée sous la grille (plus dans « Plus ⋯ »)');
+  // Retouches 4 : le panneau des tuiles en 2 × 2, quatre largeurs égales, aucune liste au repos ; la tuile « À relancer » ouvre sa liste sous elle.
+  if (await page.locator('[data-testid=stat-waiting]:visible').count()) {
+    await page.locator('[data-testid=stat-waiting]:visible').click(); await pause(page, 500);
+    const m = await tuiles(page, '[data-testid=menu-chiffres]');
+    const xs = new Set(m.map((x) => x.x)).size; const ys = new Set(m.map((x) => x.y)).size;
+    check(m.length === 4 && xs === 2 && ys === 2 && Math.max(...m.map((x) => x.w)) - Math.min(...m.map((x) => x.w)) <= 1 && await repos(page, '[data-testid=menu-chiffres]') === 0,
+      `834 · tuiles en 2 × 2, largeurs égales, aucune liste au repos (${m.map((x) => `${x.w} × ${x.h}`).join(' / ')})`);
+    await image(page, 'parcours-tuiles-834');
+    const mc = '[data-testid=menu-chiffres] [data-testid=stat-relance]';
+    await page.locator(`${mc} .dzp-tuile__corps`).click(); await pause(page, 300);
+    const d = await deroulant(page, mc);
+    const vw = await page.evaluate(() => innerWidth);
+    check(!!d && d.ecart >= 0 && d.ecart <= 12 && d.n > 0 && await page.locator(`${mc} .dzp-deroulant`).evaluate((e, w) => e.getBoundingClientRect().right <= w && e.getBoundingClientRect().left >= 0, vw),
+      `834 · « À relancer » : sa liste déroulante sous la tuile, entière à l'écran (${d?.n} ligne(s))`);
+    await echap(page);
+    check(!(await deroulant(page, mc)) && await page.locator('[data-testid=menu-chiffres]').count() === 1, '834 · Échap ferme d’abord la liste (le panneau reste)');
+    await fermerTout(page);
+  }
   for (const [id, re] of [['stat-waiting', /menu-chiffres/], ['compteur-conges', /Salari|salaries/i], ['compteur-pieces', /liste-pieces/], ['compteur-reserves', /serves|reserves/i]]) {
     if (!(await page.locator(`[data-testid=${id}]:visible`).count())) continue;
     await page.locator(`[data-testid=${id}]:visible`).click(); await pause(page, 900);
@@ -333,7 +446,16 @@ const boite = async (page, sel) => page.locator(sel).first().evaluate((e) => { c
     const e = await apres(page, `☰ › ${items[i]}`, { y: 0 });
     check(e.ouverts.length <= 1 && !e.ouverts.some((o) => /^Menu$/.test(o)) && (await page.locator('.dzp-mm:not(.dzp-mm--feuille)[data-state=open]').count()) === 0, `☰ › ${items[i]} : le menu est fermé avant sa cible (${e.ouverts.join(', ') || 'mode sélection'})`);
     if (/Légende/.test(items[i])) { check(await page.locator('[data-testid=legende-mobile]:visible').count() === 1, '☰ › Légende : une petite feuille, sans défiler la page'); await image(page, 'parcours-legende-390'); }
-    if (/Chiffres/.test(items[i])) check(await page.locator('[data-testid=mm-feuille-chiffres] .dzp-tuile').count() === 4 && await page.locator('[data-testid=mm-feuille-chiffres] [data-testid=relance-row]').count() <= 2, '☰ › Chiffres : les quatre tuiles dans une feuille, deux lignes « À relancer » au plus');
+    if (/Chiffres/.test(items[i])) {
+      check(await page.locator('[data-testid=mm-feuille-chiffres] .dzp-tuile').count() === 4 && await repos(page, '[data-testid=mm-feuille-chiffres]') === 0, '☰ › Chiffres : les quatre tuiles empilées dans une feuille, aucune liste au repos');
+      const mc = '[data-testid=mm-feuille-chiffres] [data-testid=stat-relance]';
+      await page.locator(`${mc} .dzp-tuile__corps`).click(); await pause(page, 300);
+      const d = await deroulant(page, mc);
+      check(!!d && d.ecart >= 0 && d.ecart <= 12 && d.n > 0, `☰ › Chiffres › À relancer : sa liste déroulante sous la tuile (${d?.n} ligne(s))`);
+      await image(page, 'parcours-chiffres-relance-390');
+      await echap(page);
+      check(!(await deroulant(page, mc)) && await page.locator('[data-testid=mm-feuille-chiffres]').count() === 1, '☰ › Chiffres : Échap ferme d’abord la liste, la feuille reste');
+    }
     if (/Pièces/.test(items[i])) check(await page.locator('[data-testid=mm-feuille-pieces] [data-testid=liste-pieces]').count() === 1, '☰ › Pièces jointes : la liste dans une feuille');
     if (/Sélectionner/.test(items[i])) { const fin = page.locator('[data-testid=sel-done]:visible'); if (await fin.count()) await fin.click(); await pause(page, 300); }
     await fermerTout(page);

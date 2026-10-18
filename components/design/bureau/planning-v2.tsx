@@ -13,7 +13,7 @@ import { totauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
 import './bureau-jetons.css';
 import './planning-v2.css';
 import { BarreNoire1a, BarreUnique, LigneSemaine1a, NavSemainePleinEcran, SortiePleinEcran, TiroirClients } from './barres-v2';
-import { ListePieces, PanneauChiffres } from './bandeau-v2';
+import { ListePieces, PanneauChiffres, type ListeChiffres } from './bandeau-v2';
 import { chargeJours, Grille } from './grille-v2';
 import { Grille1a } from './grille-1a';
 import { Mobile } from './mobile-v2';
@@ -143,14 +143,12 @@ function Dock({ c }: { c: PlanningCtx }) {
   );
 }
 
-/** Défilement doux jusqu'à la tuile « À relancer » du bandeau, puis anneau jaune discret 1,2 s (rien d'autre ne change). */
-function eclairerRelance() {
+/** Défilement doux jusqu'à la tuile « À relancer » du bandeau quand elle n'est pas à l'écran (sa liste déroulante s'ouvre juste dessous). */
+function montrerRelance() {
   requestAnimationFrame(() => {
     const t = document.querySelector<HTMLElement>('[data-testid=bandeau] [data-testid=stat-relance]');
     if (!t) return;
     t.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-    t.removeAttribute('data-eclat'); void t.offsetWidth; t.setAttribute('data-eclat', '');
-    window.setTimeout(() => t.removeAttribute('data-eclat'), 1200);
   });
 }
 
@@ -258,19 +256,22 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
   useEffect(() => { publierPont({ c, recherche, setRecherche, chiffres }); });
   useEffect(() => () => publierPont(null), []);
   // Les compteurs de la barre noire (ordinateur), UN geste chacun, haut déplié ou replié : congés → Salariés, pièces → liste des pièces, réserves → Réserves
-  // (ces trois-là n'ont pas de tuile). « à relancer » : haut DÉPLIÉ, défilement doux jusqu'à la tuile « À relancer » du bandeau et anneau jaune discret 1,2 s
-  // (ni sa taille ni son contenu ne changent, aucun panneau superposé) ; haut REPLIÉ, le panneau des tuiles sous la barre (un 2e clic le referme).
+  // (ces trois-là n'ont pas de tuile). « à relancer » : haut DÉPLIÉ, la liste déroulante de la tuile « À relancer » du bandeau, juste sous la tuile (la même
+  // qu'au clic sur la tuile ; un 2e clic la referme ; la tuile ne change pas) ; haut REPLIÉ, le panneau des tuiles sous la barre (un 2e clic le referme).
+  const deplie = ordi && !replie && !pleinEcran;
+  const [liste, setListe] = useState<ListeChiffres>(null);
+  useEffect(() => { if (!deplie) setListe(null); }, [deplie]);
   const signaler = (id: string) => {
     if (id === 'compteur-conges') { c.setSalariesOpen(true); return; }
     if (id === 'compteur-reserves') { c.setReservesOpen(true); return; }
     if (id === 'compteur-pieces') { setStatPanel((p: string | null) => (p === 'docs' ? null : 'docs')); return; }
-    if (replie) setStatPanel((p: string | null) => (p === 'waiting' ? null : 'waiting'));
-    else eclairerRelance();
+    if (replie) { setStatPanel((p: string | null) => (p === 'waiting' ? null : 'waiting')); return; }
+    if (liste !== 'relance') montrerRelance();
+    setListe(liste === 'relance' ? null : 'relance');
   };
-  // Une demande d'ouvrir la liste « À relancer » venue d'ailleurs (l'assistant) pendant que le haut est déplié : même geste que le compteur, rien ne s'ouvre en plus.
-  const deplie = ordi && !replie && !pleinEcran;
+  // Une demande d'ouvrir la liste « À relancer » venue d'ailleurs (l'assistant) pendant que le haut est déplié : la même liste déroulante, rien d'autre.
   useEffect(() => {
-    if (deplie && statPanel === 'waiting') { setStatPanel(null); eclairerRelance(); }
+    if (deplie && statPanel === 'waiting') { setStatPanel(null); setListe('relance'); montrerRelance(); }
   }, [deplie, statPanel, setStatPanel]);
   useRetoursBureau();
   return (
@@ -281,14 +282,14 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           : ordi ? (
             <>
               <div className="dzp-haut dzp-haut--1a">
-                <BarreNoire1a c={c} replie={replie} deplier={() => { setStatPanel(null); poserReplie(false); }} replier={() => { setStatPanel(null); poserReplie(true); }} recherche={recherche} setRecherche={setRecherche} signaler={signaler} />
+                <BarreNoire1a c={c} replie={replie} deplier={() => { setStatPanel(null); poserReplie(false); }} replier={() => { setStatPanel(null); poserReplie(true); }} recherche={recherche} setRecherche={setRecherche} signaler={signaler} relanceOuverte={replie ? c.statPanel === 'waiting' : liste === 'relance'} />
                 {!replie && <LigneSemaine1a c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} />}
                 {replie && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
                 {c.statPanel === 'docs' && <ListePieces c={c} />}
               </div>
               {!replie && (
                 <section className="dzp-cockpit" aria-label="Chiffres de la semaine">
-                  <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} enLigne />
+                  <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} enLigne liste={liste} setListe={setListe} />
                 </section>
               )}
             </>

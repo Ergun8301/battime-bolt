@@ -69,7 +69,7 @@ function ChantiersV2({ c }: { c: Lot3Ctx }) {
           <Lignes>
             {filtres.map((ws) => {
               const fin = termineLe(ws, true);
-              return <Ligne key={ws.id} t={ws.client_name === 'Autre' ? 'Autre lieu' : ws.client_name} s={sousChantier(ws) || undefined} point={couleur(ws)} badge={fin ? fin.toUpperCase() : undefined} badgeTon="clos" chev
+              return <Ligne key={ws.id} t={ws.client_name === 'Autre' ? 'Autre lieu / client' : ws.client_name} s={sousChantier(ws) || undefined} point={couleur(ws)} badge={fin ? fin.toUpperCase() : undefined} badgeTon="clos" chev
                 onClick={() => { setOpen(false); ouvrirFiche(ws); }} guide="bureau-clients.crayon" />;
             })}
           </Lignes>

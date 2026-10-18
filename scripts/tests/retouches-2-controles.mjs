@@ -8,6 +8,9 @@
 // 7. compteur « à relancer » : haut déplié → aucune seconde série de tuiles, la tuile signalée (sa liste y est toujours) ; replié → le panneau, aucun texte coupé ;
 // Retouches 3 (adaptations, voir docs/REPRISE.md) : le lien du bas « Un seul salarié ? » d'Exporter est retiré (doublon de la bascule du haut) ; la tuile
 // « À relancer » montre toujours sa liste (plus d'état déplié / replié) et l'anneau dure 1,2 s ; « Versions du planning » n'est plus dans « Plus ⋯ ».
+// Retouches 4 (adaptations) : « Autre lieu » devient « Autre lieu / client » ; plus aucune liste de noms dans la tuile au repos : haut déplié, le compteur ouvre
+// la liste déroulante de la tuile (sous la tuile, sans la changer) et un clic dehors la ferme (plus d'anneau jaune) ; replié 1024, les noms se lisent dans la
+// liste déroulante ouverte au clic sur la tuile (le panneau des tuiles n'en montre plus).
 // 8. un clic dehors ferme un menu, un panneau ; il RÉDUIT l'assistant en pastille (conversation gardée).
 // Base SIMULÉE de bureau-sim.mjs (jeu « 2a », jeudi 15 octobre 2026, horloge figée ; aucune vraie base).
 import fs from 'node:fs'; import path from 'node:path';
@@ -194,7 +197,7 @@ for (const [l, h, tactile] of [[1440, 900, false], [1024, 768, false], [834, 111
   const r = await ouvrir(1440, 900); const { page } = r;
   await page.locator('[data-guide="bureau-nav.clients"]:visible').first().click(); await pause(page, 500);
   const t = await page.locator('[data-testid=tiroir-clients]').innerText();
-  check(/Autre lieu/.test(t) && /Lieu non listé : le salarié le précise/.test(t), 'tiroir Clients : « Autre lieu » et « Lieu non listé : le salarié le précise »');
+  check(/Autre lieu \/ client/.test(t) && /Lieu non listé : le salarié le précise/.test(t), 'tiroir Clients : « Autre lieu / client » et « Lieu non listé : le salarié le précise »');
   check(!/Chantier non listé/.test(t) && !/^Autre$/m.test(t), 'tiroir Clients : plus de « Autre — Chantier non listé, le salarié le nomme »');
   check(/Ajoutez aussi vos lieux fixes : bureau, atelier, restaurant…/.test(t), 'tiroir Clients : ligne d\'aide sous la recherche');
   check(/\+ Nouveau client ou lieu/.test(t), 'tiroir Clients : « + Nouveau client ou lieu »');
@@ -252,17 +255,20 @@ for (const [l, h] of [[1440, 900], [1280, 800], [1024, 768]]) {
   const n = await page.locator('[data-testid=stat-waiting]').count();
   check(n === 1, 'compteur « à relancer » présent dans la barre noire');
   if (n) {
+    const h0 = await page.evaluate(() => Math.round(document.querySelector('[data-testid=bandeau] [data-testid=stat-relance]').getBoundingClientRect().height));
+    check(await page.locator('[data-testid=bandeau] [data-testid=relance-panel]').count() === 0, 'déplié, au repos : aucune liste de noms dans la tuile À relancer');
     await page.click('[data-testid=stat-waiting]'); await pause(page, 250);
-    const d = await page.evaluate(() => ({ tuiles: document.querySelectorAll('[data-testid=stat-heures]').length, menu: document.querySelectorAll('[data-testid=menu-chiffres]').length,
-      liste: !!document.querySelector('[data-testid=bandeau] [data-testid=stat-relance] [data-testid=relance-panel]'), eclat: !!document.querySelector('[data-testid=bandeau] [data-testid=stat-relance][data-eclat]'),
-      bloque: getComputedStyle(document.documentElement).overflowY }));
+    const d = await page.evaluate(() => {
+      const t = document.querySelector('[data-testid=bandeau] [data-testid=stat-relance]'); const l = t.querySelector('[data-testid=liste-deroulante]');
+      const tr = t.getBoundingClientRect(); const lr = l?.getBoundingClientRect();
+      return { tuiles: document.querySelectorAll('[data-testid=stat-heures]').length, menu: document.querySelectorAll('[data-testid=menu-chiffres]').length,
+        liste: !!l?.querySelector('[data-testid=relance-panel]'), sous: !!lr && lr.top >= tr.bottom && lr.top - tr.bottom <= 12, h: Math.round(tr.height) };
+    });
     check(d.tuiles === 1 && d.menu === 0, `déplié + clic sur le compteur : aucun second jeu de tuiles (${d.tuiles} tuile « heures », ${d.menu} panneau superposé)`);
-    check(d.liste && d.eclat, 'déplié : la tuile À relancer (sa liste y est toujours) est signalée par l\'anneau jaune');
+    check(d.liste && d.sous && d.h === h0, `déplié : le compteur ouvre la liste déroulante juste sous la tuile À relancer, la tuile ne change pas (${h0} → ${d.h} px)`);
     await image(page, 'compteur-deplie-1440');
-    await pause(page, 1300);
-    check(!(await page.locator('[data-eclat]').count()), 'déplié : l\'anneau jaune disparaît après 1,2 s');
     await dehors(page);
-    check(await page.locator('[data-testid=bandeau] [data-testid=relance-panel]').count() === 1, 'clic dehors : la liste de la tuile reste (aucun état déplié / replié)');
+    check(await page.locator('[data-testid=bandeau] [data-testid=liste-deroulante]').count() === 0, 'clic dehors : la liste déroulante se ferme');
     // Replié : le panneau des tuiles, sans texte coupé
     await page.click('[data-testid=haut-replier]'); await pause(page, 400);
     await page.click('[data-testid=stat-waiting]'); await pause(page, 400);
@@ -306,14 +312,15 @@ for (const [l, h] of [[1440, 900], [1280, 800], [1024, 768]]) {
   const r = await ouvrir(1024, 768); const { page } = r;
   await page.click('[data-testid=haut-replier]'); await pause(page, 400);
   await page.click('[data-testid=stat-waiting]'); await pause(page, 400);
+  await page.locator('[data-testid=menu-chiffres] [data-testid=stat-relance] .dzp-tuile__corps').click(); await pause(page, 300);
   const p = await page.evaluate(() => {
     const m = document.querySelector('[data-testid=menu-chiffres]'); if (!m) return null;
-    const coupes = [...m.querySelectorAll('.dzp-barre__l, .dzp-barre__n')].filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent.trim());
+    const coupes = [...m.querySelectorAll('.dzp-barre__l, .dzp-barre__n')].filter((e) => e.offsetParent !== null && e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent.trim());
     const noms = [...m.querySelectorAll('[data-testid=relance-panel] .bt-pl-sp-who')].map((e) => Math.round(e.getBoundingClientRect().width));
     return { coupes, noms };
   });
   check(!!p && p.coupes.length === 0, `replié 1024 : chiffres et jours des barres entiers${p?.coupes.length ? ` (coupés : ${p.coupes.join(' ')})` : ''}`);
-  check(!!p && p.noms.length > 0 && p.noms.every((w) => w >= 40), `replié 1024 : noms de la liste « À relancer » lisibles (${p?.noms.join(', ')} px)`);
+  check(!!p && p.noms.length > 0 && p.noms.every((w) => w >= 40), `replié 1024 : noms de la liste déroulante « À relancer » lisibles (${p?.noms.join(', ')} px)`);
   await image(page, 'compteur-replie-1024');
   await fermerCtx(r);
 }

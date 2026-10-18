@@ -115,10 +115,10 @@ button.dzp-b-actuelle { background: transparent; border: 1px solid #FFC21A; colo
 .dzp-sep { width: 1px; height: 26px; background: var(--dz-trait-fort); margin: 0 4px; }
 .dzp-relatif { position: relative; }
 
-/* ── Menu des chiffres (sous la barre) : les quatre tuiles du 1a, telles que dessinées ── */
-.dzp-chiffres { position: absolute; left: 0; right: 0; top: 64px; z-index: 41; display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 12px; padding: 14px 16px 18px; background: #F2EDE3; border-bottom: 1px solid #E3DACB; box-shadow: 0 20px 40px rgba(21,18,15,.16); white-space: normal; }
+/* ── Menu des chiffres (sous la barre) : les quatre tuiles du 1a, compactes (retouches 4), en quatre colonnes ÉGALES ── */
+.dzp-chiffres { position: absolute; left: 0; right: 0; top: 64px; z-index: 41; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 14px 16px 18px; background: #F2EDE3; border-bottom: 1px solid #E3DACB; box-shadow: 0 20px 40px rgba(21,18,15,.16); white-space: normal; }
 .dzp-tuile { position: relative; text-align: left; font-family: inherit; color: #15120F; background: #FFFDF8; border: 1px solid #E3DACB; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.dzp-tuile--sombre { background: #1B1713; border: 0; color: #F2EDE3; padding: 16px 20px; flex-direction: row; gap: 20px; align-items: stretch; }
+.dzp-tuile--sombre { background: #1B1713; border: 0; color: #F2EDE3; }
 .dzp-tuile--relance { background: #FCE4E1; border: 1.5px solid #E53935; }
 .dzp-tuile--direct { background: #E7F6EE; border: 1.5px solid #2FA36B; }
 .dzp-tuile__k { font-family: var(--dz-font-chiffres); font-size: 10.5px; font-weight: 700; letter-spacing: .14em; color: #5B534A; text-transform: uppercase; }
@@ -133,15 +133,15 @@ button.dzp-b-actuelle { background: transparent; border: 1px solid #FFC21A; colo
 .dzp-tuile__s { font-size: 12.5px; line-height: 1.35; color: #5B534A; }
 .dzp-tuile--relance .dzp-tuile__s { color: #7A2A22; }
 .dzp-tuile--direct .dzp-tuile__s { color: #1F5A3B; }
-.dzp-tuile__liste { margin-top: 2px; max-height: 168px; overflow-y: auto; background: #FFFDF8; border: 1px solid #F0B8AE; border-radius: 12px; padding: 4px 6px; }
 .dzp-point { width: 12px; height: 12px; border-radius: 50%; background: #2FA36B; flex: none; animation: dzpPouls 1.4s ease-out infinite; }
 @keyframes dzpPouls { 0% { box-shadow: 0 0 0 0 rgba(47,163,107,.55); } 100% { box-shadow: 0 0 0 8px rgba(47,163,107,0); } }
-.dzp-total { display: flex; flex-direction: column; justify-content: space-between; min-width: 150px; }
-.dzp-total__n { display: flex; align-items: baseline; gap: 6px; }
-.dzp-total__n b { font-weight: 900; font-size: 40px; line-height: 1; letter-spacing: -.04em; }
+/* Tuile « Heures envoyées » : titre, puis le grand chiffre et le mini graphique côte à côte (barres de 40 px au plus), puis une ligne. */
+.dzp-total { display: flex; align-items: flex-end; gap: 14px; min-width: 0; }
+.dzp-total__n { flex: none; display: flex; align-items: baseline; gap: 6px; }
+.dzp-total__n b { font-weight: 900; font-size: 36px; line-height: 1; letter-spacing: -.04em; }
 .dzp-total__n span { font-weight: 700; color: rgba(242,237,227,.6); }
-.dzp-total__s { font-size: 12.5px; color: rgba(242,237,227,.65); }
-.dzp-barres { flex: 1; display: flex; align-items: flex-end; gap: 10px; padding-top: 6px; }
+.dzp-total__s { font-size: 12.5px; line-height: 1.35; color: rgba(242,237,227,.65); }
+.dzp-barres { flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; gap: 6px; }
 .dzp-barre { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
 .dzp-barre__n, .dzp-barre__l { font-family: var(--dz-font-chiffres); font-size: 10px; color: rgba(242,237,227,.7); white-space: nowrap; }
 .dzp-barre__l { font-weight: 700; color: rgba(242,237,227,.6); }
@@ -526,8 +526,7 @@ button.dzp-mm__actuelle { background: #FFC21A; color: #15120F; cursor: pointer; 
 .dzp-mm__compteur[data-ton="relance"] { background: #FCE4E1; color: #8E1B14; }
 /* Les quatre tuiles du 1a, empilées dans le menu */
 .dzp-mm .dzp-chiffres { position: static; display: flex; flex-direction: column; gap: 10px; padding: 0; background: transparent; border: 0; box-shadow: none; }
-.dzp-mm .dzp-tuile--sombre { flex-direction: column; gap: 12px; }
-.dzp-mm .dzp-tuile__liste { max-height: none; }
+.dzp-mm .dzp-deroulant { left: -1.5px; right: -1.5px; width: auto; max-width: none; }
 .dzp-mm__pieces .dzp-panneau-stat { position: static; width: auto; max-width: none; box-shadow: none; }
 @media (pointer: coarse) { .dzp-mm .bt-pl-sp-act, .dzp-mm .bt-pl-sp-who, .dzp-mm .bt-pl-sp-grp { min-height: 44px; } }
 
@@ -799,15 +798,12 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-noire .dzp-b-pilule--repli, .dzp-noire .dzp-b-pilule--repli[aria-expanded] { border-color: rgba(242,237,227,.2); color: #F2EDE3; background: transparent; }
   .dzp-noire .dzp-b-pilule--repli:hover { border-color: rgba(255,194,26,.6); }
   .dzp-noire[data-replie] .dzp-b-pilule--repli { margin-right: 4px; } /* la barre repliée resserre ses boutons (8 px au lieu de 10, deux écarts) : la pilule garde son bord droit */
-  .dzp-chiffres--ligne { position: static; padding: 0 24px 18px; background: transparent; border: 0; box-shadow: none; grid-template-columns: 2fr 1fr 1fr 1fr; }
+  .dzp-chiffres--ligne { position: static; padding: 0 24px 18px; background: transparent; border: 0; box-shadow: none; }
   /* Tuile « Heures envoyées » : le titre tient sur une ligne, les sept barres se partagent la place qui reste (jamais au-delà du bord droit). */
-  .dzp-bureau-desk .dzp-tuile--sombre { min-width: 0; }
-  .dzp-tuile--sombre > .dzp-total { flex: 0 0 auto; min-width: 0; }
-  .dzp-bureau-desk .dzp-tuile--sombre .dzp-tuile__k { white-space: nowrap; }
-  .dzp-bureau-desk .dzp-barres { flex: 1 1 0; min-width: 0; gap: 6px; }
   .dzp-bureau-desk .dzp-barre { flex: 1 1 0; min-width: 0; }
   .dzp-bureau-desk .dzp-barre__n, .dzp-bureau-desk .dzp-barre__l { max-width: 100%; overflow: hidden; text-overflow: clip; letter-spacing: -.02em; }
-  .dzp-chiffres--ligne button.dzp-tuile { cursor: pointer; }
+  /* La liste déroulante d'une tuile passe par-dessus la grille, sous la barre collante (z-index 30). */
+  .dzp-cockpit { position: relative; z-index: 29; }
   .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) { top: 60px; }
   .dzp-haut--1a .dzp-pieces { top: 68px; right: 24px; }
 
@@ -1001,14 +997,9 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-table .dzp-reunion__txt b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dzp-table .dzp-hors { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dzp-absence b { letter-spacing: .06em; }
-  /* Tuiles : une ligne par texte. */
-  .dzp-chiffres--ligne { gap: 10px; grid-template-columns: 2fr 1fr 1fr 1fr; }
+  /* Tuiles (quatre colonnes égales) : un peu moins de marge intérieure, chiffres des barres plus petits. */
+  .dzp-chiffres--ligne { gap: 10px; }
   .dzp-chiffres--ligne .dzp-tuile { padding: 14px; }
-  .dzp-chiffres--ligne .dzp-tuile--sombre { gap: 12px; }
-  .dzp-chiffres--ligne .dzp-total { min-width: 0; flex: 0 1 120px; }
-  .dzp-chiffres--ligne .dzp-tuile__k, .dzp-chiffres--ligne .dzp-tuile__s, .dzp-chiffres--ligne .dzp-total__s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dzp-chiffres--ligne .dzp-barres { gap: 5px; min-width: 0; }
-  .dzp-chiffres--ligne .dzp-barre { min-width: 0; }
   .dzp-chiffres--ligne .dzp-barre__l, .dzp-chiffres--ligne .dzp-barre__n { font-size: 9px; }
 }
 
@@ -1057,15 +1048,6 @@ html[data-dz-bureau][data-dz-as-reduit] .as-panel { transform: translate(24px, 2
 }
 .dzp-menu-compte .dzp-menu__item { min-height: 40px; }
 
-/* 7. Tuile « À relancer » (bandeau, menu des chiffres, feuille du téléphone) : sa liste toujours visible, deux lignes au plus puis « + N autres » ; aucun état
-   ouvert ou fermé. Le nom du salarié n'y ouvre rien (seuls « Relancer » et « + N autres » agissent). Un compteur de la barre noire la signale (anneau 1,2 s). */
-.dzp-tuile--relance .dzp-tuile__liste { max-height: none; overflow: visible; }
-.dzp-tuile--relance .bt-pl-sp-who { pointer-events: none; cursor: default; }
-.dzp-tuile__autres { display: block; width: 100%; min-height: 32px; margin-top: 2px; padding: 4px 8px; border: 0; border-top: 1px solid #F0B8AE; background: transparent; color: #8E1B14; font: inherit; font-size: 12.5px; font-weight: 800; text-align: left; cursor: pointer; border-radius: 0 0 8px 8px; }
-.dzp-tuile__autres:hover { background: #FCE4E1; }
-.dzp-tuile__autres:focus-visible { outline: 2px solid #15120F; outline-offset: -2px; }
-.dzp-tuile[data-eclat] { box-shadow: 0 0 0 3px rgba(255,194,26,.9), 0 0 0 6px rgba(255,194,26,.25); transition: box-shadow .2s ease; }
-@media (prefers-reduced-motion: reduce) { .dzp-tuile[data-eclat] { transition: none; } }
 /* Barres des heures : « L 12 » quand la colonne a la place, sinon la lettre seule, centrée, jamais coupée (même règle au bandeau, au menu et au téléphone). */
 .dzp-barre { container-type: inline-size; }
 .dzp-barre__l { text-align: center; overflow: visible; }
@@ -1090,14 +1072,36 @@ html[data-dz-bureau] .as-panel .as-x svg { width: 16px; height: 16px; }
   html[data-dz-bureau] .dzp-mm.bt-skin[role="dialog"] > button[class*="absolute"], .dzp-mm > button { width: 44px; height: 44px; top: 10px; }
 }
 
-/* 7. Menu des chiffres (haut replié) entre 1 024 et 1 279 px : les chiffres des barres et les noms de la liste « À relancer » ne sont plus coupés. */
-@media (min-width: 1024px) and (max-width: 1279px) {
-  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) { gap: 10px; grid-template-columns: 1.6fr 1.6fr 1fr 1fr; }
-  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-tuile { padding: 14px; }
-  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-tuile--sombre { gap: 12px; }
-  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-total { min-width: 0; flex: 0 1 96px; }
-  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-barres { gap: 5px; }
-  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-barre__n { font-size: 9px; letter-spacing: -.03em; overflow: visible; }
+
+/* ════════════ Retouches 4 : tuiles compactes, quatre colonnes égales, liste déroulante sous la tuile ════════════ */
+/* Une ligne par texte (titre, sous-texte), coupée par « … » ; le corps d'une tuile remplit sa hauteur (titre en haut, sous-texte en bas, comme « Heures envoyées »). */
+.dzp-tuile__k, .dzp-tuile__s, .dzp-total__s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dzp-tuile__corps { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; }
+/* Tuile cliquable (il y a des noms à montrer) : toute la tuile est le bouton ; un petit ▾ suit le titre. */
+button.dzp-tuile__corps { cursor: pointer; }
+button.dzp-tuile__corps::after { content: ''; position: absolute; inset: 0; border-radius: 16px; transition: background-color var(--dz-t-rapide, .15s) ease; }
+button.dzp-tuile__corps:hover::after { background: rgba(21,18,15,.035); }
+button.dzp-tuile__corps:focus-visible { outline: none; }
+button.dzp-tuile__corps:focus-visible::after { box-shadow: 0 0 0 2px #15120F; }
+button.dzp-tuile__corps .dzp-tuile__k::after { content: ' ▾'; letter-spacing: 0; }
+button.dzp-tuile__corps[aria-expanded="true"] .dzp-tuile__k::after { content: ' ▴'; }
+.dzp-tuile[data-ouvert] { box-shadow: 0 0 0 3px rgba(21,18,15,.1); }
+/* La liste déroulante : juste sous la tuile, de sa largeur (320 px au moins), par-dessus la grille ; cinq lignes environ, puis elle défile seule. */
+.dzp-deroulant { position: absolute; z-index: 44; top: calc(100% + 6px); left: -1.5px; width: max(calc(100% + 3px), 320px); max-width: calc(100vw - 32px); padding: 6px; background: #FFFDF8; border: 1px solid #E3DACB; border-radius: 14px; box-shadow: 0 18px 40px rgba(21,18,15,.18), 0 2px 6px rgba(21,18,15,.08); color: #15120F; white-space: normal; cursor: default; text-align: left; }
+.dzp-tuile--relance .dzp-deroulant { border-color: #F0B8AE; }
+.dzp-chiffres > .dzp-tuile:last-child .dzp-deroulant { left: auto; right: -1.5px; }
+.dzp-deroulant__liste { max-height: 256px; overflow-y: auto; overscroll-behavior: contain; }
+.dzp-deroulant .bt-pl-sp-row { min-height: 46px; padding: 6px 8px; border-radius: 8px; }
+.dzp-deroulant .bt-pl-sp-row:first-child { border-top: 0; }
+.dzp-deroulant__tous { display: block; width: 100%; min-height: 36px; margin-top: 4px; padding: 6px 8px; border: 0; border-top: 1px solid #EFE7D9; background: transparent; color: #8E1B14; font: inherit; font-size: 13px; font-weight: 800; text-align: left; cursor: pointer; border-radius: 0 0 10px 10px; }
+.dzp-deroulant__tous:hover { background: #FCE4E1; }
+.dzp-deroulant__tous:focus-visible { outline: 2px solid #15120F; outline-offset: -2px; }
+.dzp-tuile--relance .bt-pl-sp-who { pointer-events: none; cursor: default; }
+/* Mini graphique : la valeur au-dessus de la barre seulement quand la colonne a la place (sinon la lettre seule, jamais coupée). */
+@container (max-width: 17px) { .dzp-barre__n { display: none; } }
+/* Tablette : deux tuiles par ligne (la liste de la tuile de droite s'accroche à droite). */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .dzp-chiffres { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; }
+  .dzp-chiffres > .dzp-tuile:nth-child(2n) .dzp-deroulant { left: auto; right: -1.5px; }
 }
-/* Bandeau : la tuile « À relancer » montre toujours sa liste ; elle a un peu plus de place (les noms restent lisibles). */
-@media (min-width: 1024px) { .dzp-chiffres--ligne:has(.dzp-tuile__liste) { grid-template-columns: 1.7fr 1.5fr .9fr .9fr; } }
+@media (pointer: coarse) { .dzp-deroulant .bt-pl-sp-act, .dzp-deroulant__tous { min-height: 44px; } }

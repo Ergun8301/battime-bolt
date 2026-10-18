@@ -164,6 +164,18 @@ export const fraiche2a = () => {
   };
 };
 
+// ── Jeu « 2a-relances » (retouches 4) : le jeu 2a + 13 salariés qui n'ont pas envoyé leurs heures de début octobre, soit 15 salariés « À relancer » avec ceux
+//    du jeu 2a : de quoi vérifier que la liste déroulante de la tuile reste bornée (cinq lignes environ, puis elle défile seule).
+const PRENOMS_R = ['Inès', 'Jules', 'Karim', 'Léa', 'Malo', 'Nadia', 'Oscar', 'Paula', 'Quentin', 'Rose', 'Samir', 'Tess', 'Ugo'];
+export const PERSONNES_R = PRENOMS_R.map((p, i) => u(`u-r${i + 1}`, p, `Relance-${i + 1}`));
+export const fraiche2aRelances = () => {
+  const base = fraiche2a();
+  const jours = [1, 2, 5, 6, 7, 8, 9];
+  const planning = [...base.planning];
+  PERSONNES_R.forEach((w, i) => { for (let k = 0; k <= i % 3; k++) planning.push({ ...slot(`r-${i}-${k}`, w.id, jours[(i + k * 2) % jours.length], null, H('08:00', '12:00')), worksite_id: CLIENTS_2A.V.id }); });
+  return { ...base, users: [...base.users, ...PERSONNES_R], planning };
+};
+
 const SKIP = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns', 'or']);
 const filtrer = (rows, params) => {
   for (const [k, v] of params) {
@@ -187,7 +199,8 @@ const filtrer = (rows, params) => {
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/json' };
 
 export async function demarrer({ out = 'out', port = 4421, now = NOW, base = null, jeu = null } = {}) {
-  const neuf = () => (jeu === '2a' ? fraiche2a() : fraiche());
+  let jeuC = jeu;
+  const neuf = () => (jeuC === '2a' ? fraiche2a() : jeuC === '2a-relances' ? fraiche2aRelances() : fraiche());
   const srv = http.createServer((q, r) => {
     const p = decodeURIComponent(new URL(q.url, 'http://x').pathname);
     for (const c of [p, `${p}.html`, path.join(p, 'index.html')]) {
@@ -240,7 +253,7 @@ export async function demarrer({ out = 'out', port = 4421, now = NOW, base = nul
     });
   }
   return {
-    browser, port, log, get D() { return D; }, reinitialiser() { D = neuf(); log.writes.length = 0; log.requetes.length = 0; },
+    browser, port, log, get D() { return D; }, reinitialiser(j) { if (j !== undefined) jeuC = j; D = neuf(); log.writes.length = 0; log.requetes.length = 0; },
     /** Ouvre /admin : `ui` = 1 (v1) ou 2 (v2) ; `contexte` : options Playwright (viewport, hasTouch…). */
     async page({ ui = null, largeur = 1440, hauteur = 900, hasTouch = false, attente = '.bt-pl-gridwrap .bt-pl-grab, .dzp-table .dzp-bulle, .dzp-m-carte' } = {}) {
       const ctx = await browser.newContext({ viewport: { width: largeur, height: hauteur }, locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch, isMobile: hasTouch });
