@@ -154,7 +154,8 @@ export function registerBureau(ref: { current: PoigneesBureau | null }): () => v
   } as Record<string, ImplOuvreur>, {
     table: OUVREURS_LEGER_BUREAU,
     role: 'admin',
-    dispo: (d) => (d === 'traces' ? H().tracesOn : d === 'versions' ? H().versionsOn : d === 'formations' ? H().trainingsOn : true),
+    // Bureau v2 (drapeau `data-dz-bureau` posé par le planning v2) : « Versions du planning » n'est plus offert dans l'interface ; l'ouvreur répond « indisponible ».
+    dispo: (d) => (d === 'traces' ? H().tracesOn : d === 'versions' ? H().versionsOn && !document.documentElement.hasAttribute('data-dz-bureau') : d === 'formations' ? H().trainingsOn : true),
     occupe: () => H().occupe(),
   });
 }

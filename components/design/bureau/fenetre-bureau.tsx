@@ -21,6 +21,8 @@ interface Props {
   /** Petit mot au-dessus du titre (majuscules). */
   kicker?: string;
   titre: ReactNode;
+  /** Ligne sous le titre (planche 2c : « Fenêtres · Lyon »). */
+  sous?: ReactNode;
   testId?: string;
   /** Rangée de boutons fixe en bas (le bouton principal y reste visible). */
   pied?: ReactNode;
@@ -28,7 +30,7 @@ interface Props {
   className?: string;
 }
 
-export function FenetreBureau({ open, onOpenChange, forme = 'centree', large, etroite, kicker, titre, testId, pied, children, className }: Props) {
+export function FenetreBureau({ open, onOpenChange, forme = 'centree', large, etroite, kicker, titre, sous, testId, pied, children, className }: Props) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -38,10 +40,13 @@ export function FenetreBureau({ open, onOpenChange, forme = 'centree', large, et
           data-forme={forme} data-largeur={large ? 'large' : etroite ? 'etroite' : undefined} data-testid={testId}
           aria-describedby={undefined}
         >
+          {/* Poignée de la feuille du bas (planche 2c) : visible seulement quand le panneau devient une feuille (1 024 px et moins). */}
+          <span className="dz-fenetre__poignee" aria-hidden="true" />
           <div className="dz-fenetre__tete">
             <div className="dz-fenetre__titres">
               {kicker ? <span className="dz-fenetre__kicker">{kicker}</span> : null}
               <DialogPrimitive.Title className="dz-fenetre__titre">{titre}</DialogPrimitive.Title>
+              {sous ? <span className="dz-fenetre__sous">{sous}</span> : null}
             </div>
             <DialogPrimitive.Close className="dz-fenetre__fermer" aria-label="Fermer"><X className="h-4 w-4" aria-hidden /></DialogPrimitive.Close>
           </div>

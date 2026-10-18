@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#F2EDE3}
+a{color:#15120F}a:hover{color:#B88A00}
+button{font-family:inherit}
+input::placeholder{color:rgba(242,237,227,.5)}
+@keyframes bxShimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="position:relative;width:100%;height:{{ outerH }};overflow:hidden;background:#F2EDE3;color:#15120F;font-family:'Archivo',system-ui,sans-serif">
+<div style="height:100%;overflow-y:auto;overflow-x:hidden">
+
+  <div style="position:sticky;top:0;z-index:5;background:#15120F;color:#F2EDE3;height:{{ headerH }};display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 {{ pad }}">
+    <div style="display:flex;align-items:center;gap:36px">
+      <div style="font-weight:800;font-size:22px;letter-spacing:-.01em">BEME<span style="background:#FFC21A;color:#15120F;padding:0 2px">X</span>O</div>
+      <sc-if value="{{ isDesktopNav }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;gap:6px;font-size:14px">
+          <span style="padding:8px 12px;color:rgba(242,237,227,.7)">Pointage</span>
+          <span style="padding:8px 12px;color:rgba(242,237,227,.7)">Planning</span>
+          <span style="padding:8px 12px;color:rgba(242,237,227,.7)">Salariés</span>
+          <span style="padding:8px 12px;font-weight:800;color:#FFC21A;box-shadow:inset 0 -2px 0 #FFC21A">Statistiques</span>
+          <span style="padding:8px 12px;color:rgba(242,237,227,.7)">Paie</span>
+        </div>
+      </sc-if>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;color:rgba(242,237,227,.6)">{{ syncTxt }}</span>
+      <span style="width:36px;height:36px;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px">EK</span>
+    </div>
+  </div>
+
+  <div style="max-width:1360px;margin:0 auto;padding:{{ mainPad }};display:flex;flex-direction:column;gap:{{ gap }}">
+
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px">
+      <sc-if value="{{ isMain }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.18em;color:#5B534A">TABLEAU DE BORD · LECTURE SEULE</span>
+        <span style="font-weight:900;font-size:{{ h1Fs }};line-height:1;letter-spacing:-.035em">Statistiques</span>
+      </div>
+      </sc-if>
+      <sc-if value="{{ isFiche }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <button onClick="{{ goBack }}" style="align-self:flex-start;display:flex;align-items:center;gap:10px;height:44px;padding:0 18px 0 6px;border:0;border-radius:999px;background:#15120F;color:#F2EDE3;font-size:14px;font-weight:800;cursor:pointer"><span style="width:32px;height:32px;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;font-size:16px">←</span>Retour aux statistiques</button>
+        <div style="display:flex;align-items:center;gap:16px;min-width:0">
+          <span style="width:{{ avS }};height:{{ avS }};flex:none;border-radius:50%;background:{{ fAv }};border:2px solid #15120F;color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:20px">{{ fIni }}</span>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+            <span style="font-weight:900;font-size:{{ fNameFs }};line-height:1;letter-spacing:-.03em">{{ fName }}</span>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+              <span style="font-size:14px;color:#5B534A">{{ fRole }}</span>
+              <span style="display:flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:800;background:{{ fStBg }};color:{{ fStFg }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ fStDot }}"></span>{{ fStatus }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:{{ ctrlW }}">
+        <div style="display:flex;background:#E6DDCD;border-radius:999px;padding:4px;flex:{{ segFlex }}">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+            <button onClick="{{ t.onClick }}" style="flex:1;border:0;cursor:pointer;height:40px;padding:0 18px;border-radius:999px;font-size:14px;font-weight:800;background:{{ t.bg }};color:{{ t.fg }};transition:background .2s">{{ t.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onClick="{{ prev }}" aria-label="Période précédente" style="width:48px;height:48px;border-radius:50%;border:1px solid #D6CBB7;background:#FFFDF8;cursor:pointer;font-size:18px;font-weight:700;color:#15120F">←</button>
+          <button onClick="{{ next }}" aria-label="Période suivante" style="width:48px;height:48px;border-radius:50%;border:1px solid #D6CBB7;background:#FFFDF8;cursor:pointer;font-size:18px;font-weight:700;color:#15120F">→</button>
+          <button onClick="{{ goToday }}" style="height:48px;padding:0 18px;border-radius:999px;border:1.5px solid #15120F;background:transparent;cursor:pointer;font-size:14px;font-weight:800;color:#15120F;opacity:{{ todayOp }}">Aujourd'hui</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;border-top:2px solid #15120F;padding-top:14px">
+      <span style="font-weight:900;font-size:{{ perFs }};letter-spacing:-.02em">{{ perTitle }}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;color:#5B534A">{{ perSub }}</span>
+      <sc-if value="{{ hasFilter }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ clearFilter }}" style="margin-left:auto;display:flex;align-items:center;gap:10px;height:40px;padding:0 8px 0 16px;border:0;border-radius:999px;background:#15120F;color:#F2EDE3;cursor:pointer;font-size:13px;font-weight:700">Filtré sur {{ filterName }}<span style="width:26px;height:26px;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;font-size:12px">✕</span></button>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ showLoading }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:{{ kpiCols }};gap:12px">
+        <sc-for list="{{ skel4 }}" as="x" hint-placeholder-count="4">
+          <div style="height:{{ kpiSkH }};border-radius:18px;background:linear-gradient(90deg,#E6DDCD 0,#F3ECE0 50%,#E6DDCD 100%);background-size:800px 100%;animation:bxShimmer 1.2s linear infinite"></div>
+        </sc-for>
+      </div>
+      <div style="background:#1B1713;border-radius:22px;padding:{{ cardPad }};display:flex;flex-direction:column;gap:18px">
+        <div style="width:220px;height:14px;border-radius:7px;background:linear-gradient(90deg,#2A241E 0,#3A3129 50%,#2A241E 100%);background-size:800px 100%;animation:bxShimmer 1.2s linear infinite"></div>
+        <div style="height:{{ plotH }};display:flex;align-items:flex-end;gap:6%;padding:0 4%">
+          <sc-for list="{{ skelBars }}" as="b" hint-placeholder-count="7">
+            <div style="flex:1;height:{{ b.h }};border-radius:10px 10px 4px 4px;background:linear-gradient(90deg,#2A241E 0,#3A3129 50%,#2A241E 100%);background-size:800px 100%;animation:bxShimmer 1.2s linear infinite"></div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{ skel4 }}" as="x" hint-placeholder-count="4">
+          <div style="height:56px;border-radius:14px;background:linear-gradient(90deg,#E6DDCD 0,#F3ECE0 50%,#E6DDCD 100%);background-size:800px 100%;animation:bxShimmer 1.2s linear infinite"></div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ notLoading }}" hint-placeholder-val="{{ true }}">
+      <sc-if value="{{ showOubBanner }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;background:#FCE4E1;border:1.5px solid #E53935;border-radius:18px;padding:16px 20px">
+          <span style="width:44px;height:44px;flex:none;border-radius:50%;background:#E53935;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:20px">!</span>
+          <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:4px">
+            <span style="font-weight:900;font-size:20px;color:#8E1B14;letter-spacing:-.01em">{{ oubTitle }}</span>
+            <span style="font-size:13.5px;color:#7A2A22;line-height:1.4">{{ oubTxt }}</span>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:#8E1B14;line-height:1.6">{{ oubDates }}</span>
+        </div>
+      </sc-if>
+      <div style="display:grid;grid-template-columns:{{ kpiCols }};gap:12px">
+        <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+          <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:18px;padding:{{ kpiPad }};display:flex;flex-direction:column;gap:10px;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em;color:#5B534A">{{ k.label }}</span>
+              <span style="width:14px;height:14px;flex:none;border-radius:{{ k.swR }};background:{{ k.sw }}"></span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:6px">
+              <span style="font-weight:900;font-size:{{ kpiFs }};line-height:1;letter-spacing:-.035em">{{ k.value }}</span>
+              <span style="font-weight:700;font-size:15px;color:#5B534A">{{ k.unit }}</span>
+            </div>
+            <sc-if value="{{ k.hasSpark }}">
+              <svg viewBox="0 0 100 34" preserveAspectRatio="none" style="width:100%;height:34px;display:block;overflow:visible"><path d="{{ k.area }}" fill="{{ k.color }}" fill-opacity="0.13"></path><path d="{{ k.line }}" fill="none" stroke="{{ k.color }}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path></svg>
+            </sc-if>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:12.5px;line-height:1.3">
+              <sc-if value="{{ k.hasDelta }}"><span style="font-weight:800;color:{{ k.dC }}">{{ k.dTxt }}</span></sc-if>
+              <span style="color:#5B534A">{{ k.sub }}</span>
+            </div>
+            <sc-if value="{{ k.hasCost }}">
+              <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px dashed #D6CBB7;padding-top:9px;font-size:12.5px"><span style="color:#5B534A">Coût main-d'œuvre</span><span style="font-weight:800">{{ k.cost }}</span></div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ showEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#1B1713;color:#F2EDE3;border-radius:22px;padding:{{ emptyPad }};display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px">
+          <div style="display:flex;align-items:flex-end;gap:10px;height:90px;margin-bottom:10px">
+            <span style="width:22px;height:40%;border:1.5px dashed rgba(242,237,227,.25);border-radius:7px 7px 3px 3px"></span>
+            <span style="width:22px;height:65%;border:1.5px dashed rgba(242,237,227,.25);border-radius:7px 7px 3px 3px"></span>
+            <span style="width:22px;height:100%;border:1.5px dashed #FFC21A;border-radius:7px 7px 3px 3px"></span>
+            <span style="width:22px;height:55%;border:1.5px dashed rgba(242,237,227,.25);border-radius:7px 7px 3px 3px"></span>
+            <span style="width:22px;height:80%;border:1.5px dashed rgba(242,237,227,.25);border-radius:7px 7px 3px 3px"></span>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;color:#FFC21A">0 H · AUCUNE DONNÉE</span>
+          <span style="font-weight:900;font-size:26px;letter-spacing:-.02em">Aucun pointage sur cette période</span>
+          <span style="max-width:440px;font-size:15px;line-height:1.5;color:rgba(242,237,227,.72);text-wrap:pretty">Les heures apparaîtront ici dès que l'équipe aura pointé. Il n'y a rien à corriger.</span>
+          <button onClick="{{ goToday }}" style="margin-top:8px;height:48px;padding:0 24px;border:0;border-radius:999px;background:#FFC21A;color:#15120F;font-size:15px;font-weight:800;cursor:pointer">Revenir à aujourd'hui</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showData }}" hint-placeholder-val="{{ true }}">
+        <div style="background:#1B1713;color:#F2EDE3;border-radius:22px;padding:{{ cardPad }};display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:14px 24px">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.18em;color:#FFC21A">{{ chartKicker }}</span>
+              <span style="font-weight:800;font-size:{{ chartTitleFs }};letter-spacing:-.015em">{{ chartTitle }}</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12.5px;color:rgba(242,237,227,.85)">
+              <span style="display:flex;align-items:center;gap:7px"><span style="width:14px;height:14px;border-radius:4px;background:linear-gradient(180deg,#6C8DFF,#7B4DFF)"></span>Normales</span>
+              <span style="display:flex;align-items:center;gap:7px"><span style="width:14px;height:14px;border-radius:4px;background:linear-gradient(180deg,#FFB547,#FF4F8B)"></span>Supplémentaires</span>
+              <span style="display:flex;align-items:center;gap:7px"><span style="width:14px;height:14px;border-radius:4px;background:repeating-linear-gradient(135deg,#3DDCB0 0 3px,rgba(61,220,176,.25) 3px 6px)"></span>Absences</span>
+              <span style="display:flex;align-items:center;gap:7px"><span style="width:9px;height:9px;border-radius:50%;background:#FF3B3B;box-shadow:0 0 0 3px rgba(255,59,59,.25)"></span>Oubli de pointage</span>
+              <span style="display:flex;align-items:center;gap:7px"><span style="width:18px;border-top:2px dashed rgba(242,237,227,.8)"></span>Contrat</span>
+            </div>
+          </div>
+
+          <div style="position:relative;height:{{ plotH }}">
+            <sc-for list="{{ yTicks }}" as="t" hint-placeholder-count="5">
+              <div style="position:absolute;left:0;right:0;bottom:{{ t.b }};border-top:1px solid rgba(242,237,227,.08)"><span style="position:absolute;left:0;top:-8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(242,237,227,.55);background:#1B1713;padding-right:4px">{{ t.label }}</span></div>
+            </sc-for>
+            <div style="position:absolute;left:{{ axisW }};right:0;top:0;bottom:0;display:flex">
+              <sc-for list="{{ slots }}" as="s" hint-placeholder-count="7">
+                <div onMouseEnter="{{ s.onEnter }}" onMouseLeave="{{ s.onLeave }}" onClick="{{ s.onClick }}" style="position:relative;flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;justify-content:center;cursor:{{ s.cursor }};background:{{ s.slotBg }};border-radius:12px;transition:background .2s">
+                  <sc-if value="{{ s.future }}">
+                    <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:{{ pillarW }};max-width:{{ pillarMax }};height:{{ s.ghostH }};border:1.5px dashed rgba(242,237,227,.2);border-radius:10px 10px 4px 4px;transition:height .8s cubic-bezier(.2,.8,.2,1)"></div>
+                  </sc-if>
+                  <div style="width:{{ pillarW }};max-width:{{ pillarMax }};height:{{ s.h }};display:flex;flex-direction:column-reverse;border-radius:10px 10px 4px 4px;overflow:hidden;opacity:{{ s.op }};box-shadow:{{ s.glow }};transition:height .8s cubic-bezier(.2,.8,.2,1) {{ s.delay }},opacity .2s,box-shadow .2s">
+                    <div style="flex:none;height:{{ s.nP }};background:linear-gradient(180deg,#6C8DFF,#7B4DFF)"></div>
+                    <div style="flex:none;height:{{ s.aP }};background:repeating-linear-gradient(135deg,#3DDCB0 0 4px,rgba(61,220,176,.28) 4px 8px);box-shadow:inset 0 1px 0 rgba(0,0,0,.35)"></div>
+                    <div style="flex:none;height:{{ s.sP }};background:linear-gradient(180deg,#FFB547,#FF4F8B);box-shadow:inset 0 -1px 0 rgba(0,0,0,.35)"></div>
+                  </div>
+                  <sc-if value="{{ s.hasContract }}">
+                    <div style="position:absolute;left:0;right:0;bottom:{{ s.cB }};border-top:2px dashed rgba(242,237,227,.75);pointer-events:none"></div>
+                  </sc-if>
+                  <sc-if value="{{ s.hovered }}">
+                    <div style="position:absolute;top:6px;left:{{ s.tipL }};right:{{ s.tipR }};width:224px;z-index:4;pointer-events:none;background:#F2EDE3;color:#15120F;border-radius:14px;padding:14px 16px;box-shadow:0 20px 44px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:7px;font-size:13px">
+                      <span style="font-weight:800;font-size:15px">{{ s.full }}</span>
+                      <span style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:3px;background:linear-gradient(180deg,#6C8DFF,#7B4DFF)"></span><span style="flex:1">Normales</span><b>{{ s.nTxt }}</b></span>
+                      <span style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:3px;background:linear-gradient(180deg,#FFB547,#FF4F8B)"></span><span style="flex:1">Supplémentaires</span><b>{{ s.sTxt }}</b></span>
+                      <span style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,#12A67F 0 2px,rgba(18,166,127,.3) 2px 4px)"></span><span style="flex:1">Absences</span><b>{{ s.aTxt }}</b></span>
+                      <span style="display:flex;align-items:center;gap:8px"><span style="width:10px;border-top:2px dashed #5B534A"></span><span style="flex:1">Contrat</span><b>{{ s.cTxt }}</b></span>
+                      <sc-if value="{{ s.oubli }}"><span style="display:flex;align-items:center;gap:8px;color:#B3261E;font-weight:700"><span style="width:8px;height:8px;border-radius:50%;background:#E53935"></span>{{ s.oTxt }}</span></sc-if>
+                      <span style="display:flex;justify-content:space-between;border-top:1px solid #D6CBB7;padding-top:8px;font-weight:900;font-size:15px"><span>Total travaillé</span><span>{{ s.tTxt }}</span></span>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:#5B534A">{{ tipHint }}</span>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;padding-left:{{ axisW }};margin-top:-8px">
+            <sc-for list="{{ slots }}" as="s" hint-placeholder-count="7">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px">
+                <span style="font-size:{{ xFs }};font-weight:800;color:{{ s.lblC }};white-space:nowrap">{{ s.label }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(242,237,227,.55);white-space:nowrap">{{ s.sub }}</span>
+                <sc-if value="{{ s.oubli }}"><span style="display:flex;align-items:center;gap:3px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#FF8A80"><span style="width:7px;height:7px;border-radius:50%;background:#FF3B3B;box-shadow:0 0 0 3px rgba(255,59,59,.22)"></span>{{ s.oN }}</span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:{{ lowerCols }};gap:16px;align-items:start">
+          <sc-if value="{{ isFiche }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:22px;padding:{{ cardPad }};display:flex;flex-direction:column;gap:12px;min-width:0">
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.18em;color:#5B534A">{{ listKicker }}</span>
+                <span style="font-weight:800;font-size:{{ chartTitleFs }};letter-spacing:-.015em">{{ listTitle }}</span>
+              </div>
+              <sc-if value="{{ hasFocus }}"><button onClick="{{ clearFocus }}" style="display:flex;align-items:center;gap:8px;height:40px;padding:0 8px 0 14px;border:0;border-radius:999px;background:#15120F;color:#F2EDE3;font-size:13px;font-weight:700;cursor:pointer">{{ focusLabel }}<span style="width:24px;height:24px;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;font-size:11px">✕</span></button></sc-if>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:#5B534A">
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:11px;height:11px;border-radius:3px;background:linear-gradient(180deg,#6C8DFF,#7B4DFF)"></span>Normal</span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:11px;height:11px;border-radius:3px;background:linear-gradient(180deg,#FFB547,#FF4F8B)"></span>Heures sup</span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:11px;height:11px;border-radius:3px;background:repeating-linear-gradient(135deg,#12A67F 0 2px,rgba(18,166,127,.3) 2px 4px)"></span>Absence</span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#E53935"></span>Oubli</span>
+              <span style="margin-left:auto">{{ listHint }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ dayRows }}" as="d" hint-placeholder-count="6">
+                <div style="border-top:1px solid #EDE5D6;padding:4px 0">
+                  <button onClick="{{ d.toggle }}" style="width:100%;min-height:56px;display:flex;align-items:center;gap:12px;padding:8px 10px;border:0;border-radius:12px;background:{{ d.bg }};cursor:pointer;text-align:left;color:#15120F" style-hover="background:#F6F1E7">
+                    <span style="width:{{ dateW }};flex:none;font-weight:800;font-size:14px">{{ d.date }}</span>
+                    <span style="display:flex;gap:4px;width:56px;flex:none">
+                      <sc-for list="{{ d.pills }}" as="p"><span style="width:12px;height:12px;border-radius:{{ p.r }};background:{{ p.bg }}"></span></sc-for>
+                    </span>
+                    <span style="flex:1;min-width:0;font-size:13.5px;font-weight:{{ d.lw }};color:{{ d.lc }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.label }}</span>
+                    <span style="display:flex;flex-direction:column;align-items:flex-end;flex:none"><span style="font-weight:900;font-size:16px">{{ d.h }}</span><span style="font-size:11.5px;font-weight:700;color:#C2185B">{{ d.sup }}</span></span>
+                    <span style="width:28px;height:28px;flex:none;border-radius:50%;background:#EDE5D6;display:flex;align-items:center;justify-content:center;font-size:11px">{{ d.chev }}</span>
+                  </button>
+                  <sc-if value="{{ d.open }}">
+                    <div style="margin:4px 10px 10px;padding:14px;background:#F6F1E7;border-radius:12px;display:grid;grid-template-columns:{{ detCols }};gap:12px 20px">
+                      <sc-for list="{{ d.det }}" as="x"><div style="display:flex;flex-direction:column;gap:3px;min-width:0"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:#5B534A">{{ x.k }}</span><span style="font-size:14px;font-weight:700;text-wrap:pretty">{{ x.v }}</span></div></sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;color:#5B534A;border-top:1px dashed #C9BEA9;padding-top:12px">LECTURE SEULE · LES CORRECTIONS SE FONT DANS « POINTAGE »</span>
+          </div>
+          </sc-if>
+          <sc-if value="{{ isMain }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#1B1713;color:#F2EDE3;border-radius:22px;padding:{{ cardPad }};display:flex;flex-direction:column;gap:14px;min-width:0">
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.18em;color:#FFC21A">CLASSEMENT PAR SALARIÉ</span>
+                <span style="font-weight:800;font-size:{{ chartTitleFs }};letter-spacing:-.015em">{{ rankTitle }}</span>
+              </div>
+              <input value="{{ q }}" onChange="{{ onQ }}" placeholder="Rechercher un salarié" style="height:44px;width:{{ searchW }};border-radius:999px;border:1px solid rgba(242,237,227,.18);background:rgba(242,237,227,.06);color:#F2EDE3;padding:0 18px;font-family:inherit;font-size:14px;outline:none">
+            </div>
+            <span style="font-size:12.5px;color:rgba(242,237,227,.6)">Cliquez sur un salarié pour ouvrir sa fiche.</span>
+
+            <sc-if value="{{ isDesktopRows }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid;grid-template-columns:{{ rankCols }};gap:14px;padding:0 12px;font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;color:rgba(242,237,227,.5)">
+                <span>SALARIÉ</span><span>RÉPARTITION</span><span style="text-align:right">TOTAL</span><span>ÉTAT</span>
+                <sc-if value="{{ showCost }}"><span style="text-align:right">COÛT</span></sc-if>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+                  <div onClick="{{ r.onClick }}" style="display:grid;grid-template-columns:{{ rankCols }};gap:14px;align-items:center;padding:10px 12px;border-radius:14px;cursor:pointer;background:{{ r.bg }};box-shadow:{{ r.ring }};opacity:{{ r.op }};transition:background .2s,opacity .2s" style-hover="background:rgba(242,237,227,.06)">
+                    <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                      <span style="width:18px;font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(242,237,227,.5)">{{ r.rank }}</span>
+                      <span style="width:34px;height:34px;flex:none;border-radius:50%;background:{{ r.av }};color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px">{{ r.ini }}</span>
+                      <span style="display:flex;flex-direction:column;min-width:0"><span style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span><span style="font-size:12px;color:rgba(242,237,227,.6)">{{ r.role }}</span></span>
+                    </div>
+                    <div style="height:14px;border-radius:7px;background:rgba(242,237,227,.06);display:flex;overflow:hidden">
+                      <span style="width:{{ r.nW }};background:linear-gradient(90deg,#6C8DFF,#7B4DFF);transition:width .6s"></span>
+                      <span style="width:{{ r.aW }};background:repeating-linear-gradient(135deg,#3DDCB0 0 4px,rgba(61,220,176,.28) 4px 8px);transition:width .6s"></span>
+                      <span style="width:{{ r.sW }};background:linear-gradient(90deg,#FFB547,#FF4F8B);transition:width .6s"></span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end"><span style="font-weight:900;font-size:16px">{{ r.total }}</span><span style="font-size:11.5px;color:#FF9FBF">{{ r.supTxt }}</span></div>
+                    <span style="justify-self:start;display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:700;background:{{ r.stBg }};color:{{ r.stFg }}"><span style="width:7px;height:7px;border-radius:50%;background:{{ r.stDot }}"></span>{{ r.status }}</span>
+                    <sc-if value="{{ showCost }}"><span style="text-align:right;font-weight:700;font-size:13px;color:rgba(242,237,227,.85)">{{ r.cost }}</span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+                  <div onClick="{{ r.onClick }}" style="display:flex;flex-direction:column;gap:9px;padding:12px;border-radius:14px;background:{{ r.bgM }};box-shadow:{{ r.ring }};opacity:{{ r.op }}">
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <span style="width:36px;height:36px;flex:none;border-radius:50%;background:{{ r.av }};color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px">{{ r.ini }}</span>
+                      <span style="flex:1;display:flex;flex-direction:column;min-width:0"><span style="font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span><span style="font-size:12px;color:rgba(242,237,227,.6)">{{ r.role }}</span></span>
+                      <span style="display:flex;flex-direction:column;align-items:flex-end"><span style="font-weight:900;font-size:17px">{{ r.total }}</span><span style="font-size:11.5px;color:#FF9FBF">{{ r.supTxt }}</span></span>
+                    </div>
+                    <div style="height:12px;border-radius:6px;background:rgba(242,237,227,.06);display:flex;overflow:hidden">
+                      <span style="width:{{ r.nW }};background:linear-gradient(90deg,#6C8DFF,#7B4DFF)"></span>
+                      <span style="width:{{ r.aW }};background:repeating-linear-gradient(135deg,#3DDCB0 0 4px,rgba(61,220,176,.28) 4px 8px)"></span>
+                      <span style="width:{{ r.sW }};background:linear-gradient(90deg,#FFB547,#FF4F8B)"></span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                      <span style="display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:700;background:{{ r.stBg }};color:{{ r.stFg }}"><span style="width:7px;height:7px;border-radius:50%;background:{{ r.stDot }}"></span>{{ r.status }}</span>
+                      <sc-if value="{{ showCost }}"><span style="font-size:12.5px;font-weight:700;color:rgba(242,237,227,.85)">{{ r.cost }}</span></sc-if>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}">
+              <span style="padding:20px 0;text-align:center;font-size:14px;color:rgba(242,237,227,.6)">Aucun salarié ne correspond à « {{ q }} ».</span>
+            </sc-if>
+            <sc-if value="{{ hasMore }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ toggleMore }}" style="align-self:center;height:44px;padding:0 22px;border-radius:999px;border:1px solid rgba(242,237,227,.25);background:transparent;color:#F2EDE3;font-size:14px;font-weight:700;cursor:pointer">{{ moreLabel }}</button>
+            </sc-if>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ hasCh }}" hint-placeholder-val="{{ true }}">
+            <div style="background:#1B1713;color:#F2EDE3;border-radius:22px;padding:{{ cardPad }};display:flex;flex-direction:column;gap:20px;min-width:0">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.18em;color:#FFC21A">RÉPARTITION PAR CHANTIER</span>
+                <span style="font-weight:800;font-size:{{ chartTitleFs }};letter-spacing:-.015em">Où vont les heures</span>
+              </div>
+              <div style="align-self:center;position:relative;width:200px;height:200px;border-radius:50%;background:{{ conic }}">
+                <div style="position:absolute;inset:22%;border-radius:50%;background:#1B1713;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
+                  <span style="font-weight:900;font-size:28px;letter-spacing:-.03em">{{ chTotal }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.16em;color:rgba(242,237,227,.6)">HEURES</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column">
+                <sc-for list="{{ chs }}" as="c" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:14px minmax(0,1fr) auto 44px;gap:10px;align-items:center;padding:10px 0;border-top:1px solid rgba(242,237,227,.08);font-size:13.5px">
+                    <span style="width:14px;height:14px;border-radius:4px;background:{{ c.color }}"></span>
+                    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span>
+                    <span style="font-weight:800">{{ c.h }}</span>
+                    <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(242,237,227,.65)">{{ c.pct }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </sc-if>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<div onClick="{{ closePanel }}" style="position:absolute;inset:0;z-index:8;background:rgba(21,18,15,.5);opacity:{{ bdOp }};pointer-events:{{ bdPe }};transition:opacity .3s"></div>
+<div style="position:absolute;z-index:9;top:{{ pnTop }};right:0;bottom:0;left:{{ pnLeft }};width:{{ pnW }};max-height:{{ pnMaxH }};border-radius:{{ pnR }};transform:{{ pnTf }};transition:transform .35s cubic-bezier(.2,.8,.2,1);background:#F2EDE3;color:#15120F;display:flex;flex-direction:column;box-shadow:0 0 60px rgba(0,0,0,.35)">
+  <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}"><div style="align-self:center;width:44px;height:5px;border-radius:3px;background:#C9BEA9;margin-top:10px"></div></sc-if>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 16px;border-bottom:2px solid #15120F">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.18em;color:#5B534A">{{ pKicker }}</span>
+      <span style="font-weight:900;font-size:24px;letter-spacing:-.02em;line-height:1.1">{{ pTitle }}</span>
+      <span style="font-size:13px;color:#5B534A">{{ pSub }}</span>
+    </div>
+    <button onClick="{{ closePanel }}" aria-label="Fermer" style="width:44px;height:44px;flex:none;border-radius:50%;border:0;background:#15120F;color:#FFC21A;font-size:15px;cursor:pointer">✕</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:16px 22px 22px;display:flex;flex-direction:column;gap:16px">
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+      <sc-for list="{{ pTot }}" as="t" hint-placeholder-count="4">
+        <div style="background:#FFFDF8;border:1px solid #E3DACB;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px">
+          <span style="display:flex;align-items:center;gap:7px;font-size:12px;color:#5B534A"><span style="width:10px;height:10px;border-radius:{{ t.swR }};background:{{ t.sw }}"></span>{{ t.label }}</span>
+          <span style="font-weight:900;font-size:22px;letter-spacing:-.02em">{{ t.value }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ pCostShow }}"><div style="display:flex;justify-content:space-between;font-size:13.5px;padding:0 2px"><span style="color:#5B534A">Coût main-d'œuvre estimé</span><b>{{ pCost }}</b></div></sc-if>
+    <div style="display:flex;flex-direction:column">
+      <sc-for list="{{ pRows }}" as="p" hint-placeholder-count="5">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #E3DACB">
+          <span style="width:36px;height:36px;flex:none;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px">{{ p.ini }}</span>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+            <span style="font-weight:700;font-size:14.5px">{{ p.name }}</span>
+            <span style="font-size:12.5px;color:#5B534A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.sub }}</span>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <sc-if value="{{ p.isAbs }}"><span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#0E7A5E"><span style="width:10px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,#12A67F 0 2px,rgba(18,166,127,.3) 2px 4px)"></span>{{ p.absTxt }}</span></sc-if>
+              <sc-if value="{{ p.isOub }}"><span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#B3261E"><span style="width:8px;height:8px;border-radius:50%;background:#E53935"></span>{{ p.oubTxt }}</span></sc-if>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+            <span style="font-weight:900;font-size:16px">{{ p.h }}</span>
+            <span style="font-size:12px;font-weight:700;color:#C2185B">{{ p.sup }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;color:#5B534A;border-top:1px dashed #C9BEA9;padding-top:12px">LECTURE SEULE · LES CORRECTIONS SE FONT DANS « POINTAGE »</span>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;vue&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;semaine&quot;,&quot;mois&quot;,&quot;annee&quot;],&quot;default&quot;:&quot;semaine&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;etat&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;donnees&quot;,&quot;vide&quot;,&quot;chargement&quot;],&quot;default&quot;:&quot;donnees&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;cout&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;label&quot;:&quot;Taux horaires renseignés&quot;},&quot;effectif&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;5&quot;,&quot;12&quot;,&quot;60&quot;],&quot;default&quot;:&quot;12&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;salarie&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:-1,&quot;min&quot;:-1,&quot;max&quot;:59,&quot;tsType&quot;:&quot;number&quot;,&quot;label&quot;:&quot;Ouvrir la fiche du salarié n° (-1 = page)&quot;},&quot;frame&quot;:{&quot;editor&quot;:null,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const TODAY=new Date(2026,9,16);
+const DOW=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+const DOWL=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+const MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+const ML=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const MA=['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+const CH=[{n:'Résidence Les Tilleuls',c:'#FFC21A'},{n:'École Jean-Moulin',c:'#FFE9A8'},{n:'Villa Moreau',c:'#D98E04'},{n:'Entrepôt ZAC Nord',c:'#E9E3D7'},{n:'Bureaux Rive Gauche',c:'#8C7A5E'}];
+const FIRST=['Karim','Julien','Sofia','Thomas','Mehmet','Nadia','Lucas','Paulo','Inès','Yanis','Marc','Hugo','Samir','Kevin','Léa','Antoine','Bruno','Rachid','David','Nicolas','Sébastien','Florian','Ahmed','Jérémy','Mathieu','Romain','Cédric','Ibrahim','Joao','Pierre'];
+const LAST=['Benali','Marchand','Rocha','Leroy','Yilmaz','Kaci','Petit','Dias','Traoré','Amrani','Girard','Fabre','Morel','Lambert','Ferreira','Roux','Bonnet','Mercier','Garnier','Faure','Chevalier','Lopez','Guérin','Caron','Perrin','Robin','Henry','Masson','Duval','Blanc'];
+const ROLES=["Chef d'équipe",'Maçon','Électricien','Plombier','Plaquiste','Peintre','Carreleur','Couvreur','Manœuvre','Menuisier'];
+const AV=['#FFC21A','#F2EDE3','#E6D3A8','#FFE6A3'];
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const fN=(v,d)=>v.toLocaleString('fr-FR',{maximumFractionDigits:d||0});
+const fH=v=>fN(Math.round(v*2)/2,1)+' h';
+const fE=v=>fN(Math.round(v/10)*10)+' €';
+const fJ=v=>fN(Math.round(v/7*2)/2,1)+' j';
+function rnd(a,b,c){let x=Math.imul(a+1,374761393)^Math.imul(b+7,668265263)^Math.imul(c+13,1442695041);x=Math.imul(x^(x>>>15),2246822519);x=Math.imul(x^(x>>>13),3266489917);x^=x>>>16;return (x>>>0)/4294967296;}
+const dnum=d=>Math.round(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/864e5);
+const Z={n:0,s:0,a:0,o:0};
+function gen(e,d){
+  const dow=d.getDay(),m=d.getMonth(),t=dnum(d);
+  if(dow===0)return Z;
+  if(dow===6)return rnd(e,t,1)<0.08?{n:0,s:4,a:0,o:0}:Z;
+  const pA=0.035+(m===7?0.38:0)+(m===11&&d.getDate()>21?0.6:0)+(e%7===3?0.03:0);
+  const r=rnd(e,t,2);
+  if(r<pA)return {n:0,s:0,a:7,o:0};
+  if(r<pA+0.025+(e%5===1?0.035:0))return {n:0,s:0,a:0,o:1};
+  let s=0;if(rnd(e,t,3)<0.24+(m>=3&&m<=6?0.14:0))s=Math.round((0.5+rnd(e,t,4)*2)*2)/2;
+  return {n:7,s,a:0,o:0};
+}
+const sow=d=>{const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-((x.getDay()+6)%7));return x;};
+const addD=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x;};
+function isoW(d){const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return Math.ceil(((t-y0)/864e5+1)/7);}
+function period(view,off){
+  if(view==='semaine'){
+    const s=addD(sow(TODAY),off*7),e=addD(s,6),b=[];
+    for(let i=0;i<7;i++){const d=addD(s,i);b.push({label:DOW[i],sub:String(d.getDate()),full:DOWL[i]+' '+d.getDate()+' '+ML[d.getMonth()],days:[d],today:dnum(d)===dnum(TODAY)});}
+    const sub=s.getMonth()===e.getMonth()?s.getDate()+' – '+e.getDate()+' '+MS[e.getMonth()]+' '+e.getFullYear():s.getDate()+' '+MS[s.getMonth()]+' – '+e.getDate()+' '+MS[e.getMonth()]+' '+e.getFullYear();
+    return {b,title:'Semaine '+isoW(s),sub:sub.toUpperCase(),unit:'JOUR',cmp:'vs sem. préc.',kick:'DÉTAIL DU JOUR'};
+  }
+  if(view==='mois'){
+    const m0=new Date(TODAY.getFullYear(),TODAY.getMonth()+off,1),y=m0.getFullYear(),m=m0.getMonth(),n=new Date(y,m+1,0).getDate(),g=[];let cur=null;
+    for(let i=1;i<=n;i++){const d=new Date(y,m,i),k=dnum(sow(d));if(!cur||cur.k!==k){cur={k,days:[]};g.push(cur);}cur.days.push(d);}
+    const b=g.map(w=>{const f=w.days[0],l=w.days[w.days.length-1];return {label:'S'+isoW(f),sub:f.getDate()+'–'+l.getDate(),full:'Semaine '+isoW(f)+' · '+f.getDate()+'–'+l.getDate()+' '+MS[m],days:w.days,today:w.days.some(d=>dnum(d)===dnum(TODAY))};});
+    return {b,title:cap(ML[m])+' '+y,sub:g.length+' SEMAINES',unit:'SEMAINE',cmp:'vs mois préc.',kick:'DÉTAIL DE LA SEMAINE'};
+  }
+  const y=TODAY.getFullYear()+off,b=[];
+  for(let m=0;m<12;m++){const n=new Date(y,m+1,0).getDate(),days=[];for(let i=1;i<=n;i++)days.push(new Date(y,m,i));b.push({label:MA[m],sub:'',full:cap(ML[m])+' '+y,days,today:y===TODAY.getFullYear()&&m===TODAY.getMonth()});}
+  return {b,title:'Année '+y,sub:'JANV. – DÉC. '+y,unit:'MOIS',cmp:'vs année préc.',kick:'DÉTAIL DU MOIS'};
+}
+const CACHE=(window.__bxStatsCache=window.__bxStatsCache||new Map());
+function agg(view,off,N,cut){
+  const key=view+'|'+off+'|'+N+'|'+(cut?dnum(cut):'');
+  if(CACHE.has(key))return CACHE.get(key);
+  const P=period(view,off),lim=dnum(cut||TODAY);
+  const E=[];for(let e=0;e<N;e++)E.push(P.b.map(()=>({n:0,s:0,a:0,o:0,c:0,ch:[0,0,0,0,0]})));
+  P.b.forEach((bk,i)=>bk.days.forEach(d=>{
+    const t=dnum(d);if(t>lim)return;
+    const dow=d.getDay(),con=dow>=1&&dow<=5?7:0,wk=Math.floor((t+3)/7);
+    for(let e=0;e<N;e++){const g=gen(e,d),x=E[e][i];x.n+=g.n;x.s+=g.s;x.a+=g.a;x.o+=g.o;x.c+=con;x.ch[Math.floor(rnd(e,wk,9)*5)]+=g.n+g.s;}
+  }));
+  const r={P,E};CACHE.set(key,r);return r;
+}
+function emps(N){const a=[];for(let i=0;i<N;i++){const fn=FIRST[i%30],ln=LAST[(i*7+Math.floor(i/30)*11)%30];a.push({name:fn+' '+ln,ini:fn[0]+ln[0],role:ROLES[(i*3)%10],rate:18+(i*37)%14,av:AV[i%4]});}return a;}
+function shift(view){if(view==='semaine')return addD(TODAY,-7);if(view==='mois')return new Date(TODAY.getFullYear(),TODAY.getMonth()-1,TODAY.getDate());return new Date(TODAY.getFullYear()-1,TODAY.getMonth(),TODAY.getDate());}
+function niceTop(v){if(v<=0)return 10;const raw=v*1.08/4,p=Math.pow(10,Math.floor(Math.log10(raw)));const st=[1,2,2.5,5,10].map(k=>k*p).find(k=>k>=raw);return st*4;}
+function spark(vals){if(vals.length<2)return null;const mx=Math.max(...vals),mn=Math.min(...vals),rg=mx-mn||1;const pts=vals.map((v,i)=>[(i/(vals.length-1))*100,30-((v-mn)/rg)*26]);const line='M'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L');return {line,area:line+' L100,34 L0,34 Z'};}
+const sumB=(list)=>list.reduce((t,x)=>{t.n+=x.n;t.s+=x.s;t.a+=x.a;t.o+=x.o;t.c+=x.c;return t;},{n:0,s:0,a:0,o:0,c:0});
+const SW={n:'linear-gradient(180deg,#6C8DFF,#7B4DFF)',s:'linear-gradient(180deg,#FFB547,#FF4F8B)',a:'repeating-linear-gradient(135deg,#12A67F 0 2px,rgba(18,166,127,.3) 2px 4px)',o:'#E53935'};
+
+class Component extends DCLogic {
+  state={view:this.props.vue||'semaine',off:0,emp:(this.props.salarie!=null&&+this.props.salarie>=0)?+this.props.salarie:null,focus:null,openDay:null,hover:null,panel:null,lastPanel:null,q:'',showAll:false,loading:true,grown:false,w:0};
+  rootRef=React.createRef();
+  componentDidMount(){
+    const el=this.rootRef.current;
+    if(el&&window.ResizeObserver){this.ro=new ResizeObserver(es=>{const w=es[0].contentRect.width;if(Math.abs(w-this.state.w)>1)this.setState({w});});this.ro.observe(el);}
+    this.kick();
+  }
+  componentWillUnmount(){this.ro&&this.ro.disconnect();clearTimeout(this.t1);clearTimeout(this.t2);}
+  kick(){clearTimeout(this.t1);clearTimeout(this.t2);this.setState({loading:true,grown:false,hover:null});this.t1=setTimeout(()=>{this.setState({loading:false});this.t2=setTimeout(()=>this.setState({grown:true}),60);},480);}
+  go(p){this.setState(Object.assign({panel:null,focus:null,openDay:null},p),()=>this.kick());}
+  renderVals(){
+    const st=this.state,N=parseInt(this.props.effectif??12,10)||12,view=st.view,off=st.off;
+    const cost=this.props.cout??true,etat=this.props.etat||'donnees';
+    const w=st.w||1280,mob=w<720,wide=w>=1080;
+    const EM=emps(N),A=agg(view,off,N,null),P=A.P,Ap=agg(view,off-1,N,off===0?shift(view):null);
+    const f=st.emp!=null&&st.emp<N?st.emp:null,scope=f!=null?[f]:EM.map((_,i)=>i);
+    const B=P.b.map((_,i)=>sumB(scope.map(e=>A.E[e][i])));
+    const T=sumB(B),Tp=sumB(Ap.P.b.map((_,i)=>sumB(scope.map(e=>Ap.E[e][i]))));
+    const loading=etat==='chargement'||st.loading;
+    const has=etat!=='vide'&&(T.n+T.s+T.a+T.o)>0;
+    const past=P.b.map((bk,i)=>dnum(bk.days[0])<=dnum(TODAY)?i:-1).filter(i=>i>=0);
+    const costOf=(e,x)=>(x.n+x.s*1.25)*EM[e].rate;
+    const empT=EM.map((_,e)=>sumB(A.E[e]));
+    const totCost=scope.reduce((t,e)=>t+costOf(e,empT[e]),0);
+    const good='#1B7F47',bad='#B3261E',neu='#5B534A';
+    const dPct=(c,p,upGood)=>{if(!p)return null;const v=(c-p)/p*100;if(Math.abs(v)<0.5)return {t:'= stable',c:neu};return {t:(v>0?'▲ ':'▼ ')+fN(Math.abs(v),1)+' %',c:(v>0)===upGood?good:bad};};
+    const dAbs=(c,p,unit)=>{const v=c-p;if(Math.abs(v)<0.5)return {t:'= stable',c:neu};return {t:(v>0?'▲ ':'▼ ')+fN(Math.abs(v),1)+' '+unit,c:v>0?bad:good};};
+    const nAbs=scope.filter(e=>empT[e].a>0).length,nOub=scope.filter(e=>empT[e].o>0).length;
+    const pl=n=>n>1?'s':'';
+    const K=[
+      {label:'HEURES TOTALES',value:fN(T.n+T.s,1),unit:'h',sw:SW.n,swR:'4px',color:'#5B5BFF',vals:past.map(i=>B[i].n+B[i].s),d:dPct(T.n+T.s,Tp.n+Tp.s,true),sub:'sur '+fN(T.c)+' h prévues · '+P.cmp,cost:cost?fE(totCost):null},
+      {label:'HEURES SUP.',value:fN(T.s,1),unit:'h',sw:SW.s,swR:'4px',color:'#E0306F',vals:past.map(i=>B[i].s),d:dPct(T.s,Tp.s,false),sub:(T.n+T.s?fN(T.s/(T.n+T.s)*100,1):0)+' % des heures'},
+      {label:'ABSENCES',value:fN(Math.round(T.a/7*2)/2,1),unit:'j',sw:SW.a,swR:'4px',color:'#12A67F',vals:past.map(i=>B[i].a),d:dAbs(T.a/7,Tp.a/7,'j'),sub:nAbs+' salarié'+pl(nAbs)+' concerné'+pl(nAbs)},
+      {label:'OUBLIS DE POINTAGE',value:fN(T.o),unit:'j à relancer',sw:SW.o,swR:'50%',color:'#E53935',vals:past.map(i=>B[i].o),d:dAbs(T.o,Tp.o,'j'),sub:T.o?'chez '+nOub+' salarié'+pl(nOub):'Tout est à jour'}
+    ].map(k=>{const sp=has?spark(k.vals):null;return {label:k.label,value:has?k.value:'—',unit:has?k.unit:'',sw:k.sw,swR:k.swR,color:k.color,hasSpark:!!sp,line:sp?sp.line:'',area:sp?sp.area:'',hasDelta:has&&!!k.d,dTxt:k.d?k.d.t:'',dC:k.d?k.d.c:neu,sub:has?k.sub:'Aucune donnée sur la période',hasCost:has&&!!k.cost,cost:k.cost||''};});
+    const mx=Math.max(...P.b.map((bk,i)=>{const x=B[i];const fut=dnum(bk.days[0])>dnum(TODAY);const fc=fut?bk.days.filter(d=>d.getDay()>=1&&d.getDay()<=5).length*7*scope.length:0;return Math.max(x.n+x.s+x.a,x.c,fc);}));
+    const top=niceTop(mx);
+    const yTicks=[0,1,2,3,4].map(k=>({b:(k*25)+'%',label:fN(top*k/4)+(k===4?' h':'')}));
+    const n=P.b.length,activeIdx=st.hover!=null?st.hover:(f!=null?st.focus:st.panel);
+    const slots=P.b.map((bk,i)=>{
+      const x=B[i],tot=x.n+x.s+x.a,fut=dnum(bk.days[0])>dnum(TODAY),pct=tot/top*100;
+      const fc=bk.days.filter(d=>d.getDay()>=1&&d.getDay()<=5).length*7*scope.length;
+      const on=activeIdx===i;
+      return {label:bk.label,sub:bk.sub,full:bk.full,future:fut,ghostH:st.grown?(fc/top*100)+'%':'0%',
+        h:st.grown?pct+'%':'0%',nP:tot?(x.n/tot*100)+'%':'0%',aP:tot?(x.a/tot*100)+'%':'0%',sP:tot?(x.s/tot*100)+'%':'0%',
+        delay:(i*45)+'ms',hasContract:x.c>0,cB:(x.c/top*100)+'%',
+        op:activeIdx==null||on?1:0.38,glow:on?'0 0 0 2px #FFC21A, 0 12px 34px rgba(123,77,255,.5)':'none',slotBg:on?'rgba(242,237,227,.05)':'transparent',
+        cursor:fut?'default':'pointer',lblC:bk.today?'#FFC21A':fut?'rgba(242,237,227,.4)':'#F2EDE3',
+        oubli:x.o>0,oN:String(x.o),oTxt:x.o+' oubli'+pl(x.o)+' de pointage',
+        nTxt:fH(x.n),sTxt:fH(x.s),aTxt:fH(x.a)+' · '+fJ(x.a),cTxt:fH(x.c),tTxt:fH(x.n+x.s),
+        hovered:!mob&&st.hover===i&&!fut,tipL:i<n/2?'calc(50% + 30px)':'auto',tipR:i<n/2?'auto':'calc(50% + 30px)',
+        onEnter:()=>{if(!mob&&!fut)this.setState({hover:i});},onLeave:()=>{if(st.hover!=null||true)this.setState({hover:null});},
+        onClick:()=>{if(fut)return;if(f!=null){const on2=st.focus===i;this.setState({focus:on2?null:i,hover:null,openDay:on2?null:(view==='semaine'?dnum(bk.days[0]):view==='annee'?-(i+1):null)});}else this.setState({panel:i,lastPanel:i,hover:null});}};
+    });
+    const q=st.q.trim().toLowerCase();
+    let R=EM.map((m,e)=>({e,m,x:empT[e]})).sort((a,b)=>(b.x.n+b.x.s)-(a.x.n+a.x.s)).map((r,k)=>Object.assign(r,{rank:k+1}));
+    const rmax=Math.max(1,...R.map(r=>r.x.n+r.x.s+r.x.a));
+    const Rf=R.filter(r=>!q||r.m.name.toLowerCase().includes(q));
+    const lim=mob?5:8,shown=st.showAll||q?Rf:Rf.slice(0,lim);
+    const rows=shown.map(r=>{const sel=f===r.e,x=r.x;return {rank:String(r.rank),ini:r.m.ini,name:r.m.name,role:r.m.role,av:r.m.av,
+      nW:(x.n/rmax*100)+'%',aW:(x.a/rmax*100)+'%',sW:(x.s/rmax*100)+'%',total:fH(x.n+x.s),supTxt:x.s?'+'+fH(x.s)+' sup':'',
+      status:x.o?x.o+' j en attente':'À jour',stBg:x.o?'rgba(255,59,59,.14)':'rgba(242,237,227,.07)',stFg:x.o?'#FF9C94':'rgba(242,237,227,.85)',stDot:x.o?'#FF3B3B':'#3DDCB0',
+      cost:fE(costOf(r.e,x)),bg:sel?'rgba(255,194,26,.1)':'transparent',bgM:sel?'rgba(255,194,26,.1)':'rgba(242,237,227,.04)',ring:sel?'inset 0 0 0 1.5px #FFC21A':'none',op:f!=null&&!sel?0.5:1,
+      onClick:()=>this.go({emp:r.e})};});
+    const ch=[0,1,2,3,4].map(c=>scope.reduce((t,e)=>t+A.E[e].reduce((u,x)=>u+x.ch[c],0),0));
+    const chSum=ch.reduce((a,b)=>a+b,0);
+    const chs=CH.map((c,i)=>({name:c.n,color:c.c,v:ch[i]})).filter(c=>c.v>0).sort((a,b)=>b.v-a.v);
+    let acc=0;const stops=[];chs.forEach(c=>{const a=acc/chSum*100,b=(acc+c.v)/chSum*100;stops.push(c.color+' '+a.toFixed(2)+'% '+Math.max(a,b-0.8).toFixed(2)+'%','#1B1713 '+Math.max(a,b-0.8).toFixed(2)+'% '+b.toFixed(2)+'%');acc+=c.v;});
+    const pi=st.panel!=null?st.panel:st.lastPanel,open=st.panel!=null;
+    let pTitle='',pSub='',pTot=[],pRows=[],pCost='';
+    if(pi!=null&&P.b[pi]){
+      const x=B[pi];pTitle=P.b[pi].full;pSub=f!=null?EM[f].name:scope.length+' salariés';
+      pTot=[{label:'Normales',value:fH(x.n),sw:SW.n,swR:'3px'},{label:'Supplémentaires',value:fH(x.s),sw:SW.s,swR:'3px'},{label:'Absences',value:fJ(x.a),sw:SW.a,swR:'3px'},{label:'Oublis',value:x.o+' j',sw:SW.o,swR:'50%'}];
+      pCost=fE(scope.reduce((t,e)=>t+costOf(e,A.E[e][pi]),0));
+      pRows=scope.map(e=>({e,x:A.E[e][pi]})).sort((a,b)=>(b.x.o-a.x.o)||((b.x.n+b.x.s)-(a.x.n+a.x.s))).map(({e,x})=>{
+        const ci=x.ch.indexOf(Math.max(...x.ch)),hasH=x.n+x.s>0;
+        return {ini:EM[e].ini,name:EM[e].name,sub:hasH?CH[ci].n:(x.a?'Absent·e':x.o?'Pointage manquant':'Repos'),h:fH(x.n+x.s),sup:x.s?'+'+fH(x.s)+' sup':'',
+          isAbs:x.a>0,absTxt:fJ(x.a)+' d\u2019absence',isOub:x.o>0,oubTxt:x.o+' j à relancer'};});
+    }
+    const fiche=f!=null;
+    const TYP=['Congé payé','Maladie','Intempérie','RTT'];
+    const fT=h=>{const H=Math.floor(h+1e-6),M=Math.round((h-H)*60);return H+' h '+String(M).padStart(2,'0');};
+    const DS=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
+    const dLab=d=>DS[d.getDay()]+' '+d.getDate()+' '+MS[d.getMonth()];
+    const pill=k=>({bg:SW[k],r:k==='o'?'50%':'3px'});
+    const pillsOf=x=>{const p=[];if(x.n)p.push(pill('n'));if(x.s)p.push(pill('s'));if(x.a)p.push(pill('a'));if(x.o)p.push(pill('o'));return p;};
+    const mkRow=(key,date,x,label,lc,h,det)=>{const open=st.openDay===key;return {key,date,pills:pillsOf(x),label,lc,lw:x.o?800:500,h,sup:x.s&&x.n?'+'+fH(x.s)+' sup':(x.s&&!x.n&&h!=='—'?'sup':''),open,chev:open?'▴':'▾',bg:open?'#F6F1E7':(x.o?'rgba(229,57,53,.08)':'transparent'),det,toggle:()=>this.setState({openDay:open?null:key})};};
+    let dayRows=[],oubDates=[];
+    if(fiche&&has){
+      if(view!=='annee'){
+        P.b.forEach((bk,i)=>bk.days.forEach(d=>{
+          const t=dnum(d);if(t>dnum(TODAY))return;const g=gen(f,d);if(g.o)oubDates.push(dLab(d));
+          if(st.focus!=null&&st.focus!==i)return;const dow=d.getDay();if((dow===0||dow===6)&&!(g.n+g.s+g.a+g.o))return;
+          const chn=CH[Math.floor(rnd(f,Math.floor((t+3)/7),9)*5)].n;let det,label,lc='#5B534A',h;
+          if(g.o){label='Oubli de pointage · à relancer';lc='#B3261E';h='—';det=[{k:'STATUT',v:'Aucun pointage reçu'},{k:'ACTION',v:'À relancer'},{k:'CHANTIER PRÉVU',v:chn}];}
+          else if(g.a){const ty=d.getMonth()===7?TYP[0]:TYP[Math.floor(rnd(f,t,6)*4)];label=ty;lc='#0E7A5E';h='Absent·e';det=[{k:'MOTIF',v:ty},{k:'DURÉE',v:'1 jour · 7 h'}];}
+          else{label=chn;h=fH(g.n+g.s);
+            if(g.n){const s0=[7,7.5,8][Math.floor(rnd(f,t,5)*3)],pz=rnd(f,t,7)<0.3?0.75:1,pmS=12+pz,pmE=pmS+(g.n+g.s-(12-s0));
+              det=[{k:'MATIN',v:fT(s0)+' – 12 h 00'},{k:'PAUSE',v:pz===1?'1 h 00':'45 min'},{k:'APRÈS-MIDI',v:fT(pmS)+' – '+fT(pmE)},{k:'CHANTIER',v:chn}];
+              if(g.s)det.push({k:'HEURES SUP.',v:'+'+fH(g.s)});}
+            else det=[{k:'CRÉNEAU',v:'8 h 00 – 12 h 00'},{k:'PAUSE',v:'Aucune'},{k:'CHANTIER',v:chn},{k:'HEURES SUP.',v:'+'+fH(g.s)}];
+            if(cost)det.push({k:'COÛT',v:fE((g.n+g.s*1.25)*EM[f].rate)});}
+          dayRows.push(mkRow(t,dLab(d),g,label,lc,h,det));
+        }));
+      } else {
+        P.b.forEach((bk,i)=>{
+          if(dnum(bk.days[0])>dnum(TODAY))return;const x=A.E[f][i],oD=[],aD=[];let wd=0;
+          bk.days.forEach(d=>{if(dnum(d)>dnum(TODAY))return;const g=gen(f,d);if(g.o){oD.push(d.getDate());oubDates.push(dLab(d));}if(g.a)aD.push(d.getDate());if(g.n)wd++;});
+          if(st.focus!=null&&st.focus!==i)return;const ci=x.ch.indexOf(Math.max(...x.ch));
+          const det=[{k:'JOURS TRAVAILLÉS',v:wd+' j'},{k:'HEURES SUP.',v:fH(x.s)},{k:'ABSENCES',v:aD.length?aD.length+' j · le '+aD.join(', '):'Aucune'},{k:'OUBLIS',v:oD.length?oD.length+' j · le '+oD.join(', '):'Aucun'},{k:'CHANTIER PRINCIPAL',v:x.n+x.s?CH[ci].n:'—'}];
+          if(cost)det.push({k:'COÛT',v:fE(costOf(f,x))});
+          dayRows.push(mkRow(-(i+1),bk.full,x,x.o?x.o+' j à relancer':(x.a?fJ(x.a)+' d\u2019absence':CH[ci].n),x.o?'#B3261E':'#5B534A',fH(x.n+x.s),det));
+        });
+      }
+      dayRows.reverse();
+    }
+    const fm=fiche?EM[f]:null;
+    const tab=(id,label)=>({label,bg:view===id?'#15120F':'transparent',fg:view===id?'#FFC21A':'#15120F',onClick:()=>{if(view!==id)this.go({view:id,off:0});}});
+    const rankCols=(mob?'':'minmax(170px,240px) minmax(0,1fr) 92px 140px')+(cost&&!mob?' 84px':'');
+    return {
+      rootRef:this.rootRef,outerH:this.props.frame?'100%':'100vh',
+      isDesktopNav:w>=900,isMobile:mob,isDesktopRows:!mob,
+      pad:mob?'16px':'32px',mainPad:mob?'20px 16px':'32px',gap:mob?'16px':'20px',headerH:mob?'56px':'64px',
+      syncTxt:mob?'':'DONNÉES AU 16 OCT. · 08:42',
+      h1Fs:mob?'34px':'52px',perFs:mob?'20px':'26px',ctrlW:mob?'100%':'auto',segFlex:mob?'1 1 100%':'0 0 auto',
+      tabs:[tab('semaine','Semaine'),tab('mois','Mois'),tab('annee','Année')],
+      prev:()=>this.go({off:off-1}),next:()=>this.go({off:off+1}),goToday:()=>{if(off!==0)this.go({off:0});},todayOp:off===0?0.4:1,
+      perTitle:P.title,perSub:P.sub,hasFilter:f!=null,filterName:f!=null?EM[f].name:'',clearFilter:()=>this.setState({filter:null}),
+      showLoading:loading,notLoading:!loading,showEmpty:!has,showData:has,
+      kpiCols:mob||!wide?'repeat(2,minmax(0,1fr))':'repeat(4,minmax(0,1fr))',kpiPad:mob?'14px':'20px',kpiFs:mob?'28px':'40px',kpiSkH:mob?'150px':'190px',
+      skel4:[1,2,3,4],skelBars:P.b.map((_,i)=>({h:(35+((i*37)%55))+'%'})),
+      kpis:K,cardPad:mob?'18px':'28px',emptyPad:mob?'40px 20px':'64px 24px',
+      chartKicker:'HEURES '+(f!=null?'· '+EM[f].name.toUpperCase():"DE L'ÉQUIPE")+' · PAR '+P.unit,
+      chartTitle:fH(T.n+T.s)+' travaillées · '+fH(T.c)+' prévues',chartTitleFs:mob?'18px':'22px',
+      plotH:mob?'220px':'320px',axisW:mob?'34px':'48px',pillarW:'62%',pillarMax:view==='semaine'?'68px':view==='mois'?'92px':'46px',xFs:mob?(view==='annee'?'9.5px':'11px'):'13px',
+      yTicks,slots,
+      lowerCols:wide?'minmax(0,1fr) 380px':'minmax(0,1fr)',
+      rankTitle:N+' salariés · '+(st.showAll||q?'tous':'top '+Math.min(lim,N)),q:st.q,onQ:e=>this.setState({q:e.target.value}),searchW:mob?'100%':'240px',
+      rankCols,showCost:!!cost,rows,noRows:Rf.length===0,hasMore:!q&&Rf.length>lim,moreLabel:st.showAll?'Réduire la liste':'Voir les '+N+' salariés',toggleMore:()=>this.setState({showAll:!st.showAll}),
+      hasCh:chSum>0,conic:chSum>0?'conic-gradient('+stops.join(',')+')':'#2A241E',chTotal:fN(Math.round(chSum)),chs:chs.map(c=>({name:c.name,color:c.color,h:fH(c.v),pct:Math.round(c.v/chSum*100)+' %'})),
+      bdOp:open?1:0,bdPe:open?'auto':'none',closePanel:()=>this.setState({panel:null}),
+      pnTop:mob?'auto':'0',pnLeft:mob?'0':'auto',pnW:mob?'auto':'440px',pnMaxH:mob?'84%':'100%',pnR:mob?'22px 22px 0 0':'0',
+      pnTf:open?'translate(0,0)':(mob?'translateY(105%)':'translateX(105%)'),
+      isMain:!fiche,isFiche:fiche,goBack:()=>this.go({emp:null}),hasFilter:false,
+      avS:mob?'56px':'72px',fNameFs:mob?'28px':'44px',fName:fm?fm.name:'',fIni:fm?fm.ini:'',fRole:fm?fm.role:'',fAv:fm?fm.av:'#FFC21A',
+      fStatus:T.o?T.o+' j en attente':'À jour',fStBg:T.o?'#FCE4E1':'#E2F3EA',fStFg:T.o?'#8E1B14':'#14613A',fStDot:T.o?'#E53935':'#1B7F47',
+      showOubBanner:fiche&&has&&T.o>0,oubTitle:T.o+' jour'+pl(T.o)+' à relancer',
+      oubTxt:fm?'Aucun pointage reçu ces jours-là. Relancez '+fm.name.split(' ')[0]+' depuis « Pointage ».':'',
+      oubDates:(oubDates.length>8?oubDates.slice(-8).join(' · ')+' …':oubDates.join(' · ')).toUpperCase(),
+      dayRows,listKicker:view==='annee'?'MOIS PAR MOIS':'JOUR PAR JOUR',listTitle:view==='annee'?dayRows.length+' mois':dayRows.length+' jour'+pl(dayRows.length)+' sur la période',
+      listHint:mob?'':'Cliquez sur une ligne pour le détail',dateW:mob?'84px':(view==='annee'?'150px':'110px'),
+      hasFocus:fiche&&st.focus!=null&&!!P.b[st.focus],focusLabel:st.focus!=null&&P.b[st.focus]?P.b[st.focus].full:'',clearFocus:()=>this.setState({focus:null,openDay:null}),
+      detCols:mob?'repeat(2,minmax(0,1fr))':'repeat(auto-fill,minmax(150px,1fr))',
+      tipHint:fiche?'CLIQUER POUR FILTRER LES JOURS':'CLIQUER POUR LE DÉTAIL',
+      pKicker:P.kick,pTitle,pSub,pTot,pRows,pCostShow:!!cost,pCost
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@
 
 import type { ExtraControl } from '@/components/assistant-panel';
 import { readCard, undoneMemory, useCardMemory, writeCard } from '@/lib/card-memory';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle, FolderInput, Paperclip, Send, Clock, UtensilsCrossed, Copy, Wrench, MapPin, Mail, Eraser, CalendarX, CircleX, FileX } from 'lucide-react';
 import {
   applyWorkerAnswer, checkWorkerAction, DOC_CATEGORY_LABEL, fmtMin, isWorkerRemoval, LEAVE_KINDS, LEAVE_LABEL, shiftMinutes, workerActionMode, workerConfirmText, workerQuestionFor,
@@ -18,9 +18,14 @@ import {
 import type { WorkerActionExtra } from '@/lib/worker-assistant';
 import type { WorkerActionExecutor, WorkerActionResult, WorkerErasePreview, WorkerErasePreviewer } from '@/lib/worker-actions';
 import { ActionAsk, ActionDone } from '@/components/action-done';
-import GeoInfoDialog from '@/components/geo-info-dialog';
 import { markGeoInfoSeen } from '@/lib/position-info';
 import { MEAL_OFF_MESSAGE } from '@/lib/meal-setting';
+
+// Fenêtre « L'endroit au pointage » : affichée UNE fois, au premier pointage en direct. Chargée EN DIFFÉRÉ (import() à la demande) :
+// elle tire next/link (≈ 8 kB compressés), qui ne pèse plus dans le premier chargement de l'assistant salarié (budget /apercu/*).
+// Pas de lazyWindow ici : l'importer depuis cette carte redécoupe les morceaux partagés avec le bureau (+0,2 kB sur /admin).
+let GeoInfoDialog: ComponentType<{ onOk: () => void }> | null = null;
+const GEO_LOAD_ERROR = 'Impossible de charger cette fenêtre. Vérifiez votre connexion ou rechargez la page.';
 
 const CSS = `
 .wa{margin-top:10px;border:1px solid rgba(21,18,15,.14);border-radius:14px;background:#FBF8F2;padding:11px}
@@ -159,6 +164,15 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl, preview,
   const [cancelled, setCancelled] = useState(mem.cancelled ?? false);
   const [err, setErr] = useState<string | null>(null);
   const [geoFor, setGeoFor] = useState<string | null>(null);
+  const [geoReady, setGeoReady] = useState(() => GeoInfoDialog !== null);
+  useEffect(() => {
+    if (!geoFor || geoReady) return;
+    let live = true;
+    // Le fichier ne vient pas (hors ligne) : rien n'est collecté, un message, et le bouton de la carte redemandera la fenêtre.
+    import('@/components/geo-info-dialog').then((m) => { GeoInfoDialog = m.default; if (live) setGeoReady(true); },
+      () => { if (live) { setGeoFor(null); setErr(GEO_LOAD_ERROR); } });
+    return () => { live = false; };
+  }, [geoFor, geoReady]);
   const snap: WorkerSnapshot = useMemo(() => ({ aujourdhui: new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' }), chantiers: extra.chantiers, semaine: [], planning: [] }), [extra.chantiers]);
   const live: WorkerLive = useMemo(() => ({
     enCours: extra.workerAction.draft.type === 'terminer_pointage' && extra.workerAction.draft.depuis
@@ -481,7 +495,7 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl, preview,
         );
       })()}
       {problems.map((p) => <p key={p} className="wa-p">{p}</p>)}
-      {geoFor && <GeoInfoDialog onOk={() => { markGeoInfoSeen(geoFor); setGeoFor(null); run(d); }} />}
+      {geoFor && geoReady && GeoInfoDialog && <GeoInfoDialog onOk={() => { markGeoInfoSeen(geoFor); setGeoFor(null); run(d); }} />}
       {err && <p className="wa-p">{err}</p>}
       <div className="wa-foot">
         <button type="button" className="wa-b no" disabled={busy} onClick={() => { if (editOf.current && result) { editOf.current = null; setPhase('done'); } else setCancelled(true); }}>{editOf.current ? 'Garder comme avant' : removal ? 'Garder' : 'Annuler'}</button>

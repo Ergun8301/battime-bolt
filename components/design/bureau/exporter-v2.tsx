@@ -9,7 +9,7 @@
 //   · le nom du cabinet (« Envoyer à Cabinet Exemple ») : seule l'adresse du comptable est enregistrée ;
 //   · « Clôturé le 15/10 par Sam Patron » et la liste des jours en brouillon (HP28, HP29) : le code ne compte que le NOMBRE de brouillons et ne garde pas qui a clos ;
 //   · « Annuler » après la clôture (HP29) : la réouverture passe par « Rouvrir… ».
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { addDays, format, getISOWeek, isSameDay, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Loader2, Mail } from 'lucide-react';
@@ -18,6 +18,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ExportPreload } from '@/components/export-menu';
 import { DAYS_IN_WEEK } from '@/lib/week';
 import { FenetreB, PanneauB } from './heures-fenetre';
+// Lot 3 A : ses vues voyagent dans CE morceau différé (aucun nouveau morceau : chacun coûte au chargeur partagé par toutes les pages). Voir lot3a-v2.ts.
+export * from './lot3a-v2';
 
 export type ExportChoix = 'pdf' | 'excel' | 'csv' | 'comptable';
 export interface Periode { from: Date; to: Date }
@@ -39,6 +41,10 @@ export interface ExporterV2Props {
   onCloturer: (mois: string) => void;
   onRouvrir: (mois: string) => void;
   onUnSalarie: () => void;
+  /** Bascule « Un salarié » : l'équipe (mêmes salariés que « Exporter un salarié ») et le choix d'un salarié (ouvre sa fiche en « Feuille d'heures », sans verrou). */
+  workers?: SalarieBrut[];
+  onChoisirSalarie?: (id: string) => void;
+  onAjouterSalarie?: () => void;
 }
 
 const jour = (d: Date) => format(d, 'yyyy-MM-dd');
@@ -91,9 +97,26 @@ export default function ExporterV2(p: ExporterV2Props) {
   const sansPeriode = !p.periode;
   // L'alerte de verrouillage v2 se charge pendant qu'on choisit la période (jamais au premier affichage de /admin).
   useEffect(() => { void import('./verrou-v2'); }, []);
+  // EN HAUT du panneau : « Toute l'équipe | Un salarié ». Présentation seulement : « Toute l'équipe » est le contenu d'avant (mêmes gestionnaires, même
+  // verrou) ; « Un salarié » montre la liste de « Exporter un salarié » sur place (même choix : la fiche du salarié, rien n'est verrouillé). C'est le SEUL
+  // accès à l'export d'un salarié dans ce panneau : l'ancien lien du bas « Un seul salarié ? » (doublon de la bascule) est retiré.
+  const [mode, setMode] = useState<'equipe' | 'salarie'>('equipe');
+  useEffect(() => { if (p.open) setMode('equipe'); }, [p.open]);
+  const avecSalarie = !!p.workers && !!p.onChoisirSalarie;
   return (
-    <PanneauB open={p.open} onOpenChange={p.onOpenChange} large testId="team-export" kicker="Paie" titre="Exporter l'équipe">
+    <PanneauB open={p.open} onOpenChange={p.onOpenChange} large testId="team-export" kicker="Paie" titre={mode === 'salarie' ? 'Exporter un salarié' : "Exporter l'équipe"}
+      sousTete={avecSalarie ? (
+        <div className="dz-hb-bascule">
+          <div className="dz-hb-seg" role="group" aria-label="Qui exporter" data-testid="export-bascule">
+            <button type="button" aria-pressed={mode === 'equipe'} onClick={() => setMode('equipe')} data-testid="export-bascule-equipe">Toute l&apos;équipe</button>
+            <button type="button" aria-pressed={mode === 'salarie'} onClick={() => setMode('salarie')} data-testid="export-bascule-salarie">Un salarié</button>
+          </div>
+        </div>
+      ) : undefined}>
       <ExportPreload />
+      {mode === 'salarie' && avecSalarie ? (
+        <ListeSalaries salaries={versChoix(p.workers!)} onChoisir={p.onChoisirSalarie!} onAjouter={p.onAjouterSalarie ?? p.onUnSalarie} />
+      ) : (<>
       <div className="dz-hb-champ">
         <span className="dz-hb-nom">Période</span>
         <ChoixPeriode periode={p.periode} setPeriode={p.setPeriode} semaine={p.semaine} disabled={p.exporting} />
@@ -162,13 +185,7 @@ export default function ExporterV2(p: ExporterV2Props) {
           ))}
         </ul>
       </div>
-
-      <div className="dz-hb-carte">
-        <button type="button" className="dz-hb-lien-carte" data-testid="export-one-worker" data-guide="bureau-export.un-salarie" onClick={p.onUnSalarie}>
-          <span><b>Un seul salarié ?</b><small>Exportez-le depuis sa fiche, sans verrou.</small></span>
-          <i aria-hidden="true">›</i>
-        </button>
-      </div>
+      </>)}
     </PanneauB>
   );
 }
@@ -202,35 +219,46 @@ export function ClotureV2({ mois, brouillons, busy, onCancel, onConfirm }: {
 }
 
 export interface SalarieChoix { id: string; nom: string; initiales: string; sous?: string }
+/** Un salarié tel que le planning le lit (la mise en forme pour la liste se fait ici, dans le morceau différé). */
+export interface SalarieBrut { id: string; first_name?: string | null; last_name?: string | null; role?: string | null }
+const versChoix = (ws: SalarieBrut[]): SalarieChoix[] => ws.map((w) => ({
+  id: w.id, nom: `${w.first_name || ''} ${w.last_name || ''}`.trim(), initiales: `${(w.first_name || '?')[0]}${(w.last_name || '')[0] || ''}`.toUpperCase(),
+  sous: w.role === 'lead' ? 'Chef d’équipe' : undefined,
+}));
+
+/** La liste des salariés (« Exporter un salarié » et la bascule « Un salarié » du panneau Exporter) : le choix ouvre la fiche, rien ne part d'ici. */
+function ListeSalaries({ salaries, onChoisir, onAjouter }: { salaries: SalarieChoix[]; onChoisir: (id: string) => void; onAjouter: () => void }) {
+  return salaries.length === 0 ? (
+    <>
+      <p className="dz-hb-vide">Aucun salarié à exporter pour le moment.</p>
+      <button type="button" className="dz-hb-btn" data-ton="principal" onClick={onAjouter}>Ajouter un salarié</button>
+    </>
+  ) : (
+    <>
+      <ul className="dz-hb-choix" data-testid="export-salaries">
+        {salaries.map((s) => (
+          <li key={s.id}>
+            <button type="button" onClick={() => onChoisir(s.id)}>
+              <span className="dz-hb-initiales" aria-hidden="true">{s.initiales}</span>
+              <span>{s.nom}{s.sous ? <small>{s.sous}</small> : null}</span>
+              <i aria-hidden="true">›</i>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="dz-hb-aide">Ouvre sa fiche en « Feuille d’heures » : l’export d’un seul salarié ne verrouille rien.</p>
+    </>
+  );
+}
 
 /** « Exporter un salarié » (HP31) : le choix ouvre la fiche, rien ne part d'ici. */
-export function ExportSalarieV2({ open, onOpenChange, salaries, onChoisir, onAjouter }: {
-  open: boolean; onOpenChange: (o: boolean) => void; salaries: SalarieChoix[]; onChoisir: (id: string) => void; onAjouter: () => void;
+export function ExportSalarieV2({ open, onOpenChange, workers, onChoisir, onAjouter }: {
+  open: boolean; onOpenChange: (o: boolean) => void; workers: SalarieBrut[]; onChoisir: (id: string) => void; onAjouter: () => void;
 }): ReactNode {
   return (
     <FenetreB open={open} onOpenChange={onOpenChange} testId="export-worker" titre="Exporter un salarié"
       pied={undefined}>
-      {salaries.length === 0 ? (
-        <>
-          <p className="dz-hb-vide">Aucun salarié à exporter pour le moment.</p>
-          <button type="button" className="dz-hb-btn" data-ton="principal" onClick={onAjouter}>Ajouter un salarié</button>
-        </>
-      ) : (
-        <>
-          <ul className="dz-hb-choix">
-            {salaries.map((s) => (
-              <li key={s.id}>
-                <button type="button" onClick={() => onChoisir(s.id)}>
-                  <span className="dz-hb-initiales" aria-hidden="true">{s.initiales}</span>
-                  <span>{s.nom}{s.sous ? <small>{s.sous}</small> : null}</span>
-                  <i aria-hidden="true">›</i>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <p className="dz-hb-aide">Ouvre sa fiche en « Feuille d’heures » : l’export d’un seul salarié ne verrouille rien.</p>
-        </>
-      )}
+      <ListeSalaries salaries={versChoix(workers)} onChoisir={onChoisir} onAjouter={onAjouter} />
     </FenetreB>
   );
 }

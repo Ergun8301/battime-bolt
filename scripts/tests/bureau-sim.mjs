@@ -1,5 +1,6 @@
 // Banc de démonstration du BUREAU (/admin) : une base SIMULÉE avec état (aucune vraie base, aucun e-mail), les données de la planche du designer
 // (semaine S-42, 12 – 18 octobre 2026, jeudi 15 octobre 2026), et le serveur du dossier `out/`. Utilisé par fidelite-bureau.mjs.
+// `jeu: '2a'` : les données de la maquette 2a de la planche d'essai (planning-1a-controles.mjs, planning-2b-controles.mjs).
 //   const sim = await demarrer({ out: 'out', port: 4421 });  const { page, ctx } = await sim.page({ ui: 2, largeur: 1440, hauteur: 900 });
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 let chromium;
@@ -102,6 +103,79 @@ export const fraiche = () => {
   };
 };
 
+// ── Jeu de données « planche 2a » (docs/design-brief/designer-essai, script `ROWS`) : mêmes huit salariés, mêmes chantiers, mêmes cases, même ordre.
+//    Utilisé par planning-1a-controles.mjs et planning-2b-controles.mjs pour l'image « planche | écran » : `demarrer({ jeu: '2a' })`.
+export const CLIENTS_2A = {
+  V: { id: idPour('v2a', 0), client_name: 'Villa Exemple', product_type: 'Fenêtres', city: 'Lyon' },
+  M: { id: idPour('m2a', 1), client_name: 'Maison Démo', product_type: 'Volets', city: 'Bron' },
+  R: { id: idPour('r2a', 2), client_name: 'Résidence Test', product_type: 'Portail', city: 'Villeurbanne' },
+  A: { id: idPour('a2a', 3), client_name: 'Atelier Fictif', product_type: 'Menuiserie', city: 'Vénissieux' },
+  O: { id: 'ws-autre-2a', client_name: 'Autre', product_type: null, city: null },
+};
+export const PERSONNES_2A = [
+  u('u-at', 'Alex', 'Test'), u('u-be', 'Bruno', 'Essai'), u('u-ce', 'Chloé', 'Exemple'), u('u-dd', 'Dina', 'Démo'), u('u-ef', 'Eli', 'Fictif'),
+  u('u-md', 'Maximilien-Alexandre', 'Dubois-Lefèvre', 'lead'), u('u-fm', 'Fanny', 'Modèle'), u('u-ge', 'Gaspard', 'Essai'),
+];
+export const fraiche2a = () => {
+  const base = fraiche();
+  const WS2 = Object.values(CLIENTS_2A).map((w) => ({ ...w, company_id: CO, is_active: true, address: null, phone: null, email: null, description: null, created_at: '2026-01-01' }));
+  const planning = []; const time_entries = []; let n = 0;
+  const s2 = (uid, j, k, a, b, extra = {}) => { const id = `p2a-${++n}`; planning.push({ ...slot(id, uid, j, null, a ? H(a, b || a) : {}), worksite_id: k ? CLIENTS_2A[k].id : null, ...(a && !b ? { estimated_end: null } : {}), ...extra }); return id; };
+  const abs = (uid, j, t) => planning.push(slot(`p2a-${++n}`, uid, j, null, { absence_type: t }));
+  const te = (uid, j, k, status, a, b, pid, extra = {}) => time_entries.push({ ...entree(`t2a-${++n}`, uid, j, null, status, a, b, { planning_id: pid, ...extra }), worksite_id: CLIENTS_2A[k].id });
+  const env = (uid, j, k, a, b, extra = {}) => { const pid = s2(uid, j, k, a, b); te(uid, j, k, 'submitted', a, b, pid, extra); };
+  const brouillon = (uid, j, k, a, b) => { const pid = s2(uid, j, k, a, b); te(uid, j, k, 'draft', a, b, pid); };
+  // Alex
+  env('u-at', LUN, 'V', '08:00', '12:00'); env('u-at', LUN, 'R', '13:30', '17:00', { reception: 'avec' }); env('u-at', MAR, 'M', '08:00', '17:00');
+  env('u-at', MER, 'V', '08:00', '12:00'); brouillon('u-at', MER, 'A', '13:30', '16:45'); const live = s2('u-at', JEU, 'V', '07:45', null); s2('u-at', VEN, 'R', '08:00', '12:00');
+  // Bruno
+  env('u-be', LUN, 'M', '08:00', '12:00'); s2('u-be', MAR, 'V', '08:00', '12:00'); env('u-be', MER, 'R', '13:30', '17:00'); s2('u-be', JEU, 'M', '08:00', '17:00'); s2('u-be', VEN, 'V', '08:00', '12:00');
+  // Chloé
+  abs('u-ce', LUN, 'conge'); abs('u-ce', MAR, 'conge'); abs('u-ce', MER, 'conge'); s2('u-ce', JEU, 'A', '18:00', '22:00'); s2('u-ce', VEN, 'R', '08:00', '12:00');
+  // Dina
+  env('u-dd', LUN, 'M', '08:00', '17:00'); env('u-dd', MAR, 'V', '08:00', '12:00');
+  { const pid = s2('u-dd', MER, 'R', '13:30', '17:00'); te('u-dd', MER, 'R', 'cancelled', '13:30', '17:00', pid, { total_minutes: 0 }); }
+  abs('u-dd', JEU, 'maladie'); abs('u-dd', VEN, 'maladie');
+  // Eli
+  { const pid = s2('u-ef', LUN, 'O', '09:00', '10:00', { added_by_worker: true, notes: 'Dépannage SAV' }); te('u-ef', LUN, 'O', 'submitted', '09:00', '10:00', pid); }
+  env('u-ef', MAR, 'V', '13:30', '17:00'); brouillon('u-ef', MER, 'M', '18:00', '20:00'); s2('u-ef', JEU, 'R', null, null); s2('u-ef', 17, 'V', '08:00', '12:00');
+  // Maximilien-Alexandre (chef)
+  env('u-md', LUN, 'A', '08:00', '17:00'); env('u-md', MAR, 'A', '08:00', '17:00'); env('u-md', MER, 'A', '08:00', '17:00'); s2('u-md', JEU, 'A', '08:00', '17:00'); s2('u-md', VEN, 'A', '08:00', '17:00');
+  // Fanny
+  abs('u-fm', LUN, 'intemperie'); env('u-fm', MAR, 'R', '08:00', '12:00'); s2('u-fm', JEU, 'M', '13:30', '17:00');
+  // Gaspard
+  env('u-ge', MER, 'V', '08:00', '12:00'); s2('u-ge', JEU, 'V', '08:00', '12:00');
+  // La planche compte « 9h00 » pour 08:00–17:00 : la durée envoyée est la plage entière (pas de pause déduite).
+  for (const t of time_entries) if (t.status !== 'cancelled') { const [a, am] = t.start_time.split(':').map(Number); const [b, bm] = t.end_time.split(':').map(Number); t.total_minutes = (b * 60 + bm) - (a * 60 + am); }
+  const tache = (id, done) => ({ id, company_id: CO, user_id: 'u-md', work_date: D_(JEU), text: `Tâche ${id}`, part: null, created_by: 'u-admin', created_at: '2026-10-14T10:00:00Z', done_at: done ? '2026-10-15T07:00:00Z' : null, done_by: done ? 'u-md' : null, start_time: null, end_time: null });
+  return {
+    ...base,
+    users: [base.users[0], ...PERSONNES_2A], worksites: WS2, planning, time_entries,
+    active_sessions: [{ user_id: 'u-at', company_id: CO, worksite_id: CLIENTS_2A.V.id, planning_id: live, work_date: D_(JEU), started_at: '2026-10-15T05:45:00Z', positions: [] }],
+    leave_requests: [{ id: 'lv2a', company_id: CO, user_id: 'u-ce', status: 'pending', start_date: D_(26), end_date: D_(27), created_at: '2026-10-14T10:00:00Z' }],
+    invitations: [],
+    documents: [
+      ...[1, 2].map((k) => ({ id: `doc2a-v${k}`, company_id: CO, worksite_id: CLIENTS_2A.V.id, label: `Photo ${k}`, file_name: `v${k}.jpg`, mime_type: 'image/jpeg', work_date: D_(LUN), created_at: '2026-10-12T07:00:00Z' })),
+      { id: 'doc2a-r1', company_id: CO, worksite_id: CLIENTS_2A.R.id, label: 'PV', file_name: 'r1.pdf', mime_type: 'application/pdf', work_date: D_(LUN), created_at: '2026-10-12T07:00:00Z' },
+    ],
+    day_tasks: [tache('k1', true), tache('k2', false), tache('k3', false)],
+    meetings: [{ id: 'mt2a', company_id: CO, title: 'Réunion sécurité', meeting_date: D_(MAR), start_time: '07:30:00', end_time: '08:00:00', place: 'Dépôt', all_team: false, created_at: '2026-10-10T09:00:00Z' }],
+    meeting_participants: [{ meeting_id: 'mt2a', user_id: 'u-dd', company_id: CO }],
+  };
+};
+
+// ── Jeu « 2a-relances » (retouches 4) : le jeu 2a + 13 salariés qui n'ont pas envoyé leurs heures de début octobre, soit 15 salariés « À relancer » avec ceux
+//    du jeu 2a : de quoi vérifier que la liste déroulante de la tuile reste bornée (cinq lignes environ, puis elle défile seule).
+const PRENOMS_R = ['Inès', 'Jules', 'Karim', 'Léa', 'Malo', 'Nadia', 'Oscar', 'Paula', 'Quentin', 'Rose', 'Samir', 'Tess', 'Ugo'];
+export const PERSONNES_R = PRENOMS_R.map((p, i) => u(`u-r${i + 1}`, p, `Relance-${i + 1}`));
+export const fraiche2aRelances = () => {
+  const base = fraiche2a();
+  const jours = [1, 2, 5, 6, 7, 8, 9];
+  const planning = [...base.planning];
+  PERSONNES_R.forEach((w, i) => { for (let k = 0; k <= i % 3; k++) planning.push({ ...slot(`r-${i}-${k}`, w.id, jours[(i + k * 2) % jours.length], null, H('08:00', '12:00')), worksite_id: CLIENTS_2A.V.id }); });
+  return { ...base, users: [...base.users, ...PERSONNES_R], planning };
+};
+
 const SKIP = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns', 'or']);
 const filtrer = (rows, params) => {
   for (const [k, v] of params) {
@@ -124,7 +198,9 @@ const filtrer = (rows, params) => {
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/json' };
 
-export async function demarrer({ out = 'out', port = 4421, now = NOW, base = null } = {}) {
+export async function demarrer({ out = 'out', port = 4421, now = NOW, base = null, jeu = null } = {}) {
+  let jeuC = jeu;
+  const neuf = () => (jeuC === '2a' ? fraiche2a() : jeuC === '2a-relances' ? fraiche2aRelances() : fraiche());
   const srv = http.createServer((q, r) => {
     const p = decodeURIComponent(new URL(q.url, 'http://x').pathname);
     for (const c of [p, `${p}.html`, path.join(p, 'index.html')]) {
@@ -135,7 +211,7 @@ export async function demarrer({ out = 'out', port = 4421, now = NOW, base = nul
   });
   if (!base) await new Promise((r) => srv.listen(port, r));
   const browser = await chromium.launch({ executablePath: CHROME });
-  let D = fraiche();
+  let D = neuf();
   const log = { writes: [], requetes: [] };
   let seq = 0;
   const secondes = Math.floor(now.getTime() / 1000); const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -144,6 +220,8 @@ export async function demarrer({ out = 'out', port = 4421, now = NOW, base = nul
   const embed = (t, row, sel) => {
     const o = { ...row };
     if (t === 'planning') { if (sel.includes('worksite:worksites')) o.worksite = D.worksites.find((w) => w.id === row.worksite_id) || null; if (sel.includes('user:users')) o.user = D.users.find((x) => x.id === row.user_id) || null; }
+    // Registre des réserves (lot 3 A ; seule lecture qui demande `owner:users`) : le chantier et le salarié de la ligne d'heures.
+    if (t === 'time_entries' && sel.includes('owner:users')) { if (sel.includes('worksite:worksites')) o.worksite = D.worksites.find((w) => w.id === row.worksite_id) || null; if (sel.includes('owner:users')) o.owner = D.users.find((x) => x.id === row.user_id) || null; }
     return o;
   };
   async function installer(ctx) {
@@ -175,7 +253,7 @@ export async function demarrer({ out = 'out', port = 4421, now = NOW, base = nul
     });
   }
   return {
-    browser, port, log, get D() { return D; }, reinitialiser() { D = fraiche(); log.writes.length = 0; log.requetes.length = 0; },
+    browser, port, log, get D() { return D; }, reinitialiser(j) { if (j !== undefined) jeuC = j; D = neuf(); log.writes.length = 0; log.requetes.length = 0; },
     /** Ouvre /admin : `ui` = 1 (v1) ou 2 (v2) ; `contexte` : options Playwright (viewport, hasTouch…). */
     async page({ ui = null, largeur = 1440, hauteur = 900, hasTouch = false, attente = '.bt-pl-gridwrap .bt-pl-grab, .dzp-table .dzp-bulle, .dzp-m-carte' } = {}) {
       const ctx = await browser.newContext({ viewport: { width: largeur, height: hauteur }, locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch, isMobile: hasTouch });

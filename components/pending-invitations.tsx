@@ -100,8 +100,18 @@ const fullName = (inv: Invitation) => `${inv.first_name || ''} ${inv.last_name |
 const ddmm = (iso: string) => new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' }).format(new Date(iso));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export default function PendingInvitations({ companyId, invitations, onChanged }: Props) {
-  const [open, setOpen] = useState(false);
+/** Design bureau v2 (lot 3 A) : la fenêtre v2 pose ses deux questions elle-même (au lieu de window.confirm) et lit ce que fait cette liste. */
+export interface OptionsInvitations {
+  /** Panneau v2 ouvert (remplace « Voir la liste »). */
+  ouvert?: boolean;
+  demander?: (q: { type: 'suppr' } | { type: 'toutes'; verbe: string; total: number }, nom: string) => Promise<boolean>;
+}
+
+/** Toute la logique de la liste (dates d'envoi, un envoi à la fois, arrêt à la première erreur), partagée par la liste d'avant et la fenêtre v2. */
+export function useInvitationsAttente({ companyId, invitations, onChanged }: Props, opt?: OptionsInvitations) {
+  const [open0, setOpen] = useState(false);
+  const open = opt?.ouvert ?? open0;
+  const [echec, setEchec] = useState<{ nom: string; texte: string } | null>(null);
   // Date du dernier envoi, par adresse en minuscules (absente = jamais envoyée).
   const [sent, setSent] = useState<SentState>({ kind: 'loading' });
   const [busy1, setBusy1] = useState<{ email: string; kind: 'send' | 'remove' } | null>(null);
@@ -146,8 +156,6 @@ export default function PendingInvitations({ companyId, invitations, onChanged }
   useEffect(() => {
     if (open && n > 0) loadSent();
   }, [open, n, listKey, loadSent]);
-
-  if (n === 0) return null;
 
   const known = sent.kind === 'ok';
   /** Date du dernier envoi ; `null` = jamais envoyée ; `undefined` = on ne sait pas. */
@@ -203,7 +211,7 @@ export default function PendingInvitations({ companyId, invitations, onChanged }
 
   const removeOne = async (inv: Invitation) => {
     if (lockBusy) { toast.info('Un envoi est déjà en cours.'); return; }
-    const ok = window.confirm(
+    const ok = opt?.demander ? await opt.demander({ type: 'suppr' }, fullName(inv)) : window.confirm(
       `Supprimer l’invitation de ${fullName(inv)} ?\n\n`
       + 'Son compte sera supprimé s’il ne s’est jamais connecté. Vous pourrez l’inviter à nouveau plus tard.',
     );
@@ -232,10 +240,11 @@ export default function PendingInvitations({ companyId, invitations, onChanged }
     if (!known || bulkTargets.length === 0) return; // dates inconnues : jamais d'envoi groupé à l'aveugle
     const targets = [...bulkTargets]; // la liste se recrée pendant l'envoi : on fige la cible
     const total = targets.length;
-    const ok = window.confirm(
+    const ok = opt?.demander ? await opt.demander({ type: 'toutes', verbe: bulkVerb, total }, '') : window.confirm(
       `${bulkVerb} ${total} e-mail${total > 1 ? 's' : ''} ?\n\n`
       + 'Chaque salarié reçoit un lien valable 24 h pour créer son mot de passe.',
     );
+    setEchec(null);
     if (!ok || !take()) return;
     let done = 0;
     let failure: { inv: Invitation; message: string } | null = null;
@@ -265,12 +274,11 @@ export default function PendingInvitations({ companyId, invitations, onChanged }
     }
     if (failure) {
       const rest = total - done - 1;
-      toast.error(
-        `${done} invitation${done > 1 ? 's' : ''} envoyée${done > 1 ? 's' : ''} sur ${total}. `
+      const texte = `${done} invitation${done > 1 ? 's' : ''} envoyée${done > 1 ? 's' : ''} sur ${total}. `
         + `Échec pour ${fullName(failure.inv)} : ${failure.message}.`
-        + (rest > 0 ? ` Les ${rest} suivante${rest > 1 ? 's' : ''} n’${rest > 1 ? 'ont' : 'a'} pas été envoyée${rest > 1 ? 's' : ''} : réessayez plus tard.` : ''),
-        { duration: 12000 },
-      );
+        + (rest > 0 ? ` Les ${rest} suivante${rest > 1 ? 's' : ''} n’${rest > 1 ? 'ont' : 'a'} pas été envoyée${rest > 1 ? 's' : ''} : réessayez plus tard.` : '');
+      setEchec({ nom: fullName(failure.inv), texte });
+      toast.error(texte, { duration: 12000 });
     } else {
       toast.success(`${done} invitation${done > 1 ? 's' : ''} envoyée${done > 1 ? 's' : ''} ✅`);
     }
@@ -279,6 +287,13 @@ export default function PendingInvitations({ companyId, invitations, onChanged }
   };
 
   const busy = locked || !!busy1 || !!bulk;
+  const retry = () => { setSent({ kind: 'loading' }); loadSent(); };
+  return { n, list, open, setOpen, sent, known, sentOf, busy, busy1, bulk, bulkTargets, bulkLabel, simulate, sendOne, removeOne, sendAll, retry, echec, fullName, ddmm };
+}
+
+export default function PendingInvitations(props: Props) {
+  const { n, list, open, setOpen, sent, known, sentOf, busy, busy1, bulk, bulkTargets, bulkLabel, simulate, sendOne, removeOne, sendAll, retry } = useInvitationsAttente(props);
+  if (n === 0) return null;
 
   return (
     <div className="bt-inv" data-testid="pending-invitations">
@@ -302,7 +317,7 @@ export default function PendingInvitations({ companyId, invitations, onChanged }
             {sent.kind === 'error' && (
               <span className="bt-inv-warn" role="alert" data-testid="inv-dates-ko">
                 Dates d’envoi indisponibles : impossible de savoir qui a déjà reçu l’invitation.
-                <button type="button" onClick={() => { setSent({ kind: 'loading' }); loadSent(); }}>Réessayer</button>
+                <button type="button" onClick={retry}>Réessayer</button>
               </span>
             )}
             {n >= 2 && (

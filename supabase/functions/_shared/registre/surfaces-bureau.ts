@@ -366,6 +366,8 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'fenetre:team-stats',
     'rpc:my_worksite_labour',
     'ecriture:lib/team-stats#loadTeamStats',
+    // Design du bureau v2 (?ui=2) : la page « Statistiques » re-dessinée lit les mêmes tables et la même fonction de coût (lecture seule).
+    'ecriture:lib/statistiques-v2#lireStatsV2',
   ],
   // B52 · Coût par chantier et dépenses
   B52: [
@@ -509,7 +511,17 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'dialogue:components/admin-mobile-menu#open',
     // Design du bureau v2 : le MÊME menu ☰, habillé par la planche (components/design/bureau/menu-mobile-v2.tsx) ; les mêmes lignes, les mêmes gestes.
     'dialogue:components/design/bureau/menu-mobile-v2#open',
-    'ancre-dynamique:components/design/bureau/menu-mobile-v2.tsx:21',
+    // Retouches 3 (?ui=2) : chaque ligne du menu le ferme avant d'ouvrir sa cible ; les chiffres, les pièces jointes et la légende s'ouvrent dans une petite
+    // feuille du bas (plus dépliés dans le menu) : le même point d'entrée, la même lecture.
+    'dialogue:components/design/bureau/menu-mobile-v2#feuille !== null',
+    'ancre-dynamique:components/design/bureau/menu-mobile-v2.tsx:30',
+    // Design du bureau, lot 3 A (?ui=2) : les briques d'affichage (components/design/bureau/lot3a-ui.tsx : ligne, liste, champ, onglets) relaient la prop
+    // `guide` de leurs appelants, comme le menu ☰ v2 ci-dessus ; leurs valeurs sont les guide="…" littéraux des fenêtres v2, déjà comptés comme ancres.
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:143',
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:156',
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:191',
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:204',
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:262',
     'ancre:bureau-nav.borne',
     'ancre:bureau-nav.clients',
     'ancre:bureau-nav.couts',

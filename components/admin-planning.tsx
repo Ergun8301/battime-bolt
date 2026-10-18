@@ -61,7 +61,7 @@ import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
 import GuideTour, { type GuideStep } from '@/components/guide-tour';
 import { adminStepsFor, findAdminTour, type AdminScreen } from '@/supabase/functions/_shared/admin-tours';
 import { tourIdOf } from '@/supabase/functions/_shared/worker-tours';
-import PendingInvitations from '@/components/pending-invitations';
+import PendingInvitations, { useInvitationsAttente } from '@/components/pending-invitations';
 import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
 import { useAiEnabled } from '@/lib/real-cost';
@@ -92,7 +92,7 @@ import { keep } from '@/lib/same';
 import { lazyWindow, warmAll } from '@/lib/lazy-window';
 // Lot 23 : chantier terminé. Le bloc de la fiche est petit (premier chargement) ; le contrôle avant de terminer
 // et le bilan sont dans une fenêtre chargée à l'ouverture.
-import ChantierTermineBar, { type TermineMode } from '@/components/chantier-termine-bar';
+import ChantierTermineBar, { type TermineMode } from '@/components/chantier-termine-bar'; import { completionKnownReady, completionReady } from '@/lib/chantier-termine-ready';
 import type { TermineTarget } from '@/components/chantier-termine';
 import { termineLe } from '@/supabase/functions/_shared/chantier-statut';
 // Formations (lot 6, oct. 2026) : depuis « Salariés » et le menu du téléphone, seulement si la migration est passée.
@@ -961,6 +961,10 @@ interface AdminPlanningProps {
 const ExporterV2 = lazy(() => import('@/components/design/bureau/exporter-v2'));
 const ClotureV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.ClotureV2 })));
 const ExportSalarieV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.ExportSalarieV2 })));
+// Statistiques v2 (?ui=2 sur aperçu seulement) : la page plein écran + fiche salarié, chargée en différé à l'ouverture ; sans drapeau, l'ancien popup.
+const StatistiquesV2 = lazy(() => import('@/components/design/bureau/statistiques-v2'));
+// Lot 3 A : Chantiers (téléphone), fiche et nouveau client, Salariés, nouveau salarié, invitations. Mêmes états, mêmes gestionnaires (listes ordonnées : equipe-clients-v2.tsx).
+const Lot3V2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.Lot3PlanningV2 })));
 
 export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
@@ -2538,9 +2542,9 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
    * affiche le message que le serveur renvoie, parce que c'est lui qui sait,
    * y compris quand deux personnes cliquent en même temps.
    */
-  const changeRole = async (target: User, role: 'admin' | 'lead' | 'worker') => {
+  const changeRole = async (target: User, role: 'admin' | 'lead' | 'worker', dejaDemande = false) => { // v2 : la question est posée par la fenêtre
     const label = `${target.first_name || ''} ${target.last_name || ''}`.trim() || 'cette personne';
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !dejaDemande) {
       const q = role === 'admin'
         ? `Donner à ${label} l'accès complet au bureau ? Cette personne pourra voir les taux horaires, sortir la paie et modifier les réglages.`
         : role === 'lead'
@@ -4317,7 +4321,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       {/* Lot 3 : lecture seule ; `workers` (les vrais comptes), jamais la démo. */}
       {tracesOn && user?.company_id && (
-        <TracesDialog open={tracesOpen} onOpenChange={setTracesOpen} companyId={user.company_id} viewerId={user.id} office workers={workers} />
+        <TracesDialog open={tracesOpen} onOpenChange={setTracesOpen} companyId={user.company_id} viewerId={user.id} office workers={workers} v2={ui2b} />
       )}
 
       {/* Lot 8 : la semaine AFFICHÉE ; un retour relit le planning. */}
@@ -4346,7 +4350,21 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         <KioskAdmin open={kioskOpen} onOpenChange={setKioskOpen} companyId={user.company_id} />
       )}
 
+      {ui2b && (
+        <Suspense fallback={null}>
+          <Lot3V2 c={{
+            ch: [mobileChantiersOpen, setMobileChantiersOpen, worksites, filteredClients, clientsQuery, setClientsQuery, openClientFiche, setClientOpen, setImportOpen],
+            fi: [clientFiche, setClientFiche, wsName, setWsName, wsProduct, setWsProduct, wsPhone, setWsPhone, wsEmail, setWsEmail, wsCity, setWsCity, wsAddress, setWsAddress, wsDesc, setWsDesc,
+              wsBudgetH, setWsBudgetH, wsBudgetE, setWsBudgetE, saveClientFiche, savingWs, archiveClientFiche, deleteClientFiche, wsBusy, setDocsWorksite, setTermineTarget, docsByWorksite, completionKnownReady, completionReady],
+            nc: [clientOpen, setClientOpen, resetClient, setPre, pre, createClient, cName, setCName, cProduct, setCProduct, cPhone, setCPhone, cEmail, setCEmail, cCity, setCCity, cAddress, setCAddress, cDesc, setCDesc, cSaving],
+            sa: [salariesOpen, setSalariesOpen, setWorkerOpen, setImportWorkersOpen, setLeaveOpen, pendingLeaves, pendingInvites, user?.company_id, () => { fetchData(); fetchExtras(); }, officeUsers, user,
+              roleBusyId, changeRole, salariesQuery, setSalariesQuery, workers, filteredWorkers, missingEffective, workerClosures, sendReminder, remindingId, setFicheMode, setFicheWorker, useInvitationsAttente],
+            ns: [workerOpen, setWorkerOpen, resetWorker, setPre, pre, createWorker, wFirst, setWFirst, wLast, setWLast, wEmail, setWEmail, wPhone, setWPhone, wSaving],
+          }} />
+        </Suspense>
+      )}
       {/* Salariés — administrative management */}
+      {!ui2b && (
       <Dialog open={salariesOpen} onOpenChange={setSalariesOpen}>
         <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Salariés</DialogTitle></DialogHeader>
@@ -4452,6 +4470,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       <ImportDialog
         open={importOpen}
@@ -4463,7 +4482,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
 
-      <TeamStats open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id} />
+      {ui2b ? (statsOpen && (
+        <Suspense fallback={null}>
+          <StatistiquesV2 open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id}
+            initiales={`${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase() || undefined} />
+        </Suspense>
+      )) : <TeamStats open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id} />}
 
       {aiOn && user?.role === 'admin' && (
         <AssistantBureau
@@ -4568,6 +4592,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +
           search + edit fiche + create). Same data/functions as desktop, no drag
           (placement on the grid is a desktop-only, mouse-drag interaction). */}
+      {!ui2b && (
       <Dialog open={mobileChantiersOpen} onOpenChange={setMobileChantiersOpen}>
         <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Chantiers</DialogTitle></DialogHeader>
@@ -4606,6 +4631,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Attribute a client to a worker-added intervention (clicked from the grid) */}
       <Dialog open={!!attributeTarget && !clientOpen} onOpenChange={(o) => { if (!o) setAttributeTarget(null); }}>
@@ -4664,6 +4690,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
             mois={closableMonths.map((m) => ({ mois: m, clos: closedMonths.has(m), courant: m === format(new Date(), 'yyyy-MM') }))}
             clotureBusy={closureBusy} onCloturer={(m) => askClosure(m)} onRouvrir={(m) => reopenMonth(m)}
             onUnSalarie={() => { setExportOpen(false); setExportWorkerOpen(true); }}
+            workers={workers} onChoisirSalarie={(id) => { const w = workers.find((x) => x.id === id); if (w) { setExportOpen(false); setFicheMode('hours'); setFicheWorker(w); } }}
+            onAjouterSalarie={() => { setExportOpen(false); setWorkerOpen(true); }}
           />
         </Suspense>
       )}
@@ -4795,7 +4823,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       {ui2b && (
         <Suspense fallback={null}>
           <ExportSalarieV2 open={exportWorkerOpen} onOpenChange={setExportWorkerOpen}
-            salaries={workers.map((w) => ({ id: w.id, nom: `${w.first_name} ${w.last_name}`, initiales: `${(w.first_name || '?')[0]}${(w.last_name || '')[0] || ''}`.toUpperCase(), sous: w.role === 'lead' ? 'Chef d’équipe' : undefined }))}
+            workers={workers}
             onChoisir={(id) => { const w = workers.find((x) => x.id === id); if (w) { setExportWorkerOpen(false); setFicheMode('hours'); setFicheWorker(w); } }}
             onAjouter={() => { setExportWorkerOpen(false); setWorkerOpen(true); }} />
         </Suspense>
@@ -5057,6 +5085,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       />
 
       {/* Client fiche — permanent client data (separate) */}
+      {!ui2b && (
       <Dialog open={!!clientFiche} onOpenChange={(o) => { if (!o) setClientFiche(null); }}>
         <DialogContent className="bt-skin max-w-lg max-h-[92vh] overflow-y-auto">
           <DialogHeader>
@@ -5118,6 +5147,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           )}
         </DialogContent>
       </Dialog>
+      )}
 
       <ChantierTermine
         target={termineTarget}
@@ -5139,6 +5169,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           (recherche + clients glissables + crayon d'édition + création). */}
 
       {/* Nouveau client */}
+      {!ui2b && (
       <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) { resetClient(); setPre(null); } }}>
         <DialogContent className="bt-skin max-w-md">
           <DialogHeader><DialogTitle>Nouveau client / chantier</DialogTitle></DialogHeader>
@@ -5161,8 +5192,10 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </form>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Nouveau salarié */}
+      {!ui2b && (
       <Dialog open={workerOpen} onOpenChange={(o) => { setWorkerOpen(o); if (!o) { resetWorker(); setPre(null); } }}>
         <DialogContent className="bt-skin max-w-md">
           <DialogHeader><DialogTitle>Nouveau salarié</DialogTitle></DialogHeader>
@@ -5180,6 +5213,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </form>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }

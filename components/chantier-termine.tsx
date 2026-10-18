@@ -13,7 +13,7 @@
 //
 // LE BILAN est en LECTURE SEULE (aucun bouton d'écriture) et lisible sur téléphone : une colonne.
 // Il n'invente aucun chiffre — voir lib/chantier-termine.ts et supabase/functions/_shared/chantier-termine.ts.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, CheckCircle2, AlertTriangle, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -28,6 +28,12 @@ import {
 import { readSupportSession } from '@/lib/support';
 import type { Worksite } from '@/lib/types';
 import type { TermineMode } from '@/components/chantier-termine-bar';
+import { useBureauUi2 } from '@/lib/use-bureau-ui2';
+
+// Design bureau, lot 3 A (?ui=2 sur aperçu seulement) : les trois fenêtres habillées v2, chargées en différé seulement quand le drapeau est actif.
+const TerminerV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.TerminerV2 })));
+const RouvrirV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.RouvrirV2 })));
+const BilanV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.BilanV2 })));
 
 export interface TermineTarget { ws: Worksite; mode: TermineMode }
 interface Props {
@@ -75,7 +81,7 @@ const fullDate = (d: string | null) => (d ? frDate(d) : '—');
 
 // ── Terminer ────────────────────────────────────────────────────────────────────
 
-function TerminerView({ ws, companyId, onClose, onChanged }: { ws: Worksite; companyId: string; onClose: () => void; onChanged: Props['onChanged'] }) {
+function TerminerView({ ws, companyId, onClose, onChanged, v2 }: { ws: Worksite; companyId: string; onClose: () => void; onChanged: Props['onChanged']; v2?: boolean }) {
   const today = useMemo(() => todayParis(), []);
   const [day, setDay] = useState(today);
   const [check, setCheck] = useState<FinishCheck | 'loading' | 'error'>('loading');
@@ -107,6 +113,14 @@ function TerminerView({ ws, companyId, onClose, onChanged }: { ws: Worksite; com
     }
   };
 
+  if (v2) {
+    return (
+      <Suspense fallback={null}>
+        <TerminerV2 ws={ws} today={today} day={day} setDay={setDay} dateErr={dateErr} checking={check === 'loading'} unknown={unknown} warnings={warnings} err={err} busy={busy}
+          label={finishButtonLabel(warnings)} onClose={onClose} confirm={confirm} />
+      </Suspense>
+    );
+  }
   return (
     <>
       <DialogHeader>
@@ -160,7 +174,7 @@ function TerminerView({ ws, companyId, onClose, onChanged }: { ws: Worksite; com
 
 // ── Rouvrir ─────────────────────────────────────────────────────────────────────
 
-function RouvrirView({ ws, onClose, onChanged }: { ws: Worksite; onClose: () => void; onChanged: Props['onChanged'] }) {
+function RouvrirView({ ws, onClose, onChanged, v2 }: { ws: Worksite; onClose: () => void; onChanged: Props['onChanged']; v2?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const confirm = async () => {
@@ -176,6 +190,7 @@ function RouvrirView({ ws, onClose, onChanged }: { ws: Worksite; onClose: () => 
       setBusy(false);
     }
   };
+  if (v2) return <Suspense fallback={null}><RouvrirV2 ws={ws} err={err} busy={busy} onClose={onClose} confirm={confirm} /></Suspense>;
   return (
     <>
       <DialogHeader>
@@ -205,7 +220,7 @@ const Row = ({ k, v, big, testId, note }: { k: string; v: string; big?: boolean;
   </div>
 );
 
-function BilanView({ ws, companyId, supportMode }: { ws: Worksite; companyId: string; supportMode: boolean }) {
+function BilanView({ ws, companyId, supportMode, v2 }: { ws: Worksite; companyId: string; supportMode: boolean; v2?: () => void }) {
   const [data, setData] = useState<BilanData | 'loading' | 'error'>('loading');
   useEffect(() => {
     let live = true;
@@ -214,6 +229,7 @@ function BilanView({ ws, companyId, supportMode }: { ws: Worksite; companyId: st
     return () => { live = false; };
   }, [ws.id, companyId, supportMode]);
 
+  if (v2) return <Suspense fallback={null}><BilanV2 ws={ws} data={data} onClose={v2} f={{ fmtH, fmtEur, frDate }} /></Suspense>; // v2 : `v2` = fermer
   if (data === 'loading') return <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Calcul…</div>;
   if (data === 'error') return <div className="bt-ct-empty" data-testid="bl-erreur">Bilan illisible pour le moment. Réessayez — mieux vaut rien qu’un chiffre faux.</div>;
 
@@ -336,6 +352,15 @@ export default function ChantierTermine({ target, companyId, onClose, onChanged 
   if (target && last.current.t !== target) last.current = { t: target, n: last.current.n + 1 };
   const shown = target ?? last.current.t;
   const key = last.current.n;
+
+  // v2 : chaque vue porte sa propre fenêtre (mêmes états, mêmes gestes) ; rien n'est monté quand rien n'est demandé.
+  const ui2 = useBureauUi2();
+  if (ui2) {
+    if (!target) return null;
+    return target.mode === 'terminer' ? <TerminerView key={key} v2 ws={target.ws} companyId={companyId} onClose={onClose} onChanged={onChanged} />
+      : target.mode === 'rouvrir' ? <RouvrirView key={key} v2 ws={target.ws} onClose={onClose} onChanged={onChanged} />
+      : <BilanView key={key} v2={onClose} ws={target.ws} companyId={companyId} supportMode={supportMode} />;
+  }
 
   return (
     <Dialog open={!!target} onOpenChange={(o) => { if (!o) onClose(); }}>
