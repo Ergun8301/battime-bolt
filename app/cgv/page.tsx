@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA } from '@/lib/ippyx';
 import Link from 'next/link';
 import VitrineFonts from '@/components/vitrine-fonts';
+import IppyxSignature from '@/components/ippyx-signature';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'Conditions Générales de Vente — BEMEXO',
   description: "Conditions Générales de Vente de BEMEXO, service édité par K.HABITAT (SAS) : abonnement SaaS B2B, essai gratuit 30 jours, sans engagement.",
   // Les 4 pages légales partagent une bonne partie de leur formulation juridique
@@ -187,6 +190,7 @@ export default function CGVPage() {
           </p>
 
           <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS) · <button type="button" data-bx-cookies="">Gérer les cookies</button></div>
+          <IppyxSignature campaign="cgv" align="left" style={{ marginTop: 14 }} />
         </main>
       </div>
     </>

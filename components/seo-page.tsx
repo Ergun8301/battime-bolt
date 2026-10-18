@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import VitrineFonts from '@/components/vitrine-fonts';
+import IppyxSignature from '@/components/ippyx-signature';
 
 // Coquille de page de contenu SEO (charte BEMEXO : noir #15120F / jaune #FFC21A /
 // crème #F2EDE3, Archivo + JetBrains Mono). Réutilisée par toutes les pages
@@ -97,7 +98,7 @@ const CSS = `
 interface Crumb { label: string; href: string; }
 
 export default function SeoPage({
-  kicker, title, lede, children, crumbs = [], ctaTitle, ctaText,
+  kicker, title, lede, children, crumbs = [], ctaTitle, ctaText, campaign = 'seo',
 }: {
   kicker: string;
   title: ReactNode;
@@ -106,6 +107,8 @@ export default function SeoPage({
   crumbs?: Crumb[];
   ctaTitle?: string;
   ctaText?: string;
+  /** utm_campaign de la signature IPPYX (la page d'origine). */
+  campaign?: string;
 }) {
   return (
     <>
@@ -167,6 +170,7 @@ export default function SeoPage({
               <button type="button" data-bx-cookies="">Gérer les cookies</button>
             </nav>
           </div>
+          <IppyxSignature campaign={campaign} tone="light" style={{ padding: '0 24px 26px', marginTop: -6 }} />
         </footer>
       </div>
     </>

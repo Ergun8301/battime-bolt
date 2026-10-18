@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA } from '@/lib/ippyx';
 import SeoPage, { JsonLd } from '@/components/seo-page';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'Planning d’équipe chantier, toujours à jour — BEMEXO',
   description:
     'Affectez vos salariés aux chantiers d’un glisser-déposer, voyez qui est où et combien d’heures. Le planning BTP qui se remplit avec les heures du terrain, sans appeler personne.',
@@ -50,6 +52,7 @@ export default function Page() {
         ],
       }} />
       <SeoPage
+        campaign="fonctionnalites-planning"
         kicker="Fonctionnalité · Planning"
         crumbs={[{ label: 'Planning d’équipe', href: '/fonctionnalites/planning-equipe' }]}
         title={<>Le planning d’équipe, <em>toujours à jour.</em></>}

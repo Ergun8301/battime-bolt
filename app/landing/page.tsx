@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
+import { IPPYX_METADATA, IPPYX_ORG } from '@/lib/ippyx';
 import LandingDemoVideo from '@/components/landing-demo-video';
 import VitrineFonts from '@/components/vitrine-fonts';
 import KioskReturn from '@/components/kiosk-return';
 
 export const metadata: Metadata = {
+  ...IPPYX_METADATA,
   title: 'BEMEXO — Les heures du batiment, saisies sur le chantier',
   description:
     'Vos equipes saisissent leurs heures depuis leur telephone et envoient leur journee ; vous recuperez tout, propre et pret pour la paie. Essayez BEMEXO gratuitement pendant 30 jours.',
@@ -53,6 +55,18 @@ const LD_SOFTWARE = {
     description: 'À partir de 49 €/mois HT — essai gratuit de 30 jours, sans engagement.',
   },
   publisher: { '@type': 'Organization', name: 'BEMEXO', legalName: 'K.HABITAT' },
+  creator: IPPYX_ORG,
+};
+// WebSite : le site vitrine lui-même, réalisé par l'agence IPPYX (même crédit
+// que la signature du pied de page et la ligne des mentions légales).
+const LD_WEBSITE = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'BEMEXO',
+  url: 'https://bemexo.com',
+  inLanguage: 'fr-FR',
+  publisher: { '@type': 'Organization', name: 'BEMEXO', legalName: 'K.HABITAT' },
+  creator: IPPYX_ORG,
 };
 const LD_FAQ = {
   '@context': 'https://schema.org',
@@ -554,6 +568,7 @@ export default function LandingPage() {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_SOFTWARE) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_FAQ) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_WEBSITE) }} />
       <VitrineFonts />
       <KioskReturn />
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
