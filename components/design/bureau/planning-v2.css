@@ -41,6 +41,9 @@ button.dzp-b-actuelle { background: transparent; border: 1px solid #FFC21A; colo
 .dzp-loupe__champ { position: absolute; z-index: 46; right: 0; top: 50%; transform: translateY(-50%); width: 320px; height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 14px; border-radius: 999px; background: #25201B; border: 1px solid #FFC21A; color: #FFC21A; box-shadow: 0 10px 30px rgba(21,18,15,.3); }
 .dzp-loupe__champ input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: #F2EDE3; font-family: inherit; font-size: 13px; font-weight: 600; outline: none; }
 .dzp-loupe__champ input::placeholder { color: rgba(242,237,227,.6); }
+/* Focus : jamais de contour sur le champ interne ; c'est la pilule qui le montre (liseré fin, arrondi comme elle). */
+.dzp-recherche input:focus, .dzp-recherche input:focus-visible, .dzp-loupe__champ input:focus, .dzp-loupe__champ input:focus-visible { outline: none; box-shadow: none; }
+.dzp-loupe__champ:focus-within { box-shadow: 0 0 0 3px rgba(255,194,26,.28), 0 10px 30px rgba(21,18,15,.3); }
 .dzp-loupe__champ input::-webkit-search-cancel-button { display: none; }
 .dzp-loupe__x { width: 28px; height: 28px; flex: none; border-radius: 50%; border: 0; background: rgba(242,237,227,.12); color: #F2EDE3; cursor: pointer; font-size: 12px; }
 /* Essai et « S'abonner » : en tête de « Plus ⋯ » (la barre unique n'a plus de place pour eux). */
@@ -83,7 +86,8 @@ button.dzp-b-actuelle { background: transparent; border: 1px solid #FFC21A; colo
 .dzp-pastille-pe__s { font-weight: 900; font-size: 15px; margin-right: 2px; }
 .dzp-pastille-pe button { width: 32px; height: 32px; border-radius: 50%; border: 0; background: #25201B; color: #F2EDE3; cursor: pointer; font-family: inherit; padding: 0; }
 .dzp-pastille-pe .dzp-pastille-pe__q { width: auto; height: 32px; padding: 0 12px; border-radius: 999px; background: #FFC21A; color: #15120F; font-size: 12.5px; font-weight: 800; }
-.dzp-bureau-desk[data-plein-ecran] .dzp-zone { padding: 12px; }
+/* La pastille est en haut à droite (top 12 px, 42 px de haut) : la grille commence dessous, rien d'utile n'est masqué. */
+.dzp-bureau-desk[data-plein-ecran] .dzp-zone { padding: 62px 12px 12px; }
 
 /* ── Menus déroulants (Plus ⋯, compte) et voile sans fond ── */
 .dzp-fond-menu { position: fixed; inset: 0; z-index: 40; background: transparent; }
@@ -662,7 +666,6 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
 /* Zone de toucher : les petits boutons dessinés par la planche (S'abonner 28 px, imprimer 34 px, Replier 24 px) gardent leur dessin ;
    leur zone cliquable est de 40 px (44 px au toucher) par un pseudo-élément. */
 .dzp-essai button, .dzp-rond--petit, .dzp-replier, .dzp-deplier, .dzp-mm-essai button { position: relative; }
-.dzp-replier { position: absolute; }
 .dzp-essai button::after, .dzp-rond--petit::after, .dzp-replier::after, .dzp-deplier::after, .dzp-mm-essai button::after {
   content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, var(--dz-clic)); height: var(--dz-clic); transform: translate(-50%, -50%);
 }
@@ -789,6 +792,7 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   /* Le champ de recherche : il remplit l'espace entre « Aujourd'hui » et « Clients » (planche : flex 1, 340 px au plus). */
   .dzp-recherche { flex: 1 1 0; min-width: 44px; max-width: 340px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; border-radius: 999px; background: #FFFDF8; border: 1px solid #E3DACB; color: #8A7F70; font-size: 14px; cursor: text; }
   .dzp-recherche[data-actif], .dzp-recherche:focus-within { border-color: #15120F; }
+  .dzp-recherche:focus-within { box-shadow: 0 0 0 .5px #15120F, 0 0 0 4px rgba(255,194,26,.3); }
   .dzp-recherche__i { flex: none; font-size: 15px; line-height: 1; }
   .dzp-recherche input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: #15120F; font-family: inherit; font-size: 14px; outline: none; padding: 0; text-overflow: ellipsis; }
   .dzp-recherche input::placeholder { color: #8A7F70; }
@@ -796,9 +800,18 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-recherche .dzp-loupe__x { margin-right: -10px; background: #EFE7D9; color: #15120F; }
 
   /* ── « Replier ▴ » et le bandeau de chiffres (les quatre tuiles du 1a, posées sous la ligne de semaine) ── */
-  .dzp-cockpit__replier { display: flex; justify-content: flex-end; padding: 0 24px 6px; margin-top: -6px; }
-  .dzp-cockpit .dzp-replier { position: relative; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid #D6CBB7; background: transparent; font-family: inherit; font-size: 12px; font-weight: 800; color: #5B534A; cursor: pointer; display: inline-flex; align-items: center; }
-  .dzp-chiffres--ligne { position: static; padding: 0 24px 18px; background: transparent; border: 0; box-shadow: none; }
+    /* « Replier ▴ » / « Déplier ▾ » : même pilule contour dans les deux états, toujours juste avant « ✦ Assistant ». */
+  .dzp-noire .dzp-b-pilule--repli, .dzp-noire .dzp-b-pilule--repli[aria-expanded] { border-color: rgba(242,237,227,.2); color: #F2EDE3; background: transparent; }
+  .dzp-noire .dzp-b-pilule--repli:hover { border-color: rgba(255,194,26,.6); }
+  .dzp-noire[data-replie] .dzp-b-pilule--repli { margin-right: 4px; } /* la barre repliée resserre ses boutons (8 px au lieu de 10, deux écarts) : la pilule garde son bord droit */
+  .dzp-chiffres--ligne { position: static; padding: 0 24px 18px; background: transparent; border: 0; box-shadow: none; grid-template-columns: 2fr 1fr 1fr 1fr; }
+  /* Tuile « Heures envoyées » : le titre tient sur une ligne, les sept barres se partagent la place qui reste (jamais au-delà du bord droit). */
+  .dzp-bureau-desk .dzp-tuile--sombre { min-width: 0; }
+  .dzp-tuile--sombre > .dzp-total { flex: 0 0 auto; min-width: 0; }
+  .dzp-bureau-desk .dzp-tuile--sombre .dzp-tuile__k { white-space: nowrap; }
+  .dzp-bureau-desk .dzp-barres { flex: 1 1 0; min-width: 0; gap: 6px; }
+  .dzp-bureau-desk .dzp-barre { flex: 1 1 0; min-width: 0; }
+  .dzp-bureau-desk .dzp-barre__n, .dzp-bureau-desk .dzp-barre__l { max-width: 100%; overflow: hidden; text-overflow: clip; letter-spacing: -.02em; }
   .dzp-chiffres--ligne button.dzp-tuile { cursor: pointer; }
   .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) { top: 60px; }
   .dzp-haut--1a .dzp-pieces { top: 68px; right: 24px; }
@@ -807,7 +820,7 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-zone { flex: 1; padding: 0 24px 24px; min-width: 0; }
   .dzp-defile { border-radius: 18px; }
   .dzp-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; background: #FFFDF8; border: 1px solid #E3DACB; border-radius: 18px; overflow: hidden; }
-  .dzp-table col:first-child { width: 236px; }
+  .dzp-table col:first-child { width: 200px; }
   .dzp-th-nom, .dzp-th-jour { border-bottom: 2px solid #15120F; }
   .dzp-th-nom { position: relative; text-align: left; padding: 14px 16px; font-family: var(--dz-font-chiffres); font-size: 10.5px; letter-spacing: .16em; color: #5B534A; font-weight: 700; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dzp-th-jour { padding: 12px 10px; border-left: 1px solid #EFE7D9; text-align: left; vertical-align: top; font-weight: 400; background: transparent; }
@@ -821,7 +834,7 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-jour__sub { display: block; font-family: var(--dz-font-chiffres); font-size: 10.5px; color: #8A7F70; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dzp-case-sel { width: 22px; height: 22px; flex: none; align-self: center; border-radius: 6px; border: 2px solid var(--dz-encre); background: var(--dz-carte); font-size: 12px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--dz-encre); }
   .dzp-case-sel[data-on] { background: var(--dz-jaune); }
-  .dzp-td-nom { vertical-align: top; padding: 14px 16px; border-bottom: 1px solid #EFE7D9; }
+  .dzp-td-nom { vertical-align: top; padding: 12px 14px; border-bottom: 1px solid #EFE7D9; }
   .dzp-nom-btn { display: block; width: 100%; min-width: 0; background: transparent; border: 0; padding: 0; text-align: left; cursor: pointer; font-family: inherit; color: inherit; border-radius: var(--dz-r-xs); }
   .dzp-nom-haut { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .dzp-nom-haut .dzp-avatar { width: 38px; height: 38px; font-size: 13px; color: #15120F; }
@@ -831,10 +844,11 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-table .dzp-etat { font-family: var(--dz-font-chiffres); font-size: 11px; color: #17663F; }
   .dzp-table .dzp-etat[data-ton="attente"] { color: #C2410C; }
   .dzp-table .dzp-etat[data-ton="absent"] { color: var(--dz-texte-2); }
-  .dzp-heures { margin-top: 12px; display: flex; flex-direction: column; gap: 5px; }
-  .dzp-jauge { height: 6px; border-radius: 3px; background: #EFE7D9; overflow: hidden; }
+  /* Jauge et « 11 / 35 h » sur la même ligne : barre à gauche, chiffres à droite en petit. */
+  .dzp-heures { margin-top: 10px; display: flex; align-items: center; gap: 8px; }
+  .dzp-jauge { flex: 1 1 auto; min-width: 0; height: 6px; border-radius: 3px; background: #EFE7D9; overflow: hidden; }
   .dzp-jauge span { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #FFC21A, #FF8A3D); }
-  .dzp-heures__t { font-family: var(--dz-font-chiffres); font-size: 10.5px; color: #5B534A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dzp-heures__t { flex: none; font-family: var(--dz-font-chiffres); font-size: 10px; color: #5B534A; white-space: nowrap; }
   .dzp-td { position: relative; vertical-align: top; padding: 6px; border-bottom: 1px solid #EFE7D9; border-left: 1px solid #EFE7D9; height: 112px; }
   .dzp-td[data-auj] { background: #FFF6DB; }
   .dzp-td[data-clos] { background: var(--dz-cloture-fond); }
@@ -864,7 +878,11 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-absence .dzp-case-sel { position: absolute; top: 6px; right: 6px; }
   /* Bulle du lot 1 aux mesures de la carte 1a (`styleItem`) : padding 8/9/9/13, rayon 12, liseré 5 px, titre 800 13 px, sous-titre 11,5, horaire mono 11,5, étiquettes mono 9,5. */
   .dzp-table .dzp-bulle-wrap, .dzp-table .dzp-prise { border-radius: 12px; }
-  .dzp-table .dzp-bulle { padding: 8px 9px 9px 13px; gap: 3px; border-radius: 12px; }
+  .dzp-table .dzp-bulle { padding: 6px 8px 7px 12px; gap: 2px; border-radius: 12px; }
+  /* Une ligne pour l'horaire et pour chaque étiquette, coupée par « … » (le texte complet est dans l'infobulle). */
+  .dzp-table .dzp-bulle__heure { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.02em; }
+  .dzp-table .dzp-etiquettes { flex-wrap: nowrap; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 1px; min-width: 0; }
+  .dzp-table .dzp-etiquette { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dzp-table .dzp-bulle[data-etat="prevue"][data-creneau="matin"], .dzp-table .dzp-bulle[data-etat="a-envoyer"][data-creneau="matin"] { background: #DDEBFA; }
   .dzp-table .dzp-bulle[data-etat="prevue"][data-creneau="apres-midi"], .dzp-table .dzp-bulle[data-etat="a-envoyer"][data-creneau="apres-midi"] { background: #FCE3CF; }
   .dzp-table .dzp-bulle[data-etat="prevue"][data-creneau="soir"], .dzp-table .dzp-bulle[data-etat="a-envoyer"][data-creneau="soir"] { background: #E8DCF6; }
@@ -884,7 +902,7 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-table .dzp-bulle__sous { font-size: 11.5px; }
   .dzp-table .dzp-bulle__heure { font-size: 11.5px; }
   .dzp-table .dzp-bulle__docs { font-size: 10px; }
-  .dzp-table .dzp-etiquette { font-size: 9.5px; letter-spacing: .08em; padding: 3px 6px; border-radius: 5px; line-height: 1.2; }
+  .dzp-table .dzp-etiquette { font-size: 9.5px; letter-spacing: .08em; padding: 2px 5px; border-radius: 5px; line-height: 1.2; }
   .dzp-table .dzp-etiquette[data-ton="a-envoyer"] { background: #FFE1CC; color: #9A3412; }
   .dzp-table .dzp-etiquette[data-ton="retiree"] { background: #E6DDCD; color: #5B534A; }
   .dzp-table .dzp-etiquette[data-ton="ajoutee"] { background: #FFE1CC; color: #9A3412; }
@@ -903,9 +921,16 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-legende[data-toujours] { margin-top: 14px; background: transparent; border: 0; padding: 0; gap: 8px 18px; font-size: 12px; color: #5B534A; }
   .dzp-legende[data-toujours] .dzp-legende__t { font-size: 10.5px; letter-spacing: .16em; color: #5B534A; cursor: default; min-height: 0; }
   .dzp-legende[data-toujours] .dzp-pastille { width: 14px; height: 14px; }
+  /* « Astuce : copier une case » : le même bouton qu'avant (il réaffiche l'astuce), dessiné en petit lien au bout de la légende. */
+  .dzp-legende__astuce { margin-left: auto; display: inline-flex; }
+  .dzp-legende__astuce .bt-cp-help { position: static; width: auto; height: auto; min-height: 24px; padding: 0 2px; font-size: 12px; font-weight: 700; color: #5B534A; text-decoration: underline; text-underline-offset: 2px; border-radius: 4px; }
+  .dzp-legende__astuce .bt-cp-help:hover { color: #15120F; }
+  .dzp-legende__astuce .bt-cp-help > span { display: none; }
+  .dzp-legende__astuce .bt-cp-help::before { content: 'Astuce : copier une case'; }
+  .dzp-legende__astuce .bt-cp-help:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
 
-  /* ── Plein écran : la pastille flottante de la planche 1a, en bas à droite ── */
-  .dzp-pastille-pe[data-ordi] { top: auto; bottom: 20px; right: 20px; z-index: 46; }
+  /* ── Plein écran : la pastille flottante en haut à droite (maquette 2a), au-dessus de l'en-tête des jours ── */
+  .dzp-pastille-pe[data-ordi] { top: 12px; right: 14px; z-index: 46; }
 
   /* ── Mode replié : la grille prend toute la hauteur sous la barre noire et se resserre (8 salariés entiers à 1440 × 900) :
      bulles sans la ligne « produit · ville » (elle reste dans l'infobulle et la fiche), une ligne par texte, « + ajouter » au survol de la case. ── */
@@ -957,7 +982,7 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-semaine .dzp-pilule { height: 40px; padding: 0 11px; font-size: 13px; }
   .dzp-semaine .dzp-pilule--jaune { padding: 0 14px; }
   .dzp-recherche { height: 40px; padding: 0 12px; }
-  .dzp-cockpit__replier, .dzp-chiffres--ligne { padding-left: 16px; padding-right: 16px; }
+  .dzp-chiffres--ligne { padding-left: 16px; padding-right: 16px; }
   .dzp-zone { padding-left: 16px; padding-right: 16px; }
   .dzp-table col:first-child { width: 196px; }
   .dzp-td-nom, .dzp-th-nom { padding-left: 12px; padding-right: 12px; }
@@ -992,4 +1017,17 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-chiffres--ligne .dzp-barres { gap: 5px; min-width: 0; }
   .dzp-chiffres--ligne .dzp-barre { min-width: 0; }
   .dzp-chiffres--ligne .dzp-barre__l, .dzp-chiffres--ligne .dzp-barre__n { font-size: 9px; }
+}
+
+/* ── Assistant BEMEXO (bureau v2) : quand il ouvre un écran, le panneau se réduit en pastille ✦ (assistant-bureau.tsx) ; 200 ms, rien sous `prefers-reduced-motion`. ── */
+html[data-dz-bureau] .as-panel { transform-origin: 100% 100%; transition: transform .2s ease, opacity .2s ease, visibility 0s linear 0s; }
+html[data-dz-bureau][data-dz-as-reduit] .as-panel { transform: translate(24px, 24px) scale(.92); opacity: 0; visibility: hidden; pointer-events: none; transition: transform .2s ease, opacity .2s ease, visibility 0s linear .2s; }
+.dz-as-pastille-v2 { position: fixed; right: 20px; bottom: 20px; z-index: 71; width: 48px; height: 48px; padding: 0; border-radius: 50%; border: 0; background: #FFC21A; color: #15120F; font-family: inherit; font-size: 20px; font-weight: 800; line-height: 1; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; pointer-events: auto; box-shadow: 0 10px 30px rgba(21,18,15,.28); animation: dzAsPastille .2s ease-out; }
+.dz-as-pastille-v2:hover { box-shadow: 0 0 0 3px rgba(21,18,15,.12), 0 10px 30px rgba(21,18,15,.28); }
+.dz-as-pastille-v2:focus-visible { outline: 2px solid #15120F; outline-offset: 3px; }
+.dz-as-pastille-v2__point { position: absolute; top: 3px; right: 3px; width: 12px; height: 12px; border-radius: 50%; background: #E53935; border: 2px solid #FFC21A; }
+@keyframes dzAsPastille { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  html[data-dz-bureau] .as-panel, html[data-dz-bureau][data-dz-as-reduit] .as-panel { transition: none; }
+  .dz-as-pastille-v2 { animation: none; }
 }

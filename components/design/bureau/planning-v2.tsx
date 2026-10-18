@@ -1,7 +1,7 @@
 'use client';
 
 // Design du bureau (v2) · LE PLANNING. Ordinateur (1 024 px et plus) : maquette 1a de la planche d'essai (barre noire, ligne de semaine, bandeau de chiffres, grille du
-// lot 1), avec « Replier ▴ » et le plein écran ; tablette (768 à 1 023 px) : barre unique et grille compacte 2a ; téléphone : planche 2b.
+// lot 1), avec « Replier ▴ » (barre noire) et le plein écran ; tablette (768 à 1 023 px) : barre unique et grille compacte 2a ; téléphone : planche 2b.
 // Chargé À LA DEMANDE par admin-planning.tsx quand le drapeau `?ui=2` est actif (jamais dans le premier chargement).
 // Ce morceau ne lit rien et n'écrit rien : il reçoit de l'écran existant ses états et ses gestionnaires (contexte-v2.ts) et dessine la planche du designer.
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -31,13 +31,15 @@ const LEGENDE: { k: string; l: string }[] = [
 ];
 
 /** La légende : la planche 2a ne la dessine pas au-dessus du planning ; elle s'ouvre depuis « Plus ⋯ » › Légende, sous la grille (Échap ou « LÉGENDE ▴ » la referme). */
-function Legende({ ouverte, fermer, toujours = false }: { ouverte: boolean; fermer: () => void; toujours?: boolean }) {
+function Legende({ ouverte, fermer, toujours = false, astuce = null }: { ouverte: boolean; fermer: () => void; toujours?: boolean; astuce?: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { if (ouverte) ref.current?.scrollIntoView({ block: 'nearest' }); }, [ouverte]);
   return (
     <div className="dzp-legende" ref={ref} data-open={ouverte || toujours ? '' : undefined} data-toujours={toujours ? '' : undefined} data-testid="legende">
       {toujours ? <span className="dzp-legende__t">LÉGENDE</span> : <button type="button" className="dzp-legende__t" onClick={fermer} aria-expanded={true}>LÉGENDE ▴</button>}
       {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
+      {/* Ordinateur : « Astuce : copier une case » au bout de la légende (le « ? » d'avant, retiré de l'en-tête de la grille ; même aide). */}
+      {astuce ? <span className="dzp-legende__astuce" data-testid="legende-astuce">{astuce}</span> : null}
     </div>
   );
 }
@@ -124,6 +126,16 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     document.documentElement.setAttribute('data-dz-bureau', '');
     return () => document.documentElement.removeAttribute('data-dz-bureau');
   }, []);
+  // « Compris » sur l'astuce : le focus passe au lien « Astuce : copier une case », au bout de la légende (planning-copier.tsx) ; la page ne saute pas jusqu'à lui.
+  useEffect(() => {
+    const f = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement | null)?.closest?.('[data-testid=copy-tip-ok]')) return;
+      const x = window.scrollX; const y = window.scrollY;
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(x, y)));
+    };
+    document.addEventListener('click', f, true);
+    return () => document.removeEventListener('click', f, true);
+  }, []);
   const [pleinEcran, setPleinEcran] = useState(false);
   const [recherche, setRecherche] = useState('');
   const [legende, setLegende] = useState(false);
@@ -180,17 +192,13 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           : ordi ? (
             <>
               <div className="dzp-haut dzp-haut--1a">
-                <BarreNoire1a c={c} replie={replie} deplier={() => poserReplie(false)} recherche={recherche} setRecherche={setRecherche} />
+                <BarreNoire1a c={c} replie={replie} deplier={() => poserReplie(false)} replier={() => { setStatPanel(null); poserReplie(true); }} recherche={recherche} setRecherche={setRecherche} />
                 {!replie && <LigneSemaine1a c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} legende={() => setLegende(true)} />}
                 {c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
                 {c.statPanel === 'docs' && <ListePieces c={c} />}
               </div>
               {!replie && (
                 <section className="dzp-cockpit" aria-label="Chiffres de la semaine">
-                  <div className="dzp-cockpit__replier">
-                    <button type="button" className="dzp-replier" onClick={() => { setStatPanel(null); poserReplie(true); }} aria-expanded={true} data-testid="haut-replier"
-                      title="Masquer la ligne de semaine et les chiffres (la barre noire garde la semaine, la recherche et Exporter)">Replier ▴</button>
-                  </div>
                   <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} enLigne />
                 </section>
               )}
@@ -208,7 +216,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           <Aide c={c} />
           {ordi ? <Grille1a c={cGrille} totaux={totaux} recherche={recherche.trim()} /> : <Grille c={cGrille} totaux={totaux} recherche={recherche.trim()} />}
           {/* Ordinateur (planche 1a) : la légende est toujours posée sous la grille ; tablette (2a) : elle s'ouvre depuis « Plus ⋯ ». */}
-          <Legende ouverte={legende} toujours={ordi} fermer={() => setLegende(false)} />
+          <Legende ouverte={legende} toujours={ordi} fermer={() => setLegende(false)} astuce={ordi && c.workers.length > 0 ? c.copyTipHelpCorner : null} />
         </div>
       </div>
       <Mobile c={c} gens={gens} nbRecherche={nbRecherche} />

@@ -26,7 +26,17 @@ const ouvrir = async (largeur, hauteur, opts = {}) => {
   return r;
 };
 const recharger = async (page) => { await page.reload(); await page.waitForSelector('.dzp-table [data-testid=bubble]', { timeout: 25000 }); await page.waitForTimeout(1200); };
-const capture = async (page, nom, plein = false) => { await page.evaluate(() => document.activeElement?.blur?.()); await page.mouse.move(2, 2); await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAPTURES, nom), fullPage: plein }); };
+const capture = async (page, nom, plein = false, garderFocus = false) => { if (!garderFocus) await page.evaluate(() => document.activeElement?.blur?.()); await page.mouse.move(2, 2); await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAPTURES, nom), fullPage: plein }); };
+/** Tuile « Heures envoyées » : rien ne dépasse de la tuile (barres, chiffres, jours), aucun libellé coupé, titre sur une ligne. */
+const tuile = (page) => page.evaluate(() => {
+  const t = document.querySelector('[data-testid=bandeau] [data-testid=stat-heures]'); if (!t) return null;
+  const r = t.getBoundingClientRect(); const pd = parseFloat(getComputedStyle(t).paddingRight);
+  const dehors = [...t.querySelectorAll('*')].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && (b.right > r.right - pd + 0.5 || b.left < r.left - 0.5); }).map((e) => e.className || e.tagName);
+  const coupes = [...t.querySelectorAll('.dzp-barre__l, .dzp-barre__n')].filter((e) => e.scrollWidth > e.clientWidth + 0.5).map((e) => e.textContent);
+  const k = t.querySelector('.dzp-tuile__k'); const kr = document.createRange(); kr.selectNodeContents(k);
+  const lignes = new Set([...kr.getClientRects()].map((x) => Math.round(x.top))).size;
+  return { dehors: dehors.slice(0, 4), coupes, titre: k.textContent, lignesTitre: lignes, titreEntier: k.scrollWidth <= k.clientWidth + 0.5 };
+});
 const hScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 /** Textes qui passent à la ligne dans une zone : un nœud texte dont les boîtes de ligne n'ont pas toutes le même haut. */
 const retours = (page, sel, sauf = null) => page.evaluate(([s, sauf]) => {
@@ -92,14 +102,34 @@ const PLANCHE_LIGNE = [
   // Bandeau de chiffres (quatre tuiles) et « Replier ▴ »
   const bandeau = await page.evaluate(() => ({ tuiles: document.querySelectorAll('[data-testid=bandeau] .dzp-tuile').length, barres: document.querySelectorAll('[data-testid=bandeau] .dzp-barre').length, replier: document.querySelector('[data-testid=haut-replier]')?.innerText }));
   check(bandeau.tuiles === 4 && bandeau.barres === 7 && bandeau.replier === 'Replier ▴', `bandeau du 1a : 4 tuiles (dont les 7 barres de la semaine) et « Replier ▴ » (${JSON.stringify(bandeau)})`);
+  const t1440 = await tuile(page);
+  check(t1440 && t1440.dehors.length === 0 && t1440.coupes.length === 0 && t1440.lignesTitre === 1 && t1440.titreEntier, `1440 : tuile « Heures envoyées » sans débordement (barres et « D 18 » dedans), titre sur une ligne (${JSON.stringify(t1440)})`);
   // Grille
   const grille = await page.evaluate(() => {
     const t = document.querySelector('.dzp-table'); const s = getComputedStyle(t); const th = document.querySelector('.dzp-th-nom');
     const auj = document.querySelector('.dzp-th-jour[data-auj]');
     return { fond: s.backgroundColor, bord: s.borderTopColor, rayon: s.borderTopLeftRadius, col: Math.round(th.getBoundingClientRect().width), auj: getComputedStyle(auj).backgroundColor, n: getComputedStyle(auj.querySelector('.dzp-jour__n')).fontSize, etiq: auj.querySelector('.dzp-etiq')?.innerText, sub: auj.querySelector('.dzp-jour__sub')?.innerText };
   });
-  check(grille.fond === 'rgb(255, 253, 248)' && grille.bord === 'rgb(227, 218, 203)' && grille.rayon === '18px' && grille.col === 236 && grille.auj === 'rgb(255, 243, 204)' && grille.n === '24px' && grille.etiq === 'AUJ.' && /^\d+ interv\. · \d+ h$/.test(grille.sub || ''),
-    `grille du 1a : carte #FFFDF8, bordure #E3DACB, rayon 18, colonne salarié 236 px, jeudi #FFF3CC, numéro 24 px, AUJ., « N interv. · N h » (${JSON.stringify(grille)})`);
+  check(grille.fond === 'rgb(255, 253, 248)' && grille.bord === 'rgb(227, 218, 203)' && grille.rayon === '18px' && grille.col === 200 && grille.auj === 'rgb(255, 243, 204)' && grille.n === '24px' && grille.etiq === 'AUJ.' && /^\d+ interv\. · \d+ h$/.test(grille.sub || ''),
+    `grille du 1a : carte #FFFDF8, bordure #E3DACB, rayon 18, colonne salarié 200 px (retouche, au lieu de 236), jeudi #FFF3CC, numéro 24 px, AUJ., « N interv. · N h » (${JSON.stringify(grille)})`);
+  // Retouches (point 6) : l'en-tête dit « SALARIÉ », sans « ? » ; l'astuce est un petit lien au bout de la légende.
+  const tete = await page.evaluate(() => ({ t: document.querySelector('.dzp-th-nom').innerText.trim(), aide: document.querySelectorAll('.dzp-table thead [data-testid=copy-tip-help], .dzp-table thead .bt-cp-help').length }));
+  check(tete.t === 'SALARIÉ' && tete.aide === 0, `en-tête de la colonne : « SALARIÉ », sans « ? » (${JSON.stringify(tete)})`);
+  const lien = page.locator('[data-testid=legende] [data-testid=legende-astuce] [data-testid=copy-tip-help]');
+  const lienInfo = await lien.evaluate((e) => ({ t: getComputedStyle(e, '::before').content, nom: e.getAttribute('aria-label'), dernier: !e.closest('.dzp-legende__astuce').nextElementSibling })).catch(() => null);
+  check(!!lienInfo && /Astuce : copier une case/.test(lienInfo.t) && lienInfo.dernier && /copier une case/.test(lienInfo.nom || ''), `« Astuce : copier une case » au bout de la légende (${JSON.stringify(lienInfo)})`);
+  await lien.click(); await page.waitForTimeout(250);
+  check(await page.locator('[data-testid=copy-tip]').isVisible(), 'le lien rouvre la même aide qu’avant (astuce « Copier une case »)');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await fermerAstuce(page); await page.waitForTimeout(150);
+  const apresCompris = await page.evaluate(() => ({ y: Math.round(window.scrollY), focus: document.activeElement?.dataset.testid }));
+  check(apresCompris.y === 0 && apresCompris.focus === 'copy-tip-help', `« Compris » : le focus va au lien de la légende sans faire sauter la page (${JSON.stringify(apresCompris)})`);
+  // Retouches (point 4) : bulles compactes, une ligne par étiquette et par horaire (texte complet en infobulle) ; « 11 / 35 h » sur la ligne de la jauge.
+  const r4 = await retours(page, '.dzp-table .dzp-etiquette, .dzp-table .dzp-bulle__heure');
+  const sansTitre = await page.evaluate(() => [...document.querySelectorAll('.dzp-table .dzp-etiquette, .dzp-table .dzp-bulle__heure')].filter((e) => e.title !== e.textContent).length);
+  check(r4.length === 0 && sansTitre === 0, `bulles : étiquettes et horaires sur une ligne (coupés par « … »), texte complet en infobulle (${r4.slice(0, 4).join(' | ')}${sansTitre ? ` · ${sansTitre} sans infobulle` : ''})`);
+  const heuresL = await page.evaluate(() => [...document.querySelectorAll('.dzp-td-nom .dzp-heures')].map((h) => { const j = h.querySelector('.dzp-jauge').getBoundingClientRect(); const t = h.querySelector('.dzp-heures__t').getBoundingClientRect(); return { meme: Math.abs((j.top + j.bottom) / 2 - (t.top + t.bottom) / 2) < 6 && t.left > j.right, t: h.querySelector('.dzp-heures__t').innerText }; }));
+  check(heuresL.length === 8 && heuresL.every((x) => x.meme && /^[\d.]+ \/ 35 h$/.test(x.t)), `« N / 35 h » sur la même ligne que la jauge, à droite (${heuresL.slice(0, 2).map((x) => x.t).join(', ')})`);
   const envoyee = await page.locator('.dzp-table .dzp-bulle[data-etat=envoyee]').first().evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, h: getComputedStyle(e.querySelector('.dzp-bulle__heure')).color, txt: e.querySelector('.dzp-bulle__heure').innerText, b: e.querySelector('.dzp-bulle__bande').getBoundingClientRect().width, r: getComputedStyle(e).borderTopLeftRadius }));
   check(envoyee.bg === 'rgb(21, 18, 15)' && envoyee.h === 'rgb(255, 194, 26)' && /^✓ \d\d:\d\d–\d\d:\d\d · \dh\d\d$/.test(envoyee.txt) && envoyee.b === 5 && envoyee.r === '12px', `bulle envoyée sombre, heure jaune « ✓ 08:00–12:00 · 4h00 », liseré 5 px, rayon 12 (${JSON.stringify(envoyee)})`);
   const etats = await page.evaluate(() => [...new Set([...document.querySelectorAll('.dzp-table .dzp-bulle')].map((e) => e.dataset.etat))].sort());
@@ -133,6 +163,11 @@ const PLANCHE_LIGNE = [
 {
   const { page, ctx } = await ouvrir(1440, 900);
   await page.click('[data-testid=recherche-champ]');
+  // Retouches (point 2) : pas de rectangle de focus dans la pilule ; le focus se voit sur la pilule elle-même (liseré fin, arrondi).
+  const focus = await page.evaluate(() => { const i = document.activeElement; const s = getComputedStyle(i); const p = getComputedStyle(i.closest('.dzp-recherche')); return { champ: i.dataset.testid, outline: s.outlineStyle, ombre: s.boxShadow, bord: s.borderTopStyle, pBord: p.borderTopColor, pOmbre: p.boxShadow, pRayon: p.borderTopLeftRadius }; });
+  check(focus.champ === 'recherche-champ' && focus.outline === 'none' && focus.ombre === 'none' && focus.bord === 'none' && focus.pBord === 'rgb(21, 18, 15)' && focus.pOmbre !== 'none' && focus.pRayon === '999px',
+    `recherche au focus : champ interne sans contour ni outline, liseré #15120F + anneau doux sur la pilule arrondie (${JSON.stringify(focus)})`);
+  await capture(page, '1a-recherche-focus-1440.png', false, true);
   await page.keyboard.type('bruno'); await page.waitForTimeout(250);
   const n1 = await page.locator('.dzp-table tbody tr .dzp-nom').allInnerTexts();
   check(n1.length === 1 && n1[0] === 'Bruno Essai', `« bruno » ne garde que Bruno Essai (${n1.join(', ')})`);
@@ -152,7 +187,20 @@ const PLANCHE_LIGNE = [
 // ── « Replier ▴ » / « Déplier ▾ », mémorisé ────────────────────────────────────────────────────────────────────────────────────
 {
   const { page, ctx, erreurs } = await ouvrir(1440, 900);
-  await page.click('[data-testid=haut-replier]'); await page.waitForTimeout(300);
+  // Retouches (point 1) : « Replier ▴ » et « Déplier ▾ » sont au MÊME endroit, dans la barre noire, juste avant « ✦ Assistant », même pilule.
+  const bouton = (id) => page.evaluate((id) => {
+    const b = document.querySelector(`[data-testid=${id}]`); if (!b) return null;
+    const r = b.getBoundingClientRect(); const s = getComputedStyle(b); const suivant = b.nextElementSibling;
+    return { dansBarre: !!b.closest('[data-testid=barre-noire]'), droite: Math.round(r.right), h: Math.round(r.height), avantAssistant: suivant?.dataset.testid === 'bar-assistant', bord: s.borderTopColor, fond: s.backgroundColor, couleur: s.color, rayon: s.borderTopLeftRadius, t: b.innerText };
+  }, id);
+  const avantRepli = await bouton('haut-replier');
+  check(!!avantRepli && avantRepli.dansBarre && avantRepli.avantAssistant && avantRepli.t === 'Replier ▴' && await page.locator('.dzp-cockpit button:not(.dzp-tuile), [data-testid=barre-semaine] [data-testid=haut-replier]').count() === 0,
+    `« Replier ▴ » est dans la barre noire, juste avant « ✦ Assistant » ; plus rien sous la ligne de semaine (${JSON.stringify(avantRepli)})`);
+  await page.click('[data-testid=haut-replier]'); await page.mouse.move(2, 500); await page.waitForTimeout(300);
+  const apresRepli = await bouton('haut-deplier');
+  check(!!apresRepli && apresRepli.dansBarre && apresRepli.avantAssistant && apresRepli.droite === avantRepli.droite && apresRepli.h === avantRepli.h
+    && ['bord', 'fond', 'couleur', 'rayon'].every((k) => apresRepli[k] === avantRepli[k]),
+    `« Déplier ▾ » au même endroit (bord droit ${apresRepli && apresRepli.droite} = ${avantRepli && avantRepli.droite} px) et dans le même style (${JSON.stringify(apresRepli)})`);
   const replie = await page.evaluate(() => ({
     semaine: !!document.querySelector('[data-testid=barre-semaine]'), bandeau: !!document.querySelector('[data-testid=bandeau]'),
     compact: (document.querySelector('[data-testid=semaine-compacte]')?.innerText || '').replace(/\s+/g, ' '),
@@ -170,6 +218,9 @@ const PLANCHE_LIGNE = [
   await capture(page, '1a-replie-1440.png');
   // la loupe de la barre repliée filtre aussi
   await page.click('[data-testid=bar-recherche]'); await page.waitForTimeout(150);
+  const focusLoupe = await page.evaluate(() => { const i = document.activeElement; const s = getComputedStyle(i); const p = getComputedStyle(i.closest('.dzp-loupe__champ')); return { champ: i.dataset.testid, outline: s.outlineStyle, ombre: s.boxShadow, pilule: p.boxShadow }; });
+  check(focusLoupe.champ === 'recherche-champ' && focusLoupe.outline === 'none' && focusLoupe.ombre === 'none' && /rgba\(255, 194, 26/.test(focusLoupe.pilule),
+    `loupe repliée au focus : aucun contour sur le champ interne, anneau jaune doux sur la pilule (${JSON.stringify(focusLoupe)})`);
   await page.keyboard.type('bruno'); await page.waitForTimeout(250);
   check((await page.locator('.dzp-table tbody tr').count()) === 1, 'replié : la loupe filtre la grille (même filtre)');
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await page.waitForTimeout(150);
@@ -192,8 +243,14 @@ const PLANCHE_LIGNE = [
     pastille: (document.querySelector('[data-testid=pastille-plein-ecran]')?.innerText || '').replace(/\s+/g, ' '),
     pos: (() => { const r = document.querySelector('[data-testid=pastille-plein-ecran]')?.getBoundingClientRect(); return r ? { droite: Math.round(innerWidth - r.right), bas: Math.round(innerHeight - r.bottom) } : null; })(),
   }));
-  check(pe.reste.length === 0 && /^S-42 ← → ⤡ Quitter · Échap$/.test(pe.pastille) && pe.pos && pe.pos.droite === 20 && pe.pos.bas === 20,
-    `⤢ : tout le haut est masqué, seule reste la pastille (« ${pe.pastille} », en bas à droite comme la planche 1a : ${JSON.stringify(pe.pos)})${pe.reste.length ? ` — restent : ${pe.reste.join(', ')}` : ''}`);
+  check(pe.reste.length === 0 && /^S-42 ← → ⤡ Quitter · Échap$/.test(pe.pastille) && pe.pos && pe.pos.droite === 14,
+    `⤢ : tout le haut est masqué, seule reste la pastille (« ${pe.pastille} »)${pe.reste.length ? ` — restent : ${pe.reste.join(', ')}` : ''}`);
+  const peHaut = await page.evaluate(() => {
+    const p = document.querySelector('[data-testid=pastille-plein-ecran]').getBoundingClientRect(); const th = document.querySelector('.dzp-table thead').getBoundingClientRect(); const leg = document.querySelector('[data-testid=legende]').getBoundingClientRect();
+    return { haut: Math.round(p.top), droite: Math.round(innerWidth - p.right), basPastille: Math.round(p.bottom), hautGrille: Math.round(th.top), legende: Math.round(leg.top) };
+  });
+  check(peHaut.haut === 12 && peHaut.droite === 14 && peHaut.basPastille <= peHaut.hautGrille && peHaut.legende >= peHaut.basPastille,
+    `plein écran : pastille EN HAUT à droite (top 12, right 14), au-dessus de l'en-tête des jours, sans masquer la grille ni la légende (${JSON.stringify(peHaut)})`);
   await capture(page, '1a-pleinecran-1440.png');
   await page.keyboard.press('Escape'); await page.waitForTimeout(200);
   check(await page.locator('[data-testid=barre-semaine]').count() === 1 && await page.locator('[data-testid=pastille-plein-ecran]').count() === 0, 'Échap sort du plein écran');
@@ -224,6 +281,11 @@ const ZONES = '[data-testid=barre-noire], [data-testid=barre-semaine], [data-tes
   const elems = await ligne(page);
   const trous = elems.slice(1).map((e, i) => Math.round((e.x - elems[i].d) * 10) / 10);
   check(trous.every((g) => g <= 24 && g >= 0), `1024 : ligne de semaine sans trou ni chevauchement (écarts : ${trous.join(', ')} px)`);
+  const t1024 = await tuile(page);
+  check(t1024 && t1024.dehors.length === 0 && t1024.coupes.length === 0, `1024 : tuile « Heures envoyées » sans débordement, aucun libellé de barre coupé (${JSON.stringify(t1024)})`);
+  check(Math.round(await page.evaluate(() => document.querySelector('.dzp-th-nom').getBoundingClientRect().width)) === 176, '1024 : colonne salarié de 176 px (comme avant)');
+  const repli1024 = await page.evaluate(() => { const b = document.querySelector('[data-testid=haut-replier]'); const n = document.querySelector('[data-testid=barre-noire]').getBoundingClientRect(); const r = b?.getBoundingClientRect(); return r ? { dansBarre: !!b.closest('[data-testid=barre-noire]'), dedans: r.right <= n.right && r.top >= n.top && r.bottom <= n.bottom } : null; });
+  check(!!repli1024 && repli1024.dansBarre && repli1024.dedans, `1024 : « Replier ▴ » tient dans la barre noire (${JSON.stringify(repli1024)})`);
   await capture(page, '1a-1024.png');
   await page.click('[data-testid=haut-replier]'); await page.waitForTimeout(300);
   const r2 = await retours(page, ZONES);
@@ -238,6 +300,9 @@ const ZONES = '[data-testid=barre-noire], [data-testid=barre-semaine], [data-tes
   const r = await retours(page, '[data-testid=barre-noire], [data-testid=barre-semaine]');
   const d = await debords(page, '[data-testid=barre-noire], [data-testid=barre-semaine]');
   check(r.length === 0 && d.length === 0 && await hScroll(page) <= 0, `1280 : barre et ligne de semaine sur une ligne, sans débord (${[...r, ...d].slice(0, 6).join(' | ')})`);
+  const t1280 = await tuile(page);
+  check(t1280 && t1280.dehors.length === 0 && t1280.coupes.length === 0 && t1280.lignesTitre === 1 && t1280.titreEntier, `1280 : tuile « Heures envoyées » sans débordement, titre sur une ligne (${JSON.stringify(t1280)})`);
+  check(Math.round(await page.evaluate(() => document.querySelector('.dzp-th-nom').getBoundingClientRect().width)) === 200, '1280 : colonne salarié de 200 px');
   await ctx.close();
 }
 
@@ -246,6 +311,108 @@ const ZONES = '[data-testid=barre-noire], [data-testid=barre-semaine], [data-tes
   const { page, ctx } = await ouvrir(834, 1112, { tactile: true });
   const t = await page.evaluate(() => ({ unique: !!document.querySelector('.dzp-barre2a'), semaine: !!document.querySelector('.dzp-semaine'), cartes: document.querySelectorAll('.dzp-table .dzp-carte').length, mise: document.querySelector('.dzp-bureau-desk')?.dataset.mise }));
   check(t.unique && !t.semaine && t.cartes > 10 && t.mise === '2a' && await hScroll(page) <= 0, `834 : la tablette garde la barre unique et la grille compacte 2a, sans défilement horizontal (${JSON.stringify(t)})`);
+  await page.click('[data-testid=bar-plein-ecran]'); await page.waitForTimeout(250);
+  const peT = await page.evaluate(() => { const p = document.querySelector('[data-testid=pastille-plein-ecran]').getBoundingClientRect(); const th = document.querySelector('.dzp-table thead').getBoundingClientRect(); return { haut: Math.round(p.top), droite: Math.round(innerWidth - p.right), dessus: p.bottom <= th.top }; });
+  check(peT.haut === 12 && peT.droite === 14 && peT.dessus, `834 : plein écran, pastille en haut à droite (top 12, right 14) au-dessus de l'en-tête des jours (${JSON.stringify(peT)})`);
+  await ctx.close();
+}
+{
+  const { page, ctx } = await ouvrir(390, 844, { tactile: true });
+  const tel = await page.evaluate(() => ({ bouton: [...document.querySelectorAll('[data-testid=bar-plein-ecran]')].some((e) => e.getBoundingClientRect().width > 0) }));
+  await page.keyboard.press('f'); await page.waitForTimeout(200);
+  const pastilleVue = await page.evaluate(() => [...document.querySelectorAll('[data-testid=pastille-plein-ecran]')].some((e) => e.getBoundingClientRect().width > 0));
+  check(!tel.bouton && !pastilleVue, `390 : pas de plein écran au téléphone (ni bouton ⤢, ni pastille, même avec la touche F) (${JSON.stringify({ ...tel, pastilleVue })})`);
+  await ctx.close();
+}
+
+// ── Assistant BEMEXO : un bouton d'action (« Salariés → ») ou un lien « ouvrir: » réduit le panneau en pastille ✦ ; la conversation reste ──────
+/** Ouvre l'assistant (réponse simulée de la fonction `assistant`), pose une question, attend la réponse avec son bouton. */
+const assistantRepond = async (page, ctx, lien) => {
+  await ctx.route('**/functions/v1/assistant', (r) => r.fulfill({ json: { answer: 'La liste de vos salariés est dans « Salariés ».', links: [lien], remaining: 42 } }));
+  await page.click('[data-testid=bar-assistant]');
+  await page.waitForSelector('[data-testid=assistant-panel] textarea', { timeout: 15000 });
+  await page.fill('[data-testid=assistant-panel] textarea', 'Où sont mes salariés ?');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-testid=assistant-panel] .as-links button', { timeout: 15000 });
+};
+const etatAssistant = (page) => page.evaluate(() => {
+  const p = document.querySelector('[data-testid=assistant-panel]'); const s = p ? getComputedStyle(p) : null;
+  const pa = document.querySelector('[data-testid=assistant-pastille]'); const r = pa?.getBoundingClientRect();
+  const fen = [...document.querySelectorAll('[role=dialog]')].filter((d) => d.getBoundingClientRect().width > 0);
+  const pr = p?.getBoundingClientRect();
+  const chevauche = !!pr && s.visibility !== 'hidden' && fen.some((d) => { const b = d.getBoundingClientRect(); return b.left < pr.right && b.right > pr.left; });
+  return {
+    panneauVisible: !!p && s.visibility !== 'hidden' && s.opacity !== '0', messages: document.querySelectorAll('[data-testid=assistant-panel] .as-bot, [data-testid=assistant-panel] .as-me').length,
+    pastille: r ? { l: Math.round(r.width), h: Math.round(r.height), droite: Math.round(innerWidth - r.right), bas: Math.round(innerHeight - r.bottom), fond: getComputedStyle(pa).backgroundColor, point: !!pa.querySelector('.dz-as-pastille-v2__point') } : null,
+    fenetres: fen.length, salaries: fen.some((d) => /Salariés/.test(d.innerText)), chevauche,
+  };
+});
+{
+  const { page, ctx, erreurs } = await ouvrir(1440, 900);
+  await assistantRepond(page, ctx, { label: 'Salariés', action: 'salaries' });
+  const avant = await etatAssistant(page);
+  await page.click('[data-testid=assistant-panel] .as-links button'); await page.waitForTimeout(600);
+  const apres = await etatAssistant(page);
+  check(avant.panneauVisible && !apres.panneauVisible && apres.salaries && !apres.chevauche,
+    `« Salariés → » : la fenêtre Salariés s'ouvre seule, le panneau de l'assistant se réduit (plus de chevauchement) (${JSON.stringify({ avant: avant.panneauVisible, apres })})`);
+  check(!!apres.pastille && apres.pastille.l === 48 && apres.pastille.h === 48 && apres.pastille.droite === 20 && apres.pastille.bas === 20 && apres.pastille.fond === 'rgb(255, 194, 26)' && !apres.pastille.point,
+    `pastille ✦ de 48 px, jaune, en bas à droite (${JSON.stringify(apres.pastille)})`);
+  await capture(page, '1a-assistant-salaries-1440.png');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+  const ferme = await etatAssistant(page);
+  check(ferme.fenetres === 0 && !ferme.panneauVisible && !!ferme.pastille, `fermer la fenêtre ne rouvre pas l'assistant : la pastille reste (${JSON.stringify(ferme)})`);
+  await page.click('[data-testid=assistant-pastille]'); await page.waitForTimeout(400);
+  const repris = await etatAssistant(page);
+  check(repris.panneauVisible && repris.messages === avant.messages && !repris.pastille, `un clic sur la pastille rouvre le panneau, conversation intacte (${repris.messages} messages)`);
+  // Lien « ouvrir: » (registre d'ouverture, inchangé) : même réduction.
+  await page.fill('[data-testid=assistant-panel] textarea', 'Ouvre les salariés');
+  await ctx.unroute('**/functions/v1/assistant');
+  await ctx.route('**/functions/v1/assistant', (r) => r.fulfill({ json: { answer: 'Voici la liste.', links: [{ label: 'Ouvrir la liste des salariés', action: 'ouvrir:salaries.liste' }], remaining: 41 } }));
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=assistant-panel] .as-links button').length >= 2, null, { timeout: 15000 });
+  await page.locator('[data-testid=assistant-panel] .as-links button').last().click(); await page.waitForTimeout(600);
+  const ouvrir2 = await etatAssistant(page);
+  check(!ouvrir2.panneauVisible && ouvrir2.salaries && !!ouvrir2.pastille, `lien « ouvrir:salaries.liste » : même réduction en pastille (${JSON.stringify(ouvrir2)})`);
+  check(erreurs.length === 0, `assistant : aucune erreur de page (${erreurs.join(' | ')})`);
+  await ctx.close();
+}
+{
+  // Une réponse arrive pendant que le panneau est réduit : petit point sur la pastille ; il disparaît à la réouverture.
+  const { page, ctx } = await ouvrir(1440, 900);
+  await assistantRepond(page, ctx, { label: 'Salariés', action: 'salaries' });
+  await ctx.unroute('**/functions/v1/assistant');
+  await ctx.route('**/functions/v1/assistant', async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.fulfill({ json: { answer: 'Autre réponse.', links: [], remaining: 40 } }); });
+  await page.fill('[data-testid=assistant-panel] textarea', 'Et les congés ?');
+  await page.keyboard.press('Enter'); await page.waitForTimeout(150);
+  await page.locator('[data-testid=assistant-panel] .as-links button').first().click(); await page.waitForTimeout(300);
+  const sansPoint = await etatAssistant(page);
+  await page.waitForTimeout(2200);
+  const avecPoint = await etatAssistant(page);
+  await page.click('[data-testid=assistant-pastille]'); await page.waitForTimeout(400);
+  const rouvert = await etatAssistant(page);
+  check(!!sansPoint.pastille && !sansPoint.pastille.point && !!avecPoint.pastille && avecPoint.pastille.point && rouvert.panneauVisible && !rouvert.pastille,
+    `réponse non lue pendant la réduction : point sur la pastille, effacé à la réouverture (${JSON.stringify({ avant: sansPoint.pastille, apres: avecPoint.pastille })})`);
+  await ctx.close();
+}
+{
+  // Mouvement réduit : pas d'animation (ni sur le panneau, ni sur la pastille).
+  const { page, ctx } = await ouvrir(1440, 900);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await assistantRepond(page, ctx, { label: 'Salariés', action: 'salaries' });
+  const anim = await page.evaluate(() => getComputedStyle(document.querySelector('[data-testid=assistant-panel]')).transitionDuration);
+  await page.click('[data-testid=assistant-panel] .as-links button'); await page.waitForTimeout(300);
+  const animP = await page.evaluate(() => getComputedStyle(document.querySelector('[data-testid=assistant-pastille]')).animationName);
+  check(/^0s(, 0s)*$/.test(anim) && animP === 'none', `prefers-reduced-motion : aucune animation (${anim} · ${animP})`);
+  await ctx.close();
+}
+{
+  // Sans ?ui=2 : le bureau d'avant, aucune pastille (l'assistant reste ouvert à côté de la fenêtre, comme aujourd'hui).
+  sim.reinitialiser();
+  const { page, ctx } = await sim.page({ ui: null, largeur: 1440, hauteur: 900 });
+  await assistantRepond(page, ctx, { label: 'Salariés', action: 'salaries' });
+  await page.click('[data-testid=assistant-panel] .as-links button'); await page.waitForTimeout(600);
+  const v1 = await etatAssistant(page);
+  check(v1.panneauVisible && !v1.pastille, `sans ?ui=2 : comportement d'avant, panneau visible et aucune pastille (${JSON.stringify(v1)})`);
   await ctx.close();
 }
 

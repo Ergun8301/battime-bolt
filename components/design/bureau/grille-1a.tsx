@@ -48,7 +48,7 @@ export function Grille1a({ c, totaux, recherche = '' }: { c: PlanningCtx; totaux
         <colgroup><col /><col /><col /><col /><col /><col /><col /><col /></colgroup>
         <thead>
           <tr>
-            <th className="dzp-th-nom" scope="col">Salarié · heures S-{format(c.currentWeekStart, 'I')}{c.workers.length > 0 && c.copyTipHelpCorner}</th>
+            <th className="dzp-th-nom" scope="col">Salarié</th>
             {c.weekDays.map((day, i) => {
               const d = dates[i];
               const auj = d === c.todayStr;
@@ -91,9 +91,9 @@ function Ligne({ c, worker, dates, totaux }: { c: PlanningCtx; worker: User; dat
   const t = totaux.parSalarie[worker.id] || { envoyees: 0, prevues: 0 };
   const idsLigne: string[] = c.selectMode ? c.selectableIn((p: { user_id: string }) => p.user_id === worker.id) : [];
   const coche = idsLigne.length > 0 && idsLigne.every((id) => c.selOn.has(id));
-  // Planche 1a (`rows`) : « 20.5 / 35 h envoyées », jauge = heures envoyées sur 35 h ; le détail d'avant (prévues, absence) reste dans l'infobulle.
+  // Planche 1a (`rows`) : « 20.5 / 35 h » sur la ligne de la jauge (heures envoyées sur 35 h) ; « envoyées » et le détail d'avant (prévues, absence) restent dans l'infobulle.
   const detail = t.envoyees === 0 && t.prevues === 0 && absAuj ? `0:00 h · ${LIB_ABS_COURT[absAuj] || absAuj}` : `${hm(t.envoyees)} h envoyées${t.prevues > 0 ? ` · +${hm(t.prevues)} prévues` : ''}`;
-  const heures = `${Math.round((t.envoyees / 60) * 10) / 10} / 35 h envoyées`;
+  const heures = `${Math.round((t.envoyees / 60) * 10) / 10} / 35 h`;
   const pct = Math.min(100, Math.round((t.envoyees / 60 / 35) * 100));
   return (
     <tr>
@@ -118,7 +118,7 @@ function Ligne({ c, worker, dates, totaux }: { c: PlanningCtx; worker: User; dat
             </span>
           </button>
         </div>
-        <div className="dzp-heures" title={`${heures} — ${detail}`}>
+        <div className="dzp-heures" title={`${heures} envoyées — ${detail}`}>
           <div className="dzp-jauge" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
           <span className="dzp-heures__t">{heures}</span>
         </div>

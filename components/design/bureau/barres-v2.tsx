@@ -233,8 +233,8 @@ function datesCourtes(debut: Date) {
   return `${format(debut, meme ? 'd' : 'd MMM', { locale: fr })}–${format(fin, 'd MMM', { locale: fr })}`;
 }
 
-export function BarreNoire1a({ c, replie, deplier, recherche, setRecherche }: {
-  c: PlanningCtx; replie: boolean; deplier: () => void; recherche: string; setRecherche: (v: string) => void;
+export function BarreNoire1a({ c, replie, deplier, replier, recherche, setRecherche }: {
+  c: PlanningCtx; replie: boolean; deplier: () => void; replier: () => void; recherche: string; setRecherche: (v: string) => void;
 }) {
   const conges = c.pendingLeaves;
   return (
@@ -266,9 +266,12 @@ export function BarreNoire1a({ c, replie, deplier, recherche, setRecherche }: {
           <>
             <Loupe q={recherche} setQ={setRecherche} />
             <button type="button" className="dzp-b-pilule dzp-b-pilule--jaune" onClick={() => c.setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter">↓ Exporter</button>
-            <button type="button" className="dzp-b-pilule" onClick={deplier} aria-expanded={false} data-testid="haut-deplier" title="Afficher la ligne de semaine et les chiffres">Déplier ▾</button>
           </>
         )}
+        {/* « Replier ▴ » / « Déplier ▾ » : toujours ici, juste avant « ✦ Assistant », même pilule dans les deux états. */}
+        {replie
+          ? <button type="button" className="dzp-b-pilule dzp-b-pilule--repli" onClick={deplier} aria-expanded={false} data-testid="haut-deplier" title="Afficher la ligne de semaine et les chiffres">Déplier ▾</button>
+          : <button type="button" className="dzp-b-pilule dzp-b-pilule--repli" onClick={replier} aria-expanded={true} data-testid="haut-replier" title="Masquer la ligne de semaine et les chiffres (la barre noire garde la semaine, la recherche et Exporter)">Replier ▴</button>}
         {c.aiOn && c.isAdmin && (
           <button type="button" className="dzp-assistant" onClick={() => c.setAssistantOpen(true)} title="Assistant BEMEXO" aria-label="Assistant BEMEXO" data-testid="bar-assistant" data-guide="bureau-nav.assistant">✦<span className="dzp-assistant__l">{'\u00a0'}Assistant</span></button>
         )}
@@ -287,7 +290,7 @@ export function BarreNoire1a({ c, replie, deplier, recherche, setRecherche }: {
 /**
  * La LIGNE DE SEMAINE du 1a, dans l'ordre exact de la planche : SEMAINE ACTUELLE / S-42 12 – 18 octobre 2026, ← →, Aujourd'hui, le champ « Chercher un salarié,
  * un chantier… », puis Clients, Salariés (pastille), Sélectionner, | , Plus ⋯ (pastille rouge des réserves), ↓ Exporter, ⤢. Ce que la planche ne montre pas ici
- * (Réserves, Borne, Imprimer, Coût chantiers…) est dans « Plus ⋯ ». « Replier ▴ » (à la place de « Replier les chiffres » de la planche) est posé sous la ligne.
+ * (Réserves, Borne, Imprimer, Coût chantiers…) est dans « Plus ⋯ ». « Replier ▴ » (à la place de « Replier les chiffres » de la planche) est dans la barre noire.
  */
 export function LigneSemaine1a({ c, recherche, setRecherche, pleinEcran, legende }: {
   c: PlanningCtx; recherche: string; setRecherche: (v: string) => void; pleinEcran: () => void; legende: () => void;
@@ -344,7 +347,7 @@ export function LigneSemaine1a({ c, recherche, setRecherche, pleinEcran, legende
 
 /** Plein écran : seule reste la pastille flottante de la planche (S-42, ←, →, « ⤡ Quitter · Échap »). */
 export function PastillePleinEcran({ c, quitter, ordi = false }: { c: PlanningCtx; quitter: () => void; ordi?: boolean }) {
-  // Ordinateur (planche 1a) : en bas à droite ; tablette (planche 2a) : en haut à droite.
+  // Ordinateur et tablette : en haut à droite (maquette 2a de la planche), au-dessus de l'en-tête des jours.
   return (
     <div className="dzp-pastille-pe dz-sombre" role="toolbar" aria-label="Plein écran" data-testid="pastille-plein-ecran" data-ordi={ordi ? '' : undefined}>
       <span className="dzp-pastille-pe__s">S-{getISOWeek(c.currentWeekStart)}</span>

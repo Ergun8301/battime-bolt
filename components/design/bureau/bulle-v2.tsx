@@ -94,10 +94,10 @@ export function CarteBulle({ d, sel, grand, raison, planche1a = false }: { d: Do
         {sel && <CaseCoche sel={sel} />}
       </div>
       {b.sous && <span className="dzp-bulle__sous">{b.sous}</span>}
-      <span className="dzp-bulle__heure" data-testid="bubble-hours">{b.heure}</span>
+      <span className="dzp-bulle__heure" data-testid="bubble-hours" title={b.heure}>{b.heure}</span>
       {b.etiquettes.length > 0 && (
         <div className="dzp-etiquettes">
-          {b.etiquettes.map((e) => <span key={e.texte} className="dzp-etiquette" data-ton={e.ton} data-testid={e.ton === 'direct' ? 'bubble-live' : undefined}>{e.texte}</span>)}
+          {b.etiquettes.map((e) => <span key={e.texte} className="dzp-etiquette" data-ton={e.ton} data-testid={e.ton === 'direct' ? 'bubble-live' : undefined} title={e.texte}>{e.texte}</span>)}
         </div>
       )}
       {raison ? <span className="dzp-bulle__raison" role="status">{raison}</span> : null}
