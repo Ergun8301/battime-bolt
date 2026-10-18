@@ -38,7 +38,7 @@ function nomAbsence(c: PlanningCtx, worker: User, date: string) {
   return { type, libelle: LIB_ABS[type] || type, sous };
 }
 
-export function Grille1a({ c, totaux, recherche = '' }: { c: PlanningCtx; totaux: TotauxSemaine; recherche?: string }) {
+export function Grille1a({ c, totaux, recherche = '', navPE = null }: { c: PlanningCtx; totaux: TotauxSemaine; recherche?: string; navPE?: ReactNode }) {
   const dates = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const toutCoche = (ids: string[]) => ids.length > 0 && ids.every((id) => c.selOn.has(id));
   const charge = chargeJours(c, dates, totaux);
@@ -48,7 +48,7 @@ export function Grille1a({ c, totaux, recherche = '' }: { c: PlanningCtx; totaux
         <colgroup><col /><col /><col /><col /><col /><col /><col /><col /></colgroup>
         <thead>
           <tr>
-            <th className="dzp-th-nom" scope="col">Salarié</th>
+            <th className="dzp-th-nom" scope="col">{navPE ? <><span className="dzp-th-nom__pe-k">Salarié</span>{navPE}</> : 'Salarié'}</th>
             {c.weekDays.map((day, i) => {
               const d = dates[i];
               const auj = d === c.todayStr;

@@ -85,7 +85,7 @@ function nomAbsence(c: PlanningCtx, worker: User, date: string) {
   return { type, libelle: LIB_ABS[type] || type, sous };
 }
 
-export function Grille({ c, totaux, recherche = '' }: { c: PlanningCtx; totaux: TotauxSemaine; recherche?: string }) {
+export function Grille({ c, totaux, recherche = '', navPE = null }: { c: PlanningCtx; totaux: TotauxSemaine; recherche?: string; navPE?: ReactNode }) {
   const dates = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const toutCoche = (ids: string[]) => ids.length > 0 && ids.every((id) => c.selOn.has(id));
   const charge = chargeJours(c, dates, totaux);
@@ -98,7 +98,7 @@ export function Grille({ c, totaux, recherche = '' }: { c: PlanningCtx; totaux: 
           <tr>
             <th className="dzp-th-nom" scope="col">
               <span className="dzp-th-nom__k">Salarié</span>
-              <span className="dzp-th-nom__h"><b>{Math.round(totaux.envoyees / 60)} h</b><span>envoyées</span></span>
+              {navPE || <span className="dzp-th-nom__h"><b>{Math.round(totaux.envoyees / 60)} h</b><span>envoyées</span></span>}
               {c.workers.length > 0 && c.copyTipHelpCorner}
             </th>
             {c.weekDays.map((day, i) => {

@@ -83,6 +83,26 @@ export default function AssistantBureau({ user, open, onOpenChange, onNavigate, 
     return () => { el.removeEventListener('pointerdown', stop); el.removeEventListener('focusin', stop); };
   }, [reduit, open]);
 
+  // Bureau v2 : un clic ou un toucher EN DEHORS du panneau le réduit en pastille ✦ (conversation gardée), au lieu de le laisser par-dessus le planning.
+  // Ne compte pas : la pastille, le bouton ✦ de la barre, une fenêtre / un menu / un message ouverts par-dessus (une question de l'assistant y est souvent).
+  useEffect(() => {
+    if (!open || reduit || !reductionActive()) return;
+    const f = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || !t.isConnected || t.closest('[data-testid=assistant-panel], [data-testid=assistant-pastille], [data-testid=bar-assistant], [role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper], [data-sonner-toaster]')) return;
+      setReduit(true);
+    };
+    document.addEventListener('pointerdown', f, true);
+    return () => document.removeEventListener('pointerdown', f, true);
+  }, [open, reduit]);
+  // Réduit : le bouton ✦ de la barre rouvre le panneau (comme la pastille).
+  useEffect(() => {
+    if (!open || !reduit) return;
+    const f = (e: MouseEvent) => { if ((e.target as HTMLElement | null)?.closest?.('[data-testid=bar-assistant]')) { setReduit(false); setNonLu(false); } };
+    document.addEventListener('click', f, true);
+    return () => document.removeEventListener('click', f, true);
+  }, [open, reduit]);
+
   const rouvrir = () => {
     setReduit(false); setNonLu(false);
     requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid=assistant-panel] textarea, [data-testid=assistant-panel] button')?.focus({ preventScroll: true }));

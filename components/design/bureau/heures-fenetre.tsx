@@ -99,7 +99,8 @@ export function FenetreB({ open, onOpenChange, kicker, titre, sous, testId, chil
   return (
     <P.Root open={open} onOpenChange={onOpenChange}>
       <P.Portal>
-        <P.Overlay className="dz-portail dz-hb-voile" data-ton="fenetre" />
+        {/* Une question (alertdialog) : un clic à côté vaut « Annuler », comme Échap (rien ne part) ; pas pendant un envoi en cours. */}
+        <P.Overlay className="dz-portail dz-hb-voile" data-ton="fenetre" onClick={alerte ? () => { if (!document.querySelector('[role=alertdialog] .animate-spin')) onOpenChange(false); } : undefined} />
         <P.Content
           className="bt-skin dz-portail dz-hb-fenetre"
           data-tel={feuille ? 'feuille' : undefined}

@@ -28,7 +28,7 @@ interface CoqueProps {
   pied?: ReactNode;
   notePied?: ReactNode;
   testId?: string;
-  /** Rôle `alertdialog` (question qui engage) : Échap ferme, le clic sur le voile ne ferme pas. */
+  /** Rôle `alertdialog` (question qui engage) : Échap ou un clic sur le voile valent « Annuler ». */
   alerte?: boolean;
   children?: ReactNode;
   onEscapeKeyDown?: (e: KeyboardEvent) => void;
@@ -50,7 +50,7 @@ export function Coque({ open, onOpenChange, forme = 'panneau', largeur, kicker, 
   return (
     <P.Root open={open} onOpenChange={onOpenChange}>
       <P.Portal>
-        <P.Overlay className="dz-portail dz-hb-voile" data-ton={forme === 'fenetre' ? 'fenetre' : undefined} />
+        <P.Overlay className="dz-portail dz-hb-voile" data-ton={forme === 'fenetre' ? 'fenetre' : undefined} onClick={alerte ? () => { if (!document.querySelector('[role=alertdialog] .animate-spin')) onOpenChange(false); } : undefined} />
         <P.Content
           className={`bt-skin dz-portail ${forme === 'fenetre' ? 'dz-hb-fenetre' : 'dz-hb-panneau'} dz-l3-coque`}
           style={style} data-testid={testId} aria-describedby={undefined}

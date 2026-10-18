@@ -4690,6 +4690,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
             mois={closableMonths.map((m) => ({ mois: m, clos: closedMonths.has(m), courant: m === format(new Date(), 'yyyy-MM') }))}
             clotureBusy={closureBusy} onCloturer={(m) => askClosure(m)} onRouvrir={(m) => reopenMonth(m)}
             onUnSalarie={() => { setExportOpen(false); setExportWorkerOpen(true); }}
+            workers={workers} onChoisirSalarie={(id) => { const w = workers.find((x) => x.id === id); if (w) { setExportOpen(false); setFicheMode('hours'); setFicheWorker(w); } }}
+            onAjouterSalarie={() => { setExportOpen(false); setWorkerOpen(true); }}
           />
         </Suspense>
       )}
@@ -4821,7 +4823,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       {ui2b && (
         <Suspense fallback={null}>
           <ExportSalarieV2 open={exportWorkerOpen} onOpenChange={setExportWorkerOpen}
-            salaries={workers.map((w) => ({ id: w.id, nom: `${w.first_name} ${w.last_name}`, initiales: `${(w.first_name || '?')[0]}${(w.last_name || '')[0] || ''}`.toUpperCase(), sous: w.role === 'lead' ? 'Chef d’équipe' : undefined }))}
+            workers={workers}
             onChoisir={(id) => { const w = workers.find((x) => x.id === id); if (w) { setExportWorkerOpen(false); setFicheMode('hours'); setFicheWorker(w); } }}
             onAjouter={() => { setExportWorkerOpen(false); setWorkerOpen(true); }} />
         </Suspense>

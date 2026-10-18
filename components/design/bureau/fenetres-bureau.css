@@ -26,7 +26,13 @@
   flex: none; width: var(--dz-clic); height: var(--dz-clic); border-radius: var(--dz-r-pill); border: 1px solid var(--dz-trait-fort);
   background: var(--dz-carte); color: var(--dz-encre); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
-@media (pointer: coarse) { .dz-fenetre__fermer { width: var(--dz-tap); height: var(--dz-tap); } }
+/* LA croix commune : 36 px au pointeur, 44 px au toucher ou au téléphone, centrée sur la ligne du titre (sous le kicker quand il y en a un). */
+.dz-fenetre__fermer { width: 36px; height: 36px; margin-top: -6px; }
+.dz-fenetre__tete:has(.dz-fenetre__kicker) .dz-fenetre__fermer { margin-top: 12px; }
+@media (pointer: coarse), (max-width: 767px) {
+  .dz-fenetre__fermer { width: var(--dz-tap); height: var(--dz-tap); margin-top: -10px; }
+  .dz-fenetre__tete:has(.dz-fenetre__kicker) .dz-fenetre__fermer { margin-top: 8px; }
+}
 .dz-bouton-b {
   height: var(--dz-clic); padding: 0 18px; border-radius: var(--dz-r-pill); border: 1.5px solid var(--dz-trait-fort); background: transparent; color: var(--dz-encre);
   font-size: var(--dz-fs-14); font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: var(--dz-sp-2);

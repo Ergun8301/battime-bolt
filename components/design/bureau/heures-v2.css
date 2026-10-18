@@ -27,15 +27,22 @@
 @keyframes dz-hb-panneau-entree { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes dz-hb-fenetre-entree { from { opacity: 0; transform: translate(-50%, calc(-50% + 12px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
 
-.dz-hb-tete { flex: none; position: relative; padding: 16px 76px 8px 20px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* En-tête : kicker, titre, sous-titre à gauche ; LA croix commune à droite, dans sa propre colonne, alignée sur la ligne du titre (36 px au pointeur, 44 au
+   toucher) : elle ne chevauche jamais le titre ni le corps. */
+.dz-hb-tete { flex: none; position: relative; padding: 16px 20px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: start; min-width: 0; }
+.dz-hb-tete > :not(.dz-hb-fermer) { grid-column: 1; }
 .dz-hb-kicker { margin: 0; font: 500 var(--dz-fs-12)/1.25 var(--dz-font-chiffres); letter-spacing: .14em; text-transform: uppercase; color: var(--dz-titre-section); overflow-wrap: anywhere; }
 .dz-hb-titre { margin: 0; font: 900 var(--dz-fs-24)/1.1 var(--dz-font-ui); letter-spacing: var(--dz-tracking-titre); color: var(--dz-encre); overflow-wrap: anywhere; }
 .dz-hb-sous { margin: 2px 0 0; font: 500 14px/1.4 var(--dz-font-ui); color: var(--dz-texte-note); overflow-wrap: anywhere; }
 .dz-hb-fermer {
-  position: absolute; top: 16px; right: 20px; width: 44px; height: 44px; min-width: 44px; padding: 0; border-radius: 50%;
+  grid-column: 2; grid-row: 1; align-self: center; width: 36px; height: 36px; min-width: 36px; padding: 0; border-radius: 50%;
   border: 1px solid var(--dz-trait-fort); background: transparent; color: var(--dz-encre); cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center; font: 400 18px/1 var(--dz-font-ui);
+  display: inline-flex; align-items: center; justify-content: center; font: 400 15px/1 var(--dz-font-ui);
 }
+.dz-hb-tete:has(> .dz-hb-kicker) > .dz-hb-fermer { grid-row: 2; }
+@media (pointer: coarse), (max-width: 767px) { .dz-hb-fermer { width: 44px; height: 44px; min-width: 44px; font-size: 17px; } }
+/* Bascule en haut d'un panneau (« Toute l'équipe | Un salarié » d'Exporter) : sous le titre, hors du corps qui défile. */
+.dz-hb-bascule { flex: none; padding: 4px 20px 10px; }
 .dz-hb-fermer:hover { background: var(--dz-sable); }
 .dz-hb-fermer .dz-hb-retour { display: none; }
 .dz-hb-corps { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 20px 18px; display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; gap: 14px; align-content: start; }
@@ -241,6 +248,9 @@
 .dz-hb-demande .dz-hb-actions { display: flex; gap: 8px; flex: none; }
 .dz-hb-demande .dz-hb-refus { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .dz-hb-demande .dz-hb-refus input { flex: 1 1 200px; min-height: 48px; padding: 8px 14px; border-radius: var(--dz-r-s); border: 1.5px solid var(--dz-input); background: var(--dz-carte); font: 400 16px/1.3 var(--dz-font-ui); }
+/* Liste étroite (téléphone, panneau de 480 px) : « Refuser » et « Accepter » passent sous le nom (le nom et les dates ne s’écrivent plus une lettre par ligne). */
+.dz-hb-demandes { container-type: inline-size; }
+@container (max-width: 520px) { .dz-hb-demande { grid-template-columns: auto minmax(0, 1fr); } .dz-hb-demande .dz-hb-actions, .dz-hb-demande > .dz-hb-chip { grid-column: 1 / -1; justify-content: flex-end; justify-self: end; } }
 
 /* ── Menu « Exporter ce salarié » ── */
 .dz-portail.dz-hb-menu { z-index: 50; min-width: 260px; padding: 6px; border: 1px solid var(--dz-trait-fort); border-radius: var(--dz-r-m); background: var(--dz-carte); color: var(--dz-encre); box-shadow: var(--dz-ombre-menu); font-family: var(--dz-font-ui); }
@@ -263,7 +273,9 @@
 @media (max-width: 1023px) {
   .dz-portail.dz-hb-panneau, .dz-portail.dz-hb-panneau[data-large="oui"] { width: 100vw; border-top: 0; animation: none; }
   .dz-hb-panneau .dz-hb-tete { padding: 14px 20px 8px 76px; min-height: 64px; }
-  .dz-hb-panneau .dz-hb-fermer { left: 20px; right: auto; top: 14px; }
+  /* « ‹ » à gauche : placé hors de la grille de l’en-tête (sans colonne, son repère est l’en-tête entier, pas la colonne de droite). */
+  .dz-hb-panneau .dz-hb-fermer { position: absolute; grid-column: auto; grid-row: auto; left: 20px; right: auto; top: 14px; width: 44px; height: 44px; min-width: 44px; }
+  .dz-hb-panneau .dz-hb-tete:has(> .dz-hb-kicker) > .dz-hb-fermer { grid-row: auto; }
   .dz-hb-panneau .dz-hb-fermer .dz-hb-croix { display: none; }
   .dz-hb-panneau .dz-hb-fermer .dz-hb-retour { display: inline; }
   .dz-hb-titre { font-size: 22px; }

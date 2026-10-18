@@ -81,13 +81,8 @@ button.dzp-b-actuelle { background: transparent; border: 1px solid #FFC21A; colo
   .dzp-b-pilule--jaune { padding: 0 11px; }
 }
 
-/* ── Plein écran : la barre disparaît, seule reste la pastille flottante de la planche ── */
-.dzp-pastille-pe { position: fixed; top: 12px; right: 14px; z-index: 31; display: flex; align-items: center; gap: 6px; padding: 5px 5px 5px 14px; border-radius: 999px; background: #15120F; color: #F2EDE3; box-shadow: 0 10px 30px rgba(21,18,15,.3); }
-.dzp-pastille-pe__s { font-weight: 900; font-size: 15px; margin-right: 2px; }
-.dzp-pastille-pe button { width: 32px; height: 32px; border-radius: 50%; border: 0; background: #25201B; color: #F2EDE3; cursor: pointer; font-family: inherit; padding: 0; }
-.dzp-pastille-pe .dzp-pastille-pe__q { width: auto; height: 32px; padding: 0 12px; border-radius: 999px; background: #FFC21A; color: #15120F; font-size: 12.5px; font-weight: 800; }
-/* La pastille est en haut à droite (top 12 px, 42 px de haut) : la grille commence dessous, rien d'utile n'est masqué. */
-.dzp-bureau-desk[data-plein-ecran] .dzp-zone { padding: 62px 12px 12px; }
+/* ── Plein écran : la barre disparaît ; seul reste le bouton rond « Quitter » (40 px, top 12, right 14) : la grille commence dessous (60 px), rien ne la chevauche ── */
+.dzp-bureau-desk[data-plein-ecran] .dzp-zone { padding: 60px 12px 12px; }
 
 /* ── Menus déroulants (Plus ⋯, compte) et voile sans fond ── */
 .dzp-fond-menu { position: fixed; inset: 0; z-index: 40; background: transparent; }
@@ -929,8 +924,6 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-legende__astuce .bt-cp-help::before { content: 'Astuce : copier une case'; }
   .dzp-legende__astuce .bt-cp-help:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
 
-  /* ── Plein écran : la pastille flottante en haut à droite (maquette 2a), au-dessus de l'en-tête des jours ── */
-  .dzp-pastille-pe[data-ordi] { top: 12px; right: 14px; z-index: 46; }
 
   /* ── Mode replié : la grille prend toute la hauteur sous la barre noire et se resserre (8 salariés entiers à 1440 × 900) :
      bulles sans la ligne « produit · ville » (elle reste dans l'infobulle et la fiche), une ligne par texte, « + ajouter » au survol de la case. ── */
@@ -1031,3 +1024,77 @@ html[data-dz-bureau][data-dz-as-reduit] .as-panel { transform: translate(24px, 2
   html[data-dz-bureau] .as-panel, html[data-dz-bureau][data-dz-as-reduit] .as-panel { transition: none; }
   .dz-as-pastille-v2 { animation: none; }
 }
+
+
+/* ════════════ Retouches 2 (retours d'Ergun sur la préview) ════════════ */
+
+/* 1. Plein écran : un seul bouton rond de 40 px (blanc cassé, bordure fine, ombre légère) ; la semaine passe dans la case « SALARIÉ » de la grille. */
+.dzp-sortie-pe { position: fixed; top: 12px; right: 14px; z-index: 46; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 1px solid #D6CBB7; background: #FBF8F2; color: #15120F; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 14px rgba(21,18,15,.12); }
+.dzp-sortie-pe:hover { background: #FFFDF8; border-color: #15120F; }
+.dzp-sortie-pe:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
+@media (pointer: coarse) { .dzp-sortie-pe::after { content: ''; position: absolute; inset: -2px; border-radius: 50%; } }
+.dzp-bureau-desk[data-plein-ecran] .dzp-th-nom { overflow: visible; }
+.dzp-bureau-desk[data-plein-ecran] .dzp-th-nom > .dzp-th-nom__k, .dzp-bureau-desk[data-plein-ecran] .dzp-th-nom__pe-k { display: block; }
+.dzp-pe-nav { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-family: var(--dz-font-chiffres); letter-spacing: 0; text-transform: none; }
+.dzp-pe-nav button { width: 28px; height: 28px; flex: none; padding: 0; border-radius: 50%; border: 1px solid #D6CBB7; background: transparent; color: #15120F; font: 700 15px/1 var(--dz-font-ui); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.dzp-pe-nav button:hover { border-color: #15120F; background: #FFFDF8; }
+.dzp-pe-nav button:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
+.dzp-pe-nav__s { min-width: 42px; text-align: center; font-size: 13px; font-weight: 800; color: #15120F; }
+@media (pointer: coarse) { .dzp-pe-nav button { position: relative; } .dzp-pe-nav button::after { content: ''; position: absolute; inset: -8px; } }
+
+/* 5. Menus déroulants (Plus ⋯, compte, chiffres) : la molette au-dessus du menu ne fait pas défiler la page (en plus du blocage posé par useBloquePage). */
+.dzp-menu, .dzp-chiffres:not(.dzp-chiffres--ligne), .dzp-panneau-stat { overscroll-behavior: contain; }
+/* « Plus ⋯ » : rubriques côte à côte, lignes de 40 px ; le menu tient entier à l'écran sans barre de défilement. */
+.dzp-menu.dzp-menu-plus { white-space: normal; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 10px 12px; width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 24px); overflow: auto; }
+.dzp-menu-plus > .dzp-menu-essai, .dzp-menu-plus > .dzp-menu__tablette { grid-column: 1 / -1; }
+.dzp-menu__col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dzp-menu-plus .dzp-menu__item { min-height: 40px; padding: 6px 12px; font-size: 13.5px; line-height: 1.25; }
+.dzp-menu-plus .dzp-menu-essai { min-height: 40px; }
+@media (min-width: 768px) and (max-width: 1023px) {
+  .dzp-menu-plus .dzp-menu__tablette { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+  .dzp-menu-plus .dzp-menu__tablette .dzp-menu__item { border-top: 0; border-left: 1px solid var(--dz-trait-doux); }
+  .dzp-menu-plus .dzp-menu__tablette .dzp-menu__item:first-child { border-left: 0; }
+}
+.dzp-menu-compte .dzp-menu__item { min-height: 40px; }
+
+/* 7. Bandeau (haut déplié) : la tuile « À relancer » se déplie sur place ; un compteur de la barre noire la met en évidence (anneau jaune 1,5 s). */
+.dzp-tuile--depliable { padding: 0; gap: 0; }
+.dzp-tuile__ouvrir { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 16px 18px; background: transparent; border: 0; border-radius: inherit; text-align: left; font: inherit; color: inherit; cursor: pointer; min-width: 0; }
+.dzp-tuile--depliable > .dzp-tuile__liste { margin: 0 12px 12px; }
+.dzp-tuile[data-eclat] { box-shadow: 0 0 0 4px #FFC21A, 0 0 0 7px rgba(255,194,26,.35); transition: box-shadow .2s ease; }
+@media (min-width: 1024px) and (max-width: 1279px) { .dzp-chiffres--ligne .dzp-tuile--depliable { padding: 0; } .dzp-chiffres--ligne .dzp-tuile__ouvrir { padding: 14px; } }
+.dzp-chiffres--ligne .dzp-tuile__ouvrir .dzp-tuile__k, .dzp-chiffres--ligne .dzp-tuile__ouvrir .dzp-tuile__s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) { .dzp-tuile[data-eclat] { transition: none; } }
+/* Menu des chiffres (haut replié) : sous chaque barre, la lettre du jour seule, centrée, jamais coupée. */
+.dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-barre__l { text-align: center; overflow: visible; }
+
+/* 4. Tiroir Clients : la ligne d'aide sur les lieux fixes, sous la recherche. */
+.dzp-tiroir__lieux { font-size: var(--dz-fs-12); line-height: 1.35; color: var(--dz-texte-2); margin-top: -4px; }
+
+/* 2. LA croix commune (fenêtres existantes habillées, feuille du menu ☰, fiche, aide, assistant) : 36 px au pointeur, 44 px au toucher ou au téléphone,
+   bordure fine, dans l'en-tête, alignée sur le titre ; le titre lui laisse sa place (jamais de chevauchement). */
+html[data-dz-bureau] .bt-skin[role="dialog"] > button[class*="absolute"] { width: 36px; height: 36px; right: 16px; top: 20px; }
+html[data-dz-bureau] .bt-skin[role="dialog"]:has(> button[class*="absolute"]) h2 { padding-right: 44px; }
+html[data-dz-bureau] .dzp-mm.bt-skin[role="dialog"] > button[class*="absolute"], .dzp-mm > button { width: 36px; height: 36px; top: 14px; }
+.dzp-feuille .dz-fenetre__fermer { width: 36px; height: 36px; }
+.dzp-aide__x { width: 36px; height: 36px; }
+html[data-dz-bureau] .as-panel .as-x { width: 36px; height: 36px; padding: 0; border-radius: 50%; border: 1px solid #D6CBB7; background: #FFFDF8; color: #15120F; display: inline-flex; align-items: center; justify-content: center; }
+html[data-dz-bureau] .as-panel .as-x svg { width: 16px; height: 16px; }
+@media (pointer: coarse), (max-width: 767px) {
+  html[data-dz-bureau] .bt-skin[role="dialog"] > button[class*="absolute"], .dzp-mm > button, .dzp-feuille .dz-fenetre__fermer, .dzp-aide__x, html[data-dz-bureau] .as-panel .as-x { width: 44px; height: 44px; }
+  html[data-dz-bureau] .bt-skin[role="dialog"]:has(> button[class*="absolute"]) h2 { padding-right: 52px; }
+  html[data-dz-bureau] .bt-skin[role="dialog"] > button[class*="absolute"] { top: 16px; }
+  html[data-dz-bureau] .dzp-mm.bt-skin[role="dialog"] > button[class*="absolute"], .dzp-mm > button { width: 44px; height: 44px; top: 10px; }
+}
+
+/* 7. Menu des chiffres (haut replié) entre 1 024 et 1 279 px : les chiffres des barres et les noms de la liste « À relancer » ne sont plus coupés. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) { gap: 10px; grid-template-columns: 1.6fr 1.6fr 1fr 1fr; }
+  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-tuile { padding: 14px; }
+  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-tuile--sombre { gap: 12px; }
+  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-total { min-width: 0; flex: 0 1 96px; }
+  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-barres { gap: 5px; }
+  .dzp-haut--1a .dzp-chiffres:not(.dzp-chiffres--ligne) .dzp-barre__n { font-size: 9px; letter-spacing: -.03em; overflow: visible; }
+}
+/* Bandeau : la tuile « À relancer » dépliée prend un peu plus de place (les noms de la liste restent lisibles). */
+@media (min-width: 1024px) { .dzp-chiffres--ligne:has(.dzp-tuile--depliable[data-ouverte]) { grid-template-columns: 1.7fr 1.5fr .9fr .9fr; } }

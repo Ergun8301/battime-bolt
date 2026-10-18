@@ -148,13 +148,21 @@ const PLANCHE_LIGNE = [
   check(manquent.length === 0 && !/Statistiques/.test(plus), `« Plus ⋯ » contient ${attendues.join(', ')} (Statistiques est l'onglet de la barre noire)${manquent.length ? ` — manquent : ${manquent.join(', ')}` : ''}`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   check(await page.locator('[data-testid=menu-plus]').count() === 0, 'Échap ferme « Plus ⋯ »');
-  // Compteur → menu des chiffres sous la barre (comme aujourd'hui)
+  // Compteur, haut DÉPLIÉ (retouches 2) : aucun panneau par-dessus le bandeau ; la liste « À relancer » se déplie DANS sa tuile (le panneau sous la barre
+  // noire reste pour le haut replié : voir plus bas et retouches-2-controles.mjs).
   await page.click('[data-testid=stat-waiting]'); await page.waitForTimeout(250);
   const menu = page.locator('[data-testid=menu-chiffres]');
+  const dansTuile = page.locator('[data-testid=bandeau] [data-testid=stat-relance] [data-testid=relance-row]');
+  check(await menu.count() === 0 && await dansTuile.count() > 0, `haut déplié : un compteur déplie la liste « À relancer » dans sa tuile, sans panneau superposé (${await dansTuile.count()} ligne(s))`);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  check(await dansTuile.count() === 0, 'Échap replie la liste de la tuile');
+  await page.click('[data-testid=haut-replier]'); await page.waitForTimeout(250);
+  await page.click('[data-testid=stat-waiting]'); await page.waitForTimeout(250);
   const pos = await menu.boundingBox();
-  check(await menu.count() === 1 && pos && Math.round(pos.y) === 60 && await menu.locator('[data-testid=relance-row]').count() > 0, `un compteur ouvre le détail sous la barre noire, avec la liste « À relancer » (y = ${pos && pos.y})`);
+  check(await menu.count() === 1 && pos && Math.round(pos.y) === 60 && await menu.locator('[data-testid=relance-row]').count() > 0, `haut replié : un compteur ouvre le détail sous la barre noire, avec la liste « À relancer » (y = ${pos && pos.y})`);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   check(await menu.count() === 0, 'Échap ferme le détail des chiffres');
+  await page.click('[data-testid=haut-deplier]'); await page.waitForTimeout(250);
   check(erreurs.length === 0, `aucune erreur de page (${erreurs.join(' | ')})`);
   await ctx.close();
 }
@@ -194,7 +202,7 @@ const PLANCHE_LIGNE = [
     return { dansBarre: !!b.closest('[data-testid=barre-noire]'), droite: Math.round(r.right), h: Math.round(r.height), avantAssistant: suivant?.dataset.testid === 'bar-assistant', bord: s.borderTopColor, fond: s.backgroundColor, couleur: s.color, rayon: s.borderTopLeftRadius, t: b.innerText };
   }, id);
   const avantRepli = await bouton('haut-replier');
-  check(!!avantRepli && avantRepli.dansBarre && avantRepli.avantAssistant && avantRepli.t === 'Replier ▴' && await page.locator('.dzp-cockpit button:not(.dzp-tuile), [data-testid=barre-semaine] [data-testid=haut-replier]').count() === 0,
+  check(!!avantRepli && avantRepli.dansBarre && avantRepli.avantAssistant && avantRepli.t === 'Replier ▴' && await page.locator('.dzp-cockpit button:not(.dzp-tuile):not(.dzp-tuile__ouvrir), [data-testid=barre-semaine] [data-testid=haut-replier]').count() === 0,
     `« Replier ▴ » est dans la barre noire, juste avant « ✦ Assistant » ; plus rien sous la ligne de semaine (${JSON.stringify(avantRepli)})`);
   await page.click('[data-testid=haut-replier]'); await page.mouse.move(2, 500); await page.waitForTimeout(300);
   const apresRepli = await bouton('haut-deplier');
@@ -240,24 +248,26 @@ const PLANCHE_LIGNE = [
   await page.click('[data-testid=bar-plein-ecran]'); await page.waitForTimeout(250);
   const pe = await page.evaluate(() => ({
     reste: ['[data-testid=barre-noire]', '[data-testid=barre-semaine]', '[data-testid=bandeau]', '[data-testid=haut-replier]', '.dzp-astuce'].filter((s) => document.querySelector(s)),
-    pastille: (document.querySelector('[data-testid=pastille-plein-ecran]')?.innerText || '').replace(/\s+/g, ' '),
-    pos: (() => { const r = document.querySelector('[data-testid=pastille-plein-ecran]')?.getBoundingClientRect(); return r ? { droite: Math.round(innerWidth - r.right), bas: Math.round(innerHeight - r.bottom) } : null; })(),
+    // Retouches 2 : la pastille noire (S-42 ← → « ⤡ Quitter · Échap ») est devenue un seul bouton rond de 40 px ; la semaine est dans la case « SALARIÉ ».
+    pastille: document.querySelector('[data-testid=quitter-plein-ecran]')?.getAttribute('aria-label') || '',
+    semaine: (document.querySelector('.dzp-th-nom [data-testid=pe-semaine]')?.innerText || '').replace(/\s+/g, ' '),
+    pos: (() => { const r = document.querySelector('[data-testid=quitter-plein-ecran]')?.getBoundingClientRect(); return r ? { droite: Math.round(innerWidth - r.right), bas: Math.round(innerHeight - r.bottom) } : null; })(),
   }));
-  check(pe.reste.length === 0 && /^S-42 ← → ⤡ Quitter · Échap$/.test(pe.pastille) && pe.pos && pe.pos.droite === 14,
-    `⤢ : tout le haut est masqué, seule reste la pastille (« ${pe.pastille} »)${pe.reste.length ? ` — restent : ${pe.reste.join(', ')}` : ''}`);
+  check(pe.reste.length === 0 && pe.pastille === 'Quitter le plein écran (Échap)' && pe.semaine === '‹ S-42 ›' && pe.pos && pe.pos.droite === 14,
+    `⤢ : tout le haut est masqué, seul reste le bouton rond « ${pe.pastille} » ; « ${pe.semaine} » dans la case SALARIÉ${pe.reste.length ? ` — restent : ${pe.reste.join(', ')}` : ''}`);
   const peHaut = await page.evaluate(() => {
-    const p = document.querySelector('[data-testid=pastille-plein-ecran]').getBoundingClientRect(); const th = document.querySelector('.dzp-table thead').getBoundingClientRect(); const leg = document.querySelector('[data-testid=legende]').getBoundingClientRect();
+    const p = document.querySelector('[data-testid=quitter-plein-ecran]').getBoundingClientRect(); const th = document.querySelector('.dzp-table thead').getBoundingClientRect(); const leg = document.querySelector('[data-testid=legende]').getBoundingClientRect();
     return { haut: Math.round(p.top), droite: Math.round(innerWidth - p.right), basPastille: Math.round(p.bottom), hautGrille: Math.round(th.top), legende: Math.round(leg.top) };
   });
   check(peHaut.haut === 12 && peHaut.droite === 14 && peHaut.basPastille <= peHaut.hautGrille && peHaut.legende >= peHaut.basPastille,
-    `plein écran : pastille EN HAUT à droite (top 12, right 14), au-dessus de l'en-tête des jours, sans masquer la grille ni la légende (${JSON.stringify(peHaut)})`);
+    `plein écran : bouton rond EN HAUT à droite (top 12, right 14), au-dessus de l'en-tête des jours, sans masquer la grille ni la légende (${JSON.stringify(peHaut)})`);
   await capture(page, '1a-pleinecran-1440.png');
   await page.keyboard.press('Escape'); await page.waitForTimeout(200);
-  check(await page.locator('[data-testid=barre-semaine]').count() === 1 && await page.locator('[data-testid=pastille-plein-ecran]').count() === 0, 'Échap sort du plein écran');
+  check(await page.locator('[data-testid=barre-semaine]').count() === 1 && await page.locator('[data-testid=quitter-plein-ecran]').count() === 0, 'Échap sort du plein écran');
   await page.keyboard.press('f'); await page.waitForTimeout(200);
-  check(await page.locator('[data-testid=barre-noire]').count() === 0 && await page.locator('[data-testid=pastille-plein-ecran]').count() === 1, 'la touche F (hors champ) passe en plein écran');
+  check(await page.locator('[data-testid=barre-noire]').count() === 0 && await page.locator('[data-testid=quitter-plein-ecran]').count() === 1, 'la touche F (hors champ) passe en plein écran');
   await page.click('[data-testid=quitter-plein-ecran]'); await page.waitForTimeout(200);
-  check(await page.locator('[data-testid=barre-noire]').count() === 1, '« ⤡ Quitter · Échap » ramène le haut');
+  check(await page.locator('[data-testid=barre-noire]').count() === 1, 'le bouton rond « Quitter le plein écran » ramène le haut');
   check(erreurs.length === 0, `aucune erreur de page (${erreurs.join(' | ')})`);
   await ctx.close();
 }
@@ -312,15 +322,15 @@ const ZONES = '[data-testid=barre-noire], [data-testid=barre-semaine], [data-tes
   const t = await page.evaluate(() => ({ unique: !!document.querySelector('.dzp-barre2a'), semaine: !!document.querySelector('.dzp-semaine'), cartes: document.querySelectorAll('.dzp-table .dzp-carte').length, mise: document.querySelector('.dzp-bureau-desk')?.dataset.mise }));
   check(t.unique && !t.semaine && t.cartes > 10 && t.mise === '2a' && await hScroll(page) <= 0, `834 : la tablette garde la barre unique et la grille compacte 2a, sans défilement horizontal (${JSON.stringify(t)})`);
   await page.click('[data-testid=bar-plein-ecran]'); await page.waitForTimeout(250);
-  const peT = await page.evaluate(() => { const p = document.querySelector('[data-testid=pastille-plein-ecran]').getBoundingClientRect(); const th = document.querySelector('.dzp-table thead').getBoundingClientRect(); return { haut: Math.round(p.top), droite: Math.round(innerWidth - p.right), dessus: p.bottom <= th.top }; });
-  check(peT.haut === 12 && peT.droite === 14 && peT.dessus, `834 : plein écran, pastille en haut à droite (top 12, right 14) au-dessus de l'en-tête des jours (${JSON.stringify(peT)})`);
+  const peT = await page.evaluate(() => { const p = document.querySelector('[data-testid=quitter-plein-ecran]').getBoundingClientRect(); const th = document.querySelector('.dzp-table thead').getBoundingClientRect(); return { haut: Math.round(p.top), droite: Math.round(innerWidth - p.right), dessus: p.bottom <= th.top }; });
+  check(peT.haut === 12 && peT.droite === 14 && peT.dessus, `834 : plein écran, bouton rond en haut à droite (top 12, right 14) au-dessus de l'en-tête des jours (${JSON.stringify(peT)})`);
   await ctx.close();
 }
 {
   const { page, ctx } = await ouvrir(390, 844, { tactile: true });
   const tel = await page.evaluate(() => ({ bouton: [...document.querySelectorAll('[data-testid=bar-plein-ecran]')].some((e) => e.getBoundingClientRect().width > 0) }));
   await page.keyboard.press('f'); await page.waitForTimeout(200);
-  const pastilleVue = await page.evaluate(() => [...document.querySelectorAll('[data-testid=pastille-plein-ecran]')].some((e) => e.getBoundingClientRect().width > 0));
+  const pastilleVue = await page.evaluate(() => [...document.querySelectorAll('[data-testid=quitter-plein-ecran]')].some((e) => e.getBoundingClientRect().width > 0));
   check(!tel.bouton && !pastilleVue, `390 : pas de plein écran au téléphone (ni bouton ⤢, ni pastille, même avec la touche F) (${JSON.stringify({ ...tel, pastilleVue })})`);
   await ctx.close();
 }

@@ -6,12 +6,12 @@
 // Ce morceau ne lit rien et n'écrit rien : il reçoit de l'écran existant ses états et ses gestionnaires (contexte-v2.ts) et dessine la planche du designer.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { ActionDone } from '@/components/action-done';
 import { totauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
 import './bureau-jetons.css';
 import './planning-v2.css';
-import { BarreNoire1a, BarreUnique, LigneSemaine1a, PastillePleinEcran, TiroirClients } from './barres-v2';
+import { BarreNoire1a, BarreUnique, LigneSemaine1a, NavSemainePleinEcran, SortiePleinEcran, TiroirClients } from './barres-v2';
 import { ListePieces, PanneauChiffres } from './bandeau-v2';
 import { chargeJours, Grille } from './grille-v2';
 import { Grille1a } from './grille-1a';
@@ -136,7 +136,12 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     document.addEventListener('click', f, true);
     return () => document.removeEventListener('click', f, true);
   }, []);
-  const [pleinEcran, setPleinEcran] = useState(false);
+  const [pleinEcranDemande, setPleinEcran] = useState(false);
+  // Téléphone : jamais de plein écran (la touche F n'y fait rien ; un plein écran ouvert à la tablette se défait en passant sous 768 px).
+  const telephone = useLargeur(REQ_TELEPHONE);
+  const pleinEcran = pleinEcranDemande && !telephone;
+  const cRef = useRef(c);
+  cRef.current = c;
   const [recherche, setRecherche] = useState('');
   const [legende, setLegende] = useState(false);
   const ordi = useLargeur(REQ_ORDI);
@@ -151,6 +156,15 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
         if (pleinEcran && !document.querySelector('[role="dialog"],[role="alertdialog"]')) setPleinEcran(false);
         return;
       }
+      // Plein écran : ← → changent de semaine (jamais dans un champ, jamais sous une fenêtre, jamais avec une touche de commande).
+      if (pleinEcran && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !dansUnChamp(e.target)
+        && !document.querySelector('[role="dialog"],[role="alertdialog"]')) {
+        e.preventDefault();
+        const k = cRef.current;
+        k.changeWeek(addDays(k.currentWeekStart, e.key === 'ArrowLeft' ? -7 : 7));
+        return;
+      }
+      if (telephone) return;
       // Planche 2a : « Plein écran : touche ⤢ ou F ». Jamais pendant une saisie, jamais avec une touche de commande, jamais sous une fenêtre ouverte.
       if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey && !dansUnChamp(e.target) && !document.querySelector('[role="dialog"],[role="alertdialog"]')) {
         e.preventDefault(); setPleinEcran((v) => !v);
@@ -158,7 +172,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     };
     window.addEventListener('keydown', f);
     return () => window.removeEventListener('keydown', f);
-  }, [accountMenuOpen, chantierMenuOpen, statPanel, legende, pleinEcran, setAccountMenuOpen, setChantierMenuOpen, setStatPanel]);
+  }, [accountMenuOpen, chantierMenuOpen, statPanel, legende, pleinEcran, telephone, setAccountMenuOpen, setChantierMenuOpen, setStatPanel]);
   const dates = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const totaux = useMemo(() => {
     const exclure = new Set<string>();
@@ -173,7 +187,6 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     [c.displayWorkers, c.planning, recherche, dates.join('|')]);
   const cGrille = visibles === c.displayWorkers ? c : { ...c, displayWorkers: visibles };
   // Téléphone (planche 2b) : la même recherche (elle se tape dans le menu ☰) filtre les cartes et la mosaïque ; la liste du téléphone reste `workers` (comme avant).
-  const telephone = useLargeur(REQ_TELEPHONE);
   const gens = useMemo(() => filtrer(c, recherche, dates, c.workers),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [c.workers, c.planning, recherche, dates.join('|')]);
@@ -184,17 +197,33 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { publierPont({ c, recherche, setRecherche, chiffres, legende: () => setLegende(true) }); });
   useEffect(() => () => publierPont(null), []);
+  // Haut DÉPLIÉ (ordinateur) : les tuiles sont déjà à l'écran ; un compteur de la barre noire n'ouvre AUCUN panneau superposé (plus de tuiles en double).
+  // « à relancer » : la liste se déplie DANS la tuile « À relancer » du bandeau, mise en évidence (anneau jaune 1,5 s, défilement doux si besoin).
+  // Les autres compteurs n'ont pas de tuile : ils mènent à leur liste (congés → Salariés, pièces → liste des pièces, réserves → Réserves).
+  const signaler = (id: string) => {
+    if (id === 'compteur-conges') { c.setSalariesOpen(true); return; }
+    if (id === 'compteur-reserves') { c.setReservesOpen(true); return; }
+    if (id === 'compteur-pieces') { setStatPanel((p: string | null) => (p === 'docs' ? null : 'docs')); return; }
+    setStatPanel('waiting');
+    requestAnimationFrame(() => {
+      const t = document.querySelector<HTMLElement>('[data-testid=bandeau] [data-testid=stat-relance]');
+      if (!t) return;
+      t.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      t.removeAttribute('data-eclat'); void t.offsetWidth; t.setAttribute('data-eclat', '');
+      window.setTimeout(() => t.removeAttribute('data-eclat'), 1500);
+    });
+  };
   return (
     <>
       <div className="dzp-bureau-desk" data-plein-ecran={pleinEcran ? '' : undefined} data-mise={ordi ? '1a' : '2a'} data-replie={ordi && replie ? '' : undefined}>
         {pleinEcran
-          ? <PastillePleinEcran c={c} quitter={() => setPleinEcran(false)} ordi={ordi} />
+          ? <SortiePleinEcran quitter={() => setPleinEcran(false)} />
           : ordi ? (
             <>
               <div className="dzp-haut dzp-haut--1a">
-                <BarreNoire1a c={c} replie={replie} deplier={() => poserReplie(false)} replier={() => { setStatPanel(null); poserReplie(true); }} recherche={recherche} setRecherche={setRecherche} />
+                <BarreNoire1a c={c} replie={replie} deplier={() => { setStatPanel(null); poserReplie(false); }} replier={() => { setStatPanel(null); poserReplie(true); }} recherche={recherche} setRecherche={setRecherche} signaler={replie ? undefined : signaler} />
                 {!replie && <LigneSemaine1a c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} legende={() => setLegende(true)} />}
-                {c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
+                {replie && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
                 {c.statPanel === 'docs' && <ListePieces c={c} />}
               </div>
               {!replie && (
@@ -214,7 +243,8 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
         {c.workers.length > 0 && !c.selectMode && !(ordi && pleinEcran) && <div className="dzp-astuce">{c.copyTipDesk}</div>}
         <div className="dzp-zone">
           <Aide c={c} />
-          {ordi ? <Grille1a c={cGrille} totaux={totaux} recherche={recherche.trim()} /> : <Grille c={cGrille} totaux={totaux} recherche={recherche.trim()} />}
+          {ordi ? <Grille1a c={cGrille} totaux={totaux} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />
+            : <Grille c={cGrille} totaux={totaux} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />}
           {/* Ordinateur (planche 1a) : la légende est toujours posée sous la grille ; tablette (2a) : elle s'ouvre depuis « Plus ⋯ ». */}
           <Legende ouverte={legende} toujours={ordi} fermer={() => setLegende(false)} astuce={ordi && c.workers.length > 0 ? c.copyTipHelpCorner : null} />
         </div>

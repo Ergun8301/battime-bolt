@@ -23,6 +23,9 @@
   font: inherit; font-size: var(--dz-fs-14); font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; white-space: nowrap; }
 .dz-l3-seg button[aria-pressed="true"] { background: var(--dz-encre); color: var(--dz-jaune); }
 @media (pointer: coarse) { .dz-l3-seg > button { min-height: 42px; } }
+/* Même nom de classe que le lot 3 A (heures-v2.css : libellé AU-DESSUS du groupe, en colonne) : quand les deux feuilles sont chargées, la colonne du lot 3 A
+   empilait « Ce mois / Cette semaine / Créneau » dans une pilule ovale. Ici, les boutons restent côte à côte. */
+.dz-l3 .dz-l3-seg { flex-direction: row; gap: 2px; }
 .dz-l3-vide { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 28px 12px; text-align: center; color: var(--dz-texte-2); font-weight: 600; font-size: var(--dz-fs-14);
   border: 1.5px dashed var(--dz-trait-fort); border-radius: var(--dz-r-m); background: var(--dz-carte); }
 .dz-l3-alerte { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: var(--dz-r-s); border: 1px solid var(--dz-trait); background: var(--dz-carte); font-size: var(--dz-fs-13); color: var(--dz-texte-note); line-height: 1.45; }
@@ -355,7 +358,13 @@
   flex: none; width: var(--dz-clic); height: var(--dz-clic); border-radius: var(--dz-r-pill); border: 1px solid var(--dz-trait-fort);
   background: var(--dz-carte); color: var(--dz-encre); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
-@media (pointer: coarse) { .dz-fenetre__fermer { width: var(--dz-tap); height: var(--dz-tap); } }
+/* LA croix commune : 36 px au pointeur, 44 px au toucher ou au téléphone, centrée sur la ligne du titre (sous le kicker quand il y en a un). */
+.dz-fenetre__fermer { width: 36px; height: 36px; margin-top: -6px; }
+.dz-fenetre__tete:has(.dz-fenetre__kicker) .dz-fenetre__fermer { margin-top: 12px; }
+@media (pointer: coarse), (max-width: 767px) {
+  .dz-fenetre__fermer { width: var(--dz-tap); height: var(--dz-tap); margin-top: -10px; }
+  .dz-fenetre__tete:has(.dz-fenetre__kicker) .dz-fenetre__fermer { margin-top: 8px; }
+}
 .dz-bouton-b {
   height: var(--dz-clic); padding: 0 18px; border-radius: var(--dz-r-pill); border: 1.5px solid var(--dz-trait-fort); background: transparent; color: var(--dz-encre);
   font-size: var(--dz-fs-14); font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: var(--dz-sp-2);

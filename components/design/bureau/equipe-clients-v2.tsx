@@ -47,7 +47,7 @@ export interface Lot3Ctx {
 // Même hachage que components/planning-bubble.tsx (copié : ce module ne tire rien du premier chargement).
 const hashStr = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0; return Math.abs(h); };
 const couleur = (ws: Worksite) => (ws.client_name === 'Autre' ? 'var(--dz-encre)' : `var(--dz-chantier-${(hashStr(ws.id) % 7) + 1})`);
-const sousChantier = (ws: Worksite) => (ws.client_name === 'Autre' ? 'Chantier non listé — le salarié le nomme' : [ws.product_type, ws.city].filter(Boolean).join(' · '));
+const sousChantier = (ws: Worksite) => (ws.client_name === 'Autre' ? 'Lieu non listé : le salarié le précise' : [ws.product_type, ws.city].filter(Boolean).join(' · '));
 
 export default function Lot3PlanningV2({ c }: { c: Lot3Ctx }) {
   return (<><ChantiersV2 c={c} /><FicheClientV2 c={c} /><NouveauClientV2 c={c} /><SalariesV2 c={c} /><NouveauSalarieV2 c={c} /></>);
@@ -60,16 +60,16 @@ function ChantiersV2({ c }: { c: Lot3Ctx }) {
     <Coque open={open} onOpenChange={setOpen} titre="Chantiers" testId="chantiers-v2" fermer="Retour"
       pied={<>
         <Btn onClick={() => { setOpen(false); setImportOpen(true); }} data-guide="bureau-clients.importer">Importer (CSV/Excel)</Btn>
-        <Btn ton="principal" onClick={() => { setOpen(false); setClientOpen(true); }} data-guide="bureau-clients.nouveau">+ Nouveau client</Btn>
+        <Btn ton="principal" onClick={() => { setOpen(false); setClientOpen(true); }} data-guide="bureau-clients.nouveau">+ Nouveau client ou lieu</Btn>
       </>}>
       <Recherche value={q} onChange={setQ} placeholder="Rechercher un chantier…" testId="chantiers-recherche" />
-      {worksites.length === 0 ? <Vide t="Aucun chantier pour le moment." s="Touchez « + Nouveau client » ci-dessous." />
+      {worksites.length === 0 ? <Vide t="Aucun chantier pour le moment." s="Touchez « + Nouveau client ou lieu » ci-dessous." />
         : filtres.length === 0 ? <Vide t={`Aucun chantier « ${q} ».`} s="Vérifiez l’orthographe ou créez-le." action={<Btn onClick={() => { setOpen(false); setClientOpen(true); }}>+ Nouveau client « {q} »</Btn>} />
         : (
           <Lignes>
             {filtres.map((ws) => {
               const fin = termineLe(ws, true);
-              return <Ligne key={ws.id} t={ws.client_name} s={sousChantier(ws) || undefined} point={couleur(ws)} badge={fin ? fin.toUpperCase() : undefined} badgeTon="clos" chev
+              return <Ligne key={ws.id} t={ws.client_name === 'Autre' ? 'Autre lieu' : ws.client_name} s={sousChantier(ws) || undefined} point={couleur(ws)} badge={fin ? fin.toUpperCase() : undefined} badgeTon="clos" chev
                 onClick={() => { setOpen(false); ouvrirFiche(ws); }} guide="bureau-clients.crayon" />;
             })}
           </Lignes>
