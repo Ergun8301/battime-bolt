@@ -1,12 +1,8 @@
-// Design bureau, lot 2 « Heures et paie » : les textes des guides pas à pas du bureau pour la v2 (`?ui=2`), PRÉPARÉS ET ÉTEINTS.
+// Design bureau, lot 2 « Heures et paie » : les textes des guides pas à pas du bureau pour la v2.
 //
-// RIEN n'est branché : admin-tours.ts (et donc l'empreinte `guideForPrompt` du bureau, SHA 5766f6e9…3198, admin-tours.test.ts) n'importe pas ce fichier.
-// Pour allumer (à la bascule du bureau, jamais avant) : passer GUIDES_BUREAU_UI2 à `true`, faire lire TEXTES_HEURES_V2 par admin-tours.ts à la place du texte
-// v1 de la même `cible`, poser les ancres « à poser » ci-dessous avec la fiche qui les vise, puis régénérer l'empreinte (avec la justification écrite).
+// Branchés depuis la bascule du bureau : ficheV2 (admin-tours-v2.ts) pose `v2` (et `v2Mobile`) à la place du texte v1 de la même fiche et de la même `cible`,
+// quand GUIDES_BUREAU_UI2 (guides-bureau-ui2.ts) est `true`. Les étapes qui changent de place (corriger, cloture_salarie, telecharger) y sont remplacées.
 // Le tableau complet cible | texte v1 | texte v2, les raisons et les ancres qui bougent : docs/design-brief/integration/guides-bureau-heures-v2.md.
-
-/** Éteint : les guides du bureau gardent leurs textes d'aujourd'hui. */
-export const GUIDES_BUREAU_UI2 = false;
 
 export interface TexteGuideV2 {
   /** La fiche (admin-tours.ts) et l'ancre `data-guide` visée. */
@@ -35,7 +31,7 @@ export const TEXTES_HEURES_V2: TexteGuideV2[] = [
     v2: 'Tapez le motif, puis cliquez sur « Corriger et prévenir ».' },
   { fiche: 'export', cible: 'bureau-export.menu',
     v1: 'Choisissez la période, puis ouvrez « Exporter » et choisissez un format : cela verrouille les heures.',
-    v2: 'Choisissez la période, puis cliquez sur « PDF », « Excel » ou « CSV paie » : cela verrouille les heures (une alerte vous dit combien de lignes avant).' },
+    v2: 'Choisissez la période, puis cliquez sur « PDF », « Excel » ou « CSV paie » : cela verrouille les heures.' },
   { fiche: 'export', cible: 'bureau-export.comptable',
     v1: 'Ou « Envoyer à » votre comptable (son adresse se règle dans les Réglages).',
     v2: 'Ou « Envoyer » au comptable (son adresse se règle dans les Réglages).' },
@@ -53,15 +49,7 @@ export const TEXTES_HEURES_V2: TexteGuideV2[] = [
     v2: 'Pour toute l’équipe : période, puis « PDF », « Excel » ou « CSV paie ». Attention : cela verrouille les heures de la période.' },
   { fiche: 'cloture_salarie', cible: 'bureau-fiche.exporter',
     v1: 'Pour récupérer ses heures, cliquez d’abord sur « Exporter » (cela ne verrouille rien).',
-    v2: 'Pour récupérer ses heures, cliquez d’abord sur « Exporter ce salarié (sans verrou) ».',
+    v2: 'Pour récupérer ses heures, cliquez d’abord sur « Exporter ce salarié (sans verrou) » : cela ne verrouille rien.',
     v1Mobile: 'Pour récupérer ses heures, touchez d’abord « Exporter » (cela ne verrouille rien).',
     v2Mobile: 'Pour récupérer ses heures, touchez d’abord « Exporter » (cela ne verrouille rien).' },
 ];
-
-/**
- * Ancres qui BOUGENT ou manquent en v2 : à traiter AVANT d'allumer l'interrupteur (le test « Ancres introuvables » de admin-tours.test.ts les attend toutes).
- *  · `bureau-fiche.corriger` : le bouton « Corriger » est dans la fiche de la LIGNE (on y arrive en cliquant une ligne de la feuille d'heures) : la fiche « corriger »
- *    a besoin d'un pas de plus, donc d'une ancre sur la ligne (ex. `bureau-fiche.ligne`), visée par une fiche (sinon « Ancres posées mais jamais visées »).
- *  · `bureau-fiche.cloturer` : « Clôturer jusqu'au… » vit dans l'onglet « Gérer » (lot 3 : EQ09/EQ10) ; la fiche « cloture_salarie » a besoin d'un pas « onglet Gérer ».
- */
-export const ANCRES_A_POSER_V2 = ['bureau-fiche.ligne (corriger)', 'bureau-fiche.onglet-gerer (cloture_salarie)'] as const;

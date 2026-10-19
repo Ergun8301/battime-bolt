@@ -27,7 +27,7 @@ function useClicDehors(ref: React.RefObject<HTMLElement>, fermer: () => void, ac
     if (!actif) return;
     const f = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
-      if (!t || ref.current?.contains(t) || t.closest('[data-ouvre-chiffres]') || t.closest('[role="dialog"],[role="alertdialog"]')) return;
+      if (!t || ref.current?.contains(t) || t.closest('[data-ouvre-chiffres]') || t.closest('[role="dialog"],[role="alertdialog"],[data-guide-ui]')) return;
       fermer();
     };
     document.addEventListener('pointerdown', f, true);
@@ -45,7 +45,8 @@ function useDeroulant(ref: React.RefObject<HTMLElement>, ouvert: boolean, fermer
     if (!ouvert) return;
     const clic = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
-      if (!t || ref.current?.contains(t) || t.closest('[data-ouvre-chiffres]')) return;
+      // La carte du guide pas à pas (data-guide-ui) ne referme pas la liste qu'elle montre.
+      if (!t || ref.current?.contains(t) || t.closest('[data-ouvre-chiffres]') || t.closest('[data-guide-ui]')) return;
       fermer();
     };
     const touche = (e: KeyboardEvent) => {
@@ -70,7 +71,7 @@ function Tuile({ classe = '', testId, guideRelance = false, ouvert, basculer, fe
   const id = useId();
   useDeroulant(ref, ouvert && !!liste, fermer);
   return (
-    <div ref={ref} className={`dzp-tuile ${classe}`} data-testid={testId} data-guide={guideRelance ? 'bureau-stat.relance' : undefined} data-ouvert={ouvert && liste ? '' : undefined}>
+    <div ref={ref} className={`dzp-tuile ${classe}`} data-testid={testId} data-guide={guideRelance ? 'bureau-stat.tuile' : undefined} data-ouvert={ouvert && liste ? '' : undefined}>
       {liste ? (
         <button type="button" className="dzp-tuile__corps" aria-expanded={ouvert} aria-controls={id} onClick={basculer}
           title={ouvert ? 'Refermer la liste' : `Voir la liste : ${libelle}`}>{children}</button>
@@ -134,11 +135,11 @@ export function PanneauChiffres({ c, chiffres, fermer, enLigne = false, liste: l
         <span className="dzp-total__s">{passee ? 'Semaine passée' : `+ ${Math.round(chiffres.aVenir / 60)} h prévues${c.isCurrentWeek ? ' à venir' : ''}`}</span>
       </div>
 
-      <Tuile classe="dzp-tuile--relance" testId="stat-relance" guideRelance={!enLigne} libelle="À relancer"
+      <Tuile classe="dzp-tuile--relance" testId="stat-relance" guideRelance libelle="À relancer"
         ouvert={liste === 'relance'} basculer={basculer('relance')} fermer={fermerListe}
         liste={toutes.length === 0 ? null : (
           <>
-            <div className="dzp-deroulant__liste" data-testid="relance-panel" data-guide={enLigne ? undefined : 'bureau-stat.liste'}
+            <div className="dzp-deroulant__liste" data-testid="relance-panel" data-guide="bureau-stat.liste"
               onClickCapture={(e) => { if ((e.target as HTMLElement).closest('.bt-pl-sp-who')) { e.preventDefault(); e.stopPropagation(); } }}>
               {toutes}
             </div>

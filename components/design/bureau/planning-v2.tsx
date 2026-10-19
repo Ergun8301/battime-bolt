@@ -23,6 +23,8 @@ import type { PlanningCtx } from './contexte-v2';
 export { default as MenuMobileV2 } from './menu-mobile-v2';
 export { Ghost } from './bulle-v2';
 export { default as FicheV2 } from './fiche-v2';
+// Les fiches du guide pas à pas du bureau v2 : chargées avec ce morceau, jamais dans le premier chargement de /admin.
+export { findAdminTourV2 } from '@/supabase/functions/_shared/admin-tours-v2';
 
 const LEGENDE: { k: string; l: string }[] = [
   { k: 'matin', l: 'Matin (avant 12 h)' }, { k: 'apres-midi', l: 'Après-midi (12 h – 18 h)' }, { k: 'soir', l: 'Soir (après 18 h)' }, { k: 'journee', l: 'Journée entière ou sans horaire' },

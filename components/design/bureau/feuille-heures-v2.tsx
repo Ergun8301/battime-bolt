@@ -247,11 +247,11 @@ export default function FicheHeuresV2({ ctx: c }: { ctx: FicheHeuresCtx }) {
         {c.loading ? (
           <div className="dz-hb-corps-sq">{[1, 2, 3].map((i) => <div key={i} className="dz-hb-squelette" />)}</div>
         ) : c.entries.length === 0 ? (
-          <div className="dz-hb-carte"><p className="dz-hb-vide">Aucune intervention sur cette période</p></div>
+          <div className="dz-hb-carte" data-guide="bureau-fiche.lignes"><p className="dz-hb-vide">Aucune intervention sur cette période</p></div>
         ) : (
           <>
             {!tel ? (
-            <div className="dz-hb-tableau">
+            <div className="dz-hb-tableau" data-guide="bureau-fiche.lignes">
               <table>
                 <thead><tr><th>Date</th><th>Client</th><th>Début–fin</th><th>Durée</th><th>Panier</th><th>Pause</th><th>Route</th><th>État</th></tr></thead>
                 <tbody>
@@ -290,7 +290,7 @@ export default function FicheHeuresV2({ ctx: c }: { ctx: FicheHeuresCtx }) {
               </table>
             </div>
             ) : (
-            <ul className="dz-hb-cartes" data-testid="fiche-cartes">
+            <ul className="dz-hb-cartes" data-testid="fiche-cartes" data-guide="bureau-fiche.lignes">
               {lignes.map((entry) => {
                 const e = etatLigne(entry, c);
                 const route = c.weekRoute.get(entry.id) || 0;

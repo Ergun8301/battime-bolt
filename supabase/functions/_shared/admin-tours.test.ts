@@ -9,17 +9,21 @@ import {
   handleActionLocally, type ActionContext,
 } from './assistant-actions-core.ts';
 import {
-  ADMIN_SCREENS, ADMIN_TOURS, adminStepsFor, findAdminTour, hasAdminTour, MENU_CIBLES, SUPPORT_TOUR, supportStepsFor,
+  ADMIN_SCREENS, ADMIN_TOURS as TOURS_ECRITES, ADMIN_TOURS_V1, adminStepsFor, findAdminTour as trouverEcrite, hasAdminTour, MENU_CIBLES, SUPPORT_TOUR, supportStepsFor,
   type AdminTour, type ConsoleKind,
 } from './admin-tours.ts';
 import { TOUR_LABEL, tourAction, tourIdOf } from './worker-tours.ts';
 import { ASSISTANT_FUNCTIONS } from './assistant-outils.ts';
 import { GUIDES_BUREAU_UI2 } from './guides-bureau-ui2.ts';
-import { ficheV2, OUVRIR_PLUS } from './admin-tours-v2.ts';
+import { ADMIN_TOURS_V2, ficheV2, findAdminTourV2, OUVRIR_PLUS, REMPLACEMENTS_V2 } from './admin-tours-v2.ts';
+// Les fiches que voit le patron : celles du bureau v2 depuis la bascule (ADMIN_TOURS_V2), celles d'avant sinon. Tout ce fichier les vérifie.
+const ADMIN_TOURS = ADMIN_TOURS_V2;
+const findAdminTour = findAdminTourV2;
+if (TOURS_ECRITES !== ADMIN_TOURS_V1 || trouverEcrite('couts') !== ADMIN_TOURS_V1.find((t) => t.id === 'couts')) throw new Error('ADMIN_TOURS (admin-tours.ts) = les fiches écrites');
 
 const ROOTS = ['app', 'components'];
-// Le planning v2 du bureau (components/design/bureau) a ses propres ancres (les mêmes valeurs, posées une 2e fois : l'écran v2 REMPLACE l'écran v1, jamais les deux à la fois) :
-// tant que les guides du bureau sont ceux d'avant (GUIDES_BUREAU_UI2 = false), ce dossier est hors du comptage des ancres ; il est lu à part (test « planning v2 » plus bas).
+// Le bureau v2 (components/design/bureau) a ses propres ancres (les mêmes valeurs, posées une 2e fois : l'écran v2 REMPLACE l'écran v1, jamais les deux à la fois).
+// Le comptage des doublons se fait design par design : le code d'avant seul (sources(false), toujours joignable par `?ui=1`), puis le dossier v2 seul (test « v2 » plus bas).
 const DOSSIER_V2 = 'components/design/bureau';
 async function sources(v2 = GUIDES_BUREAU_UI2): Promise<Record<string, string>> {
   const all: Record<string, string> = {};
@@ -97,7 +101,8 @@ const BANNED = [
 // Lettres accentuées comprises (\b ne les voit pas : « êtes » contiendrait « tes »).
 const TUTOIEMENT = /(?<![\p{L}])(tu|ton|ta|tes|toi|touche|appuie|clique|ouvre|mets|choisis|écris|fais)(?![\p{L}])/iu;
 const stepsOf = (t: AdminTour) => [...adminStepsFor(t, false), ...adminStepsFor(t, true)];
-const allCibles = () => new Set(ADMIN_TOURS.flatMap(stepsOf).map((s) => s.cible));
+// Les cibles des fiches d'avant (bureau `?ui=1`) ET des fiches v2 : une ancre n'est inutile que si aucune des deux ne la vise.
+const allCibles = () => new Set([...ADMIN_TOURS_V1, ...ADMIN_TOURS_V1.map(ficheV2)].flatMap(stepsOf).map((s) => s.cible));
 
 Deno.test('Guides bureau : une fiche par entrée de GUIDE (sauf quatre), id stable, sans doublon', () => {
   const ids = GUIDE.map((g) => g.id);
@@ -162,7 +167,8 @@ Deno.test('Guides bureau : les phrases sous 1024 px sont du bon français (pas d
 });
 
 Deno.test('Guides bureau : sous 1024 px, un libellé cité pour une ligne du menu ☰ est celui du menu ☰ (pas le « Coûts » de la barre)', async () => {
-  const menu = N(await Deno.readTextFile('components/admin-mobile-menu.tsx'));
+  // Le menu ☰ d'avant ET celui du bureau v2 (téléphone : flèches de la semaine, « Chiffres de la semaine »).
+  const menu = N(await Deno.readTextFile('components/admin-mobile-menu.tsx') + await Deno.readTextFile('components/design/bureau/menu-mobile-v2.tsx'));
   for (const t of ADMIN_TOURS) for (const e of adminStepsFor(t, true).filter((x) => x.ecran === 'menu' && x.cible !== 'bureau-nav.menu')) {
     for (const label of quoted(e.texte)) if (!menu.includes(N(label))) throw new Error(`${t.id} : « ${label} » n’est pas dans le menu ☰ — ${e.texte}`);
   }
@@ -201,7 +207,7 @@ Deno.test('Guides bureau : sous 1024 px les boutons de la barre sont des lignes 
   // Toute étape visant une ligne du ☰ est précédée de « Menu » (une seule fois) et préparée sur l'écran « menu ».
   for (const t of ADMIN_TOURS) {
     const m = adminStepsFor(t, true);
-    const lignes = m.filter((s) => MENU_CIBLES.includes(s.cible));
+    const lignes = m.filter((s) => MENU_CIBLES.includes(s.cible) || (s.ecran === 'menu' && s.cible !== 'bureau-nav.menu')); // + le haut du ☰ v2 (semaine, chiffres)
     for (const s of lignes) if (s.ecran !== 'menu') throw new Error(`${t.id} : « ${s.cible} » sous 1024 px doit préparer l’écran menu`);
     const menus = m.filter((s) => s.cible === 'bureau-nav.menu');
     if (lignes.length ? menus.length !== 1 : menus.length !== 0) throw new Error(`${t.id} : ${menus.length} étape(s) « Menu » pour ${lignes.length} ligne(s) du ☰`);
@@ -227,7 +233,8 @@ Deno.test('Guides bureau : « Suivant » seul mène aux Réglages (l’étape qu
   // « Un seul salarié ? » remplace la fenêtre d’export d’équipe : l’étape suivante la rouvre.
   const tel = findAdminTour('telecharger')!.etapes;
   const i = tel.findIndex((s) => s.cible === 'bureau-export.un-salarie');
-  if (tel[i + 1]?.cible !== 'bureau-export.menu' || tel[i + 1]?.ecran !== 'export') throw new Error('telecharger : l’étape « toute l’équipe » doit préparer l’écran export');
+  const equipe = GUIDES_BUREAU_UI2 ? 'bureau-export.equipe' : 'bureau-export.menu'; // v2 : « Toute l'équipe », en haut du panneau
+  if (tel[i + 1]?.cible !== equipe || tel[i + 1]?.ecran !== 'export') throw new Error('telecharger : l’étape « toute l’équipe » doit préparer l’écran export');
 });
 
 Deno.test('Guides bureau : chaque cible existe comme data-guide dans le code des écrans', async () => {
@@ -241,7 +248,7 @@ Deno.test('Guides bureau : chaque cible existe comme data-guide dans le code des
 });
 
 Deno.test('Guides bureau : une ancre n’a qu’un seul élément, sauf celles prévues (DUAL), et aucune n’est inutilisée', async () => {
-  const found = anchors(await sources());
+  const found = anchors(await sources(false));
   const doubles: string[] = [];
   for (const [k, n] of found) {
     if (!/^bureau-/.test(k)) continue;
@@ -309,11 +316,11 @@ Deno.test('Guides bureau : verrous de sécurité sur les textes (verrouillage, a
     return e.texte;
   };
   for (const t of ADMIN_TOURS) for (const e of t.etapes) {
-    if (e.cible === 'bureau-export.menu' && !/verrouill/.test(e.texte)) throw new Error(`${t.id} : l’export d’équipe verrouille les heures, la phrase doit le dire — ${e.texte}`);
+    if ((e.cible === 'bureau-export.menu' || e.cible === 'bureau-export.equipe') && !/verrouill/.test(e.texte)) throw new Error(`${t.id} : l’export d’équipe verrouille les heures, la phrase doit le dire — ${e.texte}`);
     if (/Clôturer/.test(e.texte) && e.cible === 'bureau-export.mois' && !/verrouill/.test(e.texte)) throw new Error(`${t.id} : « Clôturer » verrouille, la phrase doit le dire`);
   }
   if (!/verrouill/.test(texte('cloture', 'bureau-export.mois'))) throw new Error('cloture : verrouille');
-  if (!/verrouill/.test(texte('telecharger', 'bureau-export.menu'))) throw new Error('telecharger : l’export d’équipe verrouille');
+  if (!/verrouill/.test(texte('telecharger', GUIDES_BUREAU_UI2 ? 'bureau-export.equipe' : 'bureau-export.menu'))) throw new Error('telecharger : l’export d’équipe verrouille');
   if (!/sans rien verrouiller/.test(texte('telecharger', 'bureau-export.un-salarie'))) throw new Error('telecharger : « Un seul salarié ? » ne verrouille rien');
   if (!/ne verrouille rien/.test(texte('cloture_salarie', 'bureau-fiche.exporter'))) throw new Error('cloture_salarie : l’export du salarié ne verrouille rien');
   if (!/à partir/.test(texte('present', 'bureau-statut.present'))) throw new Error('present : « à partir » du jour écrit en haut');
@@ -429,11 +436,16 @@ Deno.test('Guides bureau : les phrases avec fichier (b17, b18, b19) n’ont jama
 // Pourquoi elle bouge, exprès : la PR #200 avait mis 4 étapes dans quatre fiches (archiver_client, terminer_chantier, telecharger, imprimer_planning) alors que la règle
 // de assistant-aide.test.ts est « 3 étapes au plus » (et citait un libellé « Télécharger les heures » qui n'est un bouton nulle part). Les étapes sont fusionnées,
 // sans perdre d'information, et le renvoi pointe le vrai bouton « Exporter ». Aucune autre fiche ne change.
-Deno.test('Guides bureau : la consigne envoyée au modèle porte l’empreinte déclarée (3b-0, corrigée à la relecture 3b-1), et ne parle pas des guides', async () => {
+// EMPREINTE DÉCLARÉE, bascule du bureau v2 (2026-10-19). Avant : 12 778 octets, SHA-256 5766f6e9…3198. Après : 12 833 octets, SHA-256 02d2bbe4…5d4f.
+// Pourquoi elle bouge, exprès : le bureau v2 devient l'écran de tous ; les fiches du GUIDE qui décrivaient l'ancien écran disent où sont les boutons du nouveau
+// (« Plus ⋯ » pour Coût chantiers, Réserves, Borne, Imprimer ; « Accepter » / « Refuser » pour les congés ; « Corriger » dans la ligne ; « PDF », « Excel », « CSV paie » ;
+// « Salariés » → « Invitations en attente » ; Réglages par le nom de l'entreprise ; l'onglet « Gérer » pour la clôture ; les versions du planning ne sont plus affichées).
+// Mêmes ids, mêmes liens, aucune fiche ajoutée ni retirée.
+Deno.test('Guides bureau : la consigne envoyée au modèle porte l’empreinte déclarée (bascule du bureau v2), et ne parle pas des guides', async () => {
   const bytes = new TextEncoder().encode(guideForPrompt());
-  if (bytes.length !== 12778) throw new Error(`guideForPrompt : ${bytes.length} octets (12778 attendus)`);
+  if (bytes.length !== 12833) throw new Error(`guideForPrompt : ${bytes.length} octets (12833 attendus)`);
   const sha = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map((b) => b.toString(16).padStart(2, '0')).join('');
-  eq(sha, '5766f6e975044b6dd3cd6964b8ab2b1414b51fd9ae7b89aa6002fa44d0273198', 'SHA-256 de guideForPrompt');
+  eq(sha, '02d2bbe419667927f828f173b3d0a355ac8cfb4ae6a31f9aacec04b26ee25d4f', 'SHA-256 de guideForPrompt');
   const prompt = actionPrompt(CTX, '{}', guideForPrompt(), 'x');
   if (/Me guider pas à pas|guide:/.test(prompt)) throw new Error('la consigne ne doit pas contenir les guides pas à pas');
 });
@@ -590,40 +602,44 @@ Deno.test('Guide du support : le bouton ne fait que lancer l’affichage (rien l
   }
 });
 
-// ── Planning v2 du bureau (lot 1) : les guides v2 sont prêts mais ÉTEINTS (GUIDES_BUREAU_UI2 = false) ───────────────────────────────────
-Deno.test('Guides bureau v2 : éteints par défaut, l’empreinte de la consigne ne bouge pas', () => {
-  if (GUIDES_BUREAU_UI2) throw new Error('GUIDES_BUREAU_UI2 doit rester false jusqu’à la bascule du bureau (et la mise à jour de l’empreinte déclarée ci-dessus)');
-  // Éteint : ADMIN_TOURS est EXACTEMENT la liste d'avant (la fonction ficheV2 n'est pas appliquée).
-  const c = findAdminTour('couts')!.etapes[0];
-  if (c.cible !== 'bureau-nav.couts' || !/Coût chantiers/.test(c.texte)) throw new Error('la fiche « couts » doit commencer par « Coût chantiers » (v1)');
+// ── Bureau v2 : les guides v2 sont ALLUMÉS depuis la bascule (GUIDES_BUREAU_UI2 = true) ; le bureau d'avant (`?ui=1`) garde ses fiches ──────────────
+Deno.test('Guides bureau v2 : allumés à la bascule, le bureau d’avant garde ses fiches, l’empreinte de la consigne ne bouge pas', () => {
+  if (!GUIDES_BUREAU_UI2) throw new Error('GUIDES_BUREAU_UI2 doit être true depuis la bascule du bureau');
+  eq(ADMIN_TOURS.length, ADMIN_TOURS_V1.length, 'même nombre de fiches en v1 et en v2');
+  ADMIN_TOURS.forEach((t, i) => { if (t.id !== ADMIN_TOURS_V1[i].id) throw new Error(`fiche ${i} : ${t.id} ≠ ${ADMIN_TOURS_V1[i].id}`); });
+  const c = findAdminTour('couts')!.etapes;
+  if (c[0].cible !== OUVRIR_PLUS.cible || c[1].cible !== 'bureau-nav.couts') throw new Error('la fiche « couts » v2 passe par « Plus ⋯ »');
+  if (ADMIN_TOURS_V1.find((t) => t.id === 'couts')!.etapes[0].cible !== 'bureau-nav.couts') throw new Error('la fiche « couts » d’avant est inchangée');
 });
 
-Deno.test('Guides bureau v2 : « Coût chantiers » et « Versions du planning » passent par « Plus ⋯ », le reste est repris tel quel', () => {
+Deno.test('Guides bureau v2 : les lignes de « Plus ⋯ » sont précédées de « Plus ⋯ » à l’ordinateur, jamais sous 1 024 px', () => {
+  const PLUS = ['bureau-nav.couts', 'bureau-nav.versions', 'bureau-nav.reserves', 'bureau-nav.borne'];
   for (const t of ADMIN_TOURS) {
-    const v2 = ficheV2(t);
-    const touchees = t.etapes.filter((e) => e.cible === 'bureau-nav.couts' || e.cible === 'bureau-nav.versions').length;
-    if (v2.etapes.length !== t.etapes.length + touchees) throw new Error(`${t.id} : ${touchees} étape(s) remplacée(s) doivent ajouter exactement ${touchees} étape(s) « Plus ⋯ »`);
-    v2.etapes.forEach((e, i) => {
-      if (e.cible === 'bureau-nav.couts' || e.cible === 'bureau-nav.versions') {
-        const avant = v2.etapes[i - 1];
-        if (avant?.cible !== OUVRIR_PLUS.cible || avant.surface !== 'ordi') throw new Error(`${t.id} : « ${e.cible} » doit être précédée de « Plus ⋯ » (ordinateur)`);
-      }
-    });
-    // Sous 1 024 px : pas d'étape « Plus ⋯ » (le menu ☰ est ouvert à la place), mêmes lignes qu'avant.
-    const mob = adminStepsFor(v2, true);
-    if (mob.some((e) => e.cible === 'bureau-nav.plus')) throw new Error(`${t.id} : « Plus ⋯ » n’existe pas sous 1 024 px`);
-    if (mob.length !== adminStepsFor(t, true).length) throw new Error(`${t.id} : le nombre d’étapes sous 1 024 px ne doit pas changer`);
-    for (const e of adminStepsFor(v2, false)) if (e.texte.length > 140) throw new Error(`${t.id} : phrase trop longue — ${e.texte}`);
+    const ordi = adminStepsFor(t, false);
+    ordi.forEach((e, i) => { if (PLUS.includes(e.cible) && ordi[i - 1]?.cible !== OUVRIR_PLUS.cible) throw new Error(`${t.id} : « ${e.cible} » doit suivre « Plus ⋯ »`); });
+    for (const narrow of [true]) {
+      const mob = adminStepsFor(t, narrow);
+      if (mob.some((e) => e.cible === 'bureau-nav.plus')) throw new Error(`${t.id} : « Plus ⋯ » n’existe pas sous 1 024 px`);
+    }
+    // Tablette v2 (pas de ☰ à entourer) : mêmes étapes sans « Menu ».
+    const tab = adminStepsFor(t, true, true);
+    if (tab.some((e) => e.cible === 'bureau-nav.menu')) throw new Error(`${t.id} : pas d’étape « Menu » à la tablette v2`);
+    for (const e of ordi) if (e.texte.length > 140) throw new Error(`${t.id} : phrase trop longue — ${e.texte}`);
   }
+  for (const k of Object.keys(REMPLACEMENTS_V2)) if (!ADMIN_TOURS_V1.some((t) => t.etapes.some((e) => e.cible === k))) throw new Error(`REMPLACEMENTS_V2 : « ${k} » ne remplace rien`);
 });
 
-Deno.test('Guides bureau v2 : chaque cible des fiches v2 existe dans les écrans v2 (ordinateur et menu ☰)', async () => {
-  const found = anchors(await sources(true));
+Deno.test('Guides bureau v2 : chaque cible des fiches v2 existe dans le bureau v2, et chaque ancre v2 est visée (le rejeu réel : scripts/tests/guides-bureau-v2.mjs)', async () => {
+  const tout = await sources(true);
+  const found = anchors(tout);
   const manque: string[] = [];
-  for (const t of ADMIN_TOURS) for (const narrow of [false, true]) adminStepsFor(ficheV2(t), narrow).forEach((e, i) => { if (!found.has(e.cible)) manque.push(`${t.id} étape ${i + 1} → ${e.cible}`); });
-  // Les ancres des fenêtres (Réglages, Export…) restent celles des composants partagés : seul le lot 1 (planning) est vérifié ici.
-  const horsLot1 = (m: string) => /bureau-(reglages|export|cout|conges|salaries|invit|versions\.|reserves|clients\.(budget|enregistrer|supprimer|archiver)|edit\.|stat\.liste|stat\.relancer)/.test(m);
-  const reel = manque.filter((m) => !horsLot1(m));
-  if (reel.length) throw new Error(`Ancres du planning v2 introuvables :\n${reel.join('\n')}`);
-  for (const a of ['bureau-nav.plus', 'bureau-nav.couts', 'bureau-nav.versions', 'bureau-nav.compte', 'bureau-nav.reglages', 'bureau-nav.menu']) if (!found.has(a)) throw new Error(`ancre « ${a} » absente du planning v2`);
+  for (const t of ADMIN_TOURS) for (const narrow of [false, true]) adminStepsFor(t, narrow).forEach((e, i) => { if (!found.has(e.cible)) manque.push(`${t.id} étape ${i + 1} → ${e.cible}`); });
+  if (manque.length) throw new Error(`Ancres v2 introuvables :\n${manque.join('\n')}`);
+  // Le dossier v2 seul : une ancre que plus aucune fiche ne vise est un reste à retirer.
+  const v2 = anchors(Object.fromEntries(Object.entries(tout).filter(([f]) => f.startsWith(`${DOSSIER_V2}/`))));
+  const used = allCibles();
+  const orphelines = Array.from(v2.keys()).filter((k) => /^bureau-/.test(k) && !used.has(k));
+  if (orphelines.length) throw new Error(`Ancres v2 posées mais jamais visées : ${orphelines.join(', ')}`);
+  for (const a of ['bureau-nav.plus', 'bureau-nav.couts', 'bureau-nav.compte', 'bureau-nav.reglages', 'bureau-nav.menu', 'bureau-fiche.lignes', 'bureau-fiche.gerer',
+    'bureau-docs.envoyer-client', 'bureau-export.equipe', 'bureau-export.un-salarie', 'bureau-stat.tuile']) if (!v2.has(a)) throw new Error(`ancre « ${a} » absente du bureau v2`);
 });

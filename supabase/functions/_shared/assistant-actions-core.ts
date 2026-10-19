@@ -87,18 +87,18 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'demandes_conge', mots: ['demande de conge', 'accepter conge', 'refuser conge', 'valider conge'],
     titre: 'Répondre à une demande de congé',
-    etapes: ['« Salariés » → « Demandes de congé ».', '✓ pour accepter (le planning se remplit tout seul).', '✗ pour refuser, avec un motif si vous voulez.'],
+    etapes: ['« Salariés » → « Demandes de congé ».', '« Accepter » (le planning se remplit tout seul).', '« Refuser », avec un motif si vous voulez.'],
     lien: 'conges',
   },
   {
     id: 'corriger', mots: ['corriger', 'correction', 'modifier les heures', 'erreur de pointage', 'mauvaise heure', 'corriger pointage', 'modifier pointage', 'changer pointage', 'rectifier', 'heures pointees'],
     titre: 'Corriger les heures d’un salarié',
-    etapes: ['Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).', 'Sur la journée envoyée : « Corriger les heures ».', 'Nouvelles heures et un motif (obligatoire) → « Corriger et prévenir » : il est averti.'], lien: 'salaries'
+    etapes: ['Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).', 'Cliquez la ligne de la journée envoyée, puis « Corriger ».', 'Nouvelles heures et un motif (obligatoire) → « Corriger et prévenir » : il est averti.'], lien: 'salaries'
   },
   {
     id: 'export', mots: ['export', 'exporter', 'paie', 'comptable', 'excel', 'pdf', 'csv', 'envoyer au comptable'],
     titre: 'Exporter les heures / envoyer au comptable',
-    etapes: ['« Exporter » (la fenêtre « Exporter l’équipe » s’ouvre).', 'Choisissez la période.', '« Exporter ▾ » : PDF, Excel ou CSV — ou « Envoyer à » votre comptable.'],
+    etapes: ['« Exporter » (la fenêtre « Exporter l’équipe » s’ouvre).', 'Choisissez la période.', '« PDF », « Excel » ou « CSV paie » (cela verrouille les heures) — ou « Envoyer » au comptable.'],
     lien: 'export',
   },
   {
@@ -110,7 +110,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'couts', mots: ['cout', 'budget', 'rentabilite', 'depense', 'main d oeuvre'],
     titre: 'Voir les coûts et budgets des chantiers',
-    etapes: ['Bouton « Coût chantiers » (« Coûts » sur tablette) : heures et coûts par chantier.', 'Choisissez la période (mois, semaine…).', 'Dépliez un chantier ; « Ajouter une dépense » si besoin.'],
+    etapes: ['« Plus ⋯ » → « Coût chantiers » (téléphone : menu ☰) : heures et coûts par chantier.', 'Choisissez la période (mois, semaine…).', 'Dépliez un chantier ; « Ajouter une dépense » si besoin.'],
     lien: 'couts',
   },
   {
@@ -121,7 +121,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'reserves', mots: ['reserve', 'reserves', 'lever la reserve'],
     titre: 'Suivre les réserves de chantier',
-    etapes: ['Bouton « Réserves ».', 'Onglet « À traiter » (le salarié peut aussi lever depuis son téléphone).', '« Lever la réserve » : commentaire et photo facultatifs.'],
+    etapes: ['« Plus ⋯ » → « Réserves » (ou le compteur « Réserves » en haut).', 'Onglet « À traiter » (le salarié peut aussi lever depuis son téléphone).', '« Lever la réserve » : commentaire et photo facultatifs.'],
     lien: 'reserves',
   },
   {
@@ -133,7 +133,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'reglages', mots: ['reglage', 'parametre', 'logo', 'siret', 'heures sup', 'majoration', 'relance', 'rappel', 'horaire hebdomadaire'],
     titre: 'Paramétrer l’entreprise',
-    etapes: ['Menu en haut à gauche (logo) → « Réglages de l’entreprise ».', 'Coordonnées, logo, heures sup, relances, comptable…', '« Enregistrer ».'],
+    etapes: ['Le nom de l’entreprise, en haut à droite (téléphone : menu ☰) → « Réglages de l’entreprise ».', 'Coordonnées, logo, heures sup, relances, comptable…', '« Enregistrer ».'],
     lien: 'reglages',
   },
   {
@@ -144,7 +144,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'relancer', mots: ['relancer invitation', 'invitation', 'pas recu', 'renvoyer', 'envoyer invitation', 'envoyer les invitations', 'activer compte', 'pas active'],
     titre: 'Envoyer ou renvoyer une invitation',
-    etapes: ['Au-dessus du planning : « Voir la liste » (salariés qui n’ont pas encore activé leur compte).', '« Envoyer l’invitation » ou « Renvoyer » sur la bonne ligne, ou « Envoyer toutes les invitations ».', 'Vérifiez l’adresse e-mail si rien n’arrive.'], lien: 'salaries'
+    etapes: ['« Salariés » → « Invitations en attente » (salariés qui n’ont pas encore activé leur compte).', '« Envoyer l’invitation » ou « Renvoyer » sur la bonne ligne, ou « Envoyer toutes les invitations ».', 'Vérifiez l’adresse e-mail si rien n’arrive.'], lien: 'salaries'
   },
   {
     id: 'semaine', mots: ['semaine prochaine', 'changer de semaine', 'semaine suivante'],
@@ -175,7 +175,7 @@ export const GUIDE: GuideEntry[] = [
     // Lot 8 : versions du planning (lib/planning-versions.ts). Libellés vérifiés par assistant-aide.test.ts.
     id: 'versions', mots: ['versions du planning', 'version du planning', 'revenir en arriere', 'retour en arriere', 'planning d avant', 'ancien planning', 'garder cette version'],
     titre: 'Revenir à une version d’avant du planning',
-    etapes: ['Sur le planning, l’icône ⟲ à côté de « Salarié » (menu ☰ du téléphone : « Versions du planning ») ouvre les versions de la semaine affichée.', '« Voir » montre ce qui changerait ; « Revenir à cette version » demande de confirmer. Les cases avec des heures, d’un mois clôturé ou avec un pointage en cours ne bougent pas.', '« Annuler » juste après remet le planning d’avant.'], lien: 'planning'
+    etapes: ['Le bureau n’affiche plus les versions du planning.', 'Juste après un changement, « Annuler » sur la carte remet le planning d’avant.', 'Pour une erreur plus ancienne, corrigez la case sur le planning.'], lien: 'planning'
   },
   {
     id: 'present', mots: ['present', 'enlever absence', 'annuler conge', 'finalement la', 'revient'],
@@ -190,7 +190,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'annuler_invitation', mots: ['annuler invitation', 'supprimer invitation', 'retirer invitation'],
     titre: 'Annuler une invitation',
-    etapes: ['Au-dessus du planning : « Voir la liste ».', 'La croix ✕ sur la bonne ligne, puis confirmez.', 'Le compte jamais utilisé est retiré.'], lien: 'salaries'
+    etapes: ['« Salariés » → « Invitations en attente ».', 'La croix ✕ sur la bonne ligne, puis confirmez.', 'Le compte jamais utilisé est retiré.'], lien: 'salaries'
   },
   {
     id: 'rappel', mots: ['rappel', 'relancer salarie', 'oublie d envoyer', 'pas envoye ses heures', 'cloche'],
@@ -233,7 +233,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'cloture_salarie', mots: ['fin de contrat', 'cloturer un salarie', 'cloturer ses heures', 'solde de tout compte', 'depart en cours de mois'],
     titre: 'Fin de contrat : clôturer les heures d’un salarié',
-    etapes: ['Cliquez son nom sur le planning.', '« Clôturer jusqu’au… » → son dernier jour, puis « Exporter ▾ » à côté.', '« Rouvrir » annule si besoin.'], lien: 'salaries'
+    etapes: ['Cliquez son nom sur le planning.', 'Onglet « Gérer » : « Clôturer jusqu’au… » → son dernier jour ; ses heures : « Feuille d’heures » → « Exporter ce salarié (sans verrou) ».', '« Rouvrir » annule si besoin.'], lien: 'salaries'
   },
   {
     id: 'feuille', mots: ['feuille d heures', 'voir les heures', 'heures d un salarie', 'releve'],
@@ -259,26 +259,26 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'telecharger', mots: ['telecharger', 'fichier des heures', 'tableur'],
     titre: 'Télécharger les heures (Excel, PDF, CSV)',
-    etapes: ['« Exporter » (équipe) ou la fiche d’un salarié.', 'Choisissez la période, puis « Exporter ▾ » → « PDF », « Excel » ou « CSV » : le fichier se télécharge.', 'Ce n’est pas l’impression du planning (voir « Imprimer le planning »).'],
+    etapes: ['« Exporter » (équipe) ou la fiche d’un salarié.', 'Choisissez la période, puis « PDF », « Excel » ou « CSV paie » : le fichier se télécharge (un seul salarié : « Un salarié », sans verrou).', 'Ce n’est pas l’impression du planning (voir « Imprimer le planning »).'],
     lien: 'export',
   },
   // 3b-0 : « imprimer » n’est PAS l’export des heures (components/planning-print.tsx : menu « Imprimer le planning » ; admin-planning.tsx : icône de la barre, Ctrl+P).
   {
     id: 'imprimer_planning', mots: ['imprimer', 'imprimer le planning', 'impression du planning', 'feuille a4'],
     titre: 'Imprimer le planning',
-    etapes: ['Sur ordinateur, l’icône imprimante dans la barre du planning (« Imprimer le planning »).', 'Choisissez la période (semaine, jour ou mois), toute l’équipe ou un salarié, avec ou sans colonne signature, puis « Imprimer » : la feuille A4 paysage s’ouvre dans l’impression de votre navigateur. Ctrl+P (⌘P) imprime directement la période affichée.', 'Les heures pour la paie ne s’impriment pas d’ici : « Exporter ▾ » → « PDF » (voir « Exporter »).'],
+    etapes: ['Sur ordinateur, « Plus ⋯ » → « Imprimer ».', 'Choisissez la période (semaine, jour ou mois), toute l’équipe ou un salarié, avec ou sans colonne signature, puis « Imprimer » : la feuille A4 paysage s’ouvre dans l’impression de votre navigateur. Ctrl+P (⌘P) imprime directement la période affichée.', 'Les heures pour la paie ne s’impriment pas d’ici : « Exporter ▾ » → « PDF » (voir « Exporter »).'],
     lien: 'planning',
   },
   {
     id: 'lever_reserve', mots: ['lever reserve', 'reserve reglee', 'rouvrir reserve'],
     titre: 'Lever une réserve réglée',
-    etapes: ['Bouton « Réserves ».', 'Sur la réserve : « Lever la réserve » (commentaire, photo : facultatifs).', '« Rouvrir » si elle revient.'],
+    etapes: ['« Plus ⋯ » → « Réserves » (ou le compteur « Réserves » en haut).', 'Sur la réserve : « Lever la réserve » (commentaire, photo : facultatifs).', '« Rouvrir » si elle revient.'],
     lien: 'reserves',
   },
   {
     id: 'depense', mots: ['depense', 'facture fournisseur', 'achat materiaux', 'location materiel', 'sous traitance'],
     titre: 'Ajouter une dépense sur un chantier',
-    etapes: ['Bouton « Coût chantiers ».', '« Ajouter une dépense » : chantier, catégorie, montant, date.', 'Elle entre dans le coût du chantier.'],
+    etapes: ['« Plus ⋯ » → « Coût chantiers ».', '« Ajouter une dépense » : chantier, catégorie, montant, date.', 'Elle entre dans le coût du chantier.'],
     lien: 'couts',
   },
   {
@@ -289,7 +289,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'borne', mots: ['borne', 'tablette', 'qr code', 'pointeuse'],
     titre: 'Relier la tablette de pointage (borne)',
-    etapes: ['Bouton « Borne » dans la barre du planning (ou Réglages → « Borne & pointage » → « Relier la tablette »). Il n’existe que si la borne est activée pour l’entreprise.', 'Le plus simple : la tablette affiche son QR, scannez-le avec votre téléphone et confirmez. Sinon, le code à 6 chiffres est dans la fenêtre : sur la tablette, ouvrez bemexo.com/borne et tapez-le.', 'Si une tablette est déjà reliée, le code reste caché derrière « Relier une autre tablette » ; la nouvelle remplace l’ancienne. « Déconnecter la tablette » pour la retirer.'],
+    etapes: ['« Plus ⋯ » → « Borne » (ou Réglages → « Borne & pointage » → « Relier la tablette »). Il n’existe que si la borne est activée pour l’entreprise.', 'Le plus simple : la tablette affiche son QR, scannez-le avec votre téléphone et confirmez. Sinon, le code à 6 chiffres est dans la fenêtre : sur la tablette, ouvrez bemexo.com/borne et tapez-le.', 'Si une tablette est déjà reliée, le code reste caché derrière « Relier une autre tablette » ; la nouvelle remplace l’ancienne. « Déconnecter la tablette » pour la retirer.'],
     // 3b-0 : aucun écran « borne » n’existe encore dans NAV_ACTIONS (3b-1) ; le bouton « Borne » est dans la barre du planning, le lien reste donc « planning » (prudent).
     lien: 'planning',
   },
