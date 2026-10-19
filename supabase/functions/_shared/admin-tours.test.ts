@@ -167,7 +167,8 @@ Deno.test('Guides bureau : les phrases sous 1024 px sont du bon français (pas d
 });
 
 Deno.test('Guides bureau : sous 1024 px, un libellé cité pour une ligne du menu ☰ est celui du menu ☰ (pas le « Coûts » de la barre)', async () => {
-  const menu = N(await Deno.readTextFile('components/admin-mobile-menu.tsx'));
+  // Le menu ☰ d'avant ET celui du bureau v2 (téléphone : flèches de la semaine, « Chiffres de la semaine »).
+  const menu = N(await Deno.readTextFile('components/admin-mobile-menu.tsx') + await Deno.readTextFile('components/design/bureau/menu-mobile-v2.tsx'));
   for (const t of ADMIN_TOURS) for (const e of adminStepsFor(t, true).filter((x) => x.ecran === 'menu' && x.cible !== 'bureau-nav.menu')) {
     for (const label of quoted(e.texte)) if (!menu.includes(N(label))) throw new Error(`${t.id} : « ${label} » n’est pas dans le menu ☰ — ${e.texte}`);
   }
@@ -206,7 +207,7 @@ Deno.test('Guides bureau : sous 1024 px les boutons de la barre sont des lignes 
   // Toute étape visant une ligne du ☰ est précédée de « Menu » (une seule fois) et préparée sur l'écran « menu ».
   for (const t of ADMIN_TOURS) {
     const m = adminStepsFor(t, true);
-    const lignes = m.filter((s) => MENU_CIBLES.includes(s.cible));
+    const lignes = m.filter((s) => MENU_CIBLES.includes(s.cible) || (s.ecran === 'menu' && s.cible !== 'bureau-nav.menu')); // + le haut du ☰ v2 (semaine, chiffres)
     for (const s of lignes) if (s.ecran !== 'menu') throw new Error(`${t.id} : « ${s.cible} » sous 1024 px doit préparer l’écran menu`);
     const menus = m.filter((s) => s.cible === 'bureau-nav.menu');
     if (lignes.length ? menus.length !== 1 : menus.length !== 0) throw new Error(`${t.id} : ${menus.length} étape(s) « Menu » pour ${lignes.length} ligne(s) du ☰`);
@@ -623,7 +624,6 @@ Deno.test('Guides bureau v2 : les lignes de « Plus ⋯ » sont précédées de 
     // Tablette v2 (pas de ☰ à entourer) : mêmes étapes sans « Menu ».
     const tab = adminStepsFor(t, true, true);
     if (tab.some((e) => e.cible === 'bureau-nav.menu')) throw new Error(`${t.id} : pas d’étape « Menu » à la tablette v2`);
-    eq(tab.length, adminStepsFor(t, true).filter((e) => e.cible !== 'bureau-nav.menu').length, `${t.id} : tablette = téléphone sans « Menu »`);
     for (const e of ordi) if (e.texte.length > 140) throw new Error(`${t.id} : phrase trop longue — ${e.texte}`);
   }
   for (const k of Object.keys(REMPLACEMENTS_V2)) if (!ADMIN_TOURS_V1.some((t) => t.etapes.some((e) => e.cible === k))) throw new Error(`REMPLACEMENTS_V2 : « ${k} » ne remplace rien`);

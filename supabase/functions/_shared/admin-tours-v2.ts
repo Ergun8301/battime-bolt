@@ -16,6 +16,8 @@ import { GUIDES_BUREAU_UI2 } from './guides-bureau-ui2.ts';
 /** L'étape « ouvrir Plus ⋯ », ordinateur seulement (sous 1 024 px c'est l'étape « Menu », ajoutée par adminStepsFor). */
 export const OUVRIR_PLUS: AdminStep = { cible: 'bureau-nav.plus', texte: 'Cliquez sur « Plus ⋯ ».', surface: 'ordi' };
 const NAV_SAL: AdminStep = { cible: 'bureau-nav.salaries', texte: 'Cliquez sur « Salariés ».' };
+/** Téléphone v2 : ouvrir le menu ☰ (même phrase que l'étape « Menu » de adminStepsFor). */
+const MENU_TEL: AdminStep = { ecran: 'planning', cible: 'bureau-nav.menu', surface: 'telephone', texte: 'Touchez le bouton « Menu » (les trois traits), en haut de l’écran.' };
 
 /** Texte v2 des étapes dont le texte ou la place change ; la clé est la `cible` (le reste des étapes est repris tel quel). */
 export const REMPLACEMENTS_V2: Record<string, (e: AdminStep) => AdminStep[]> = {
@@ -37,6 +39,21 @@ export const REMPLACEMENTS_V2: Record<string, (e: AdminStep) => AdminStep[]> = {
   ],
   'bureau-fiche.cloturer': (e) => [{ cible: 'bureau-fiche.gerer', texte: 'Cliquez sur « Gérer », en haut de la fiche.' }, e],
   'bureau-docs.email': (e) => [{ cible: 'bureau-docs.envoyer-client', texte: 'Cliquez sur « Envoyer au client ».' }, e],
+  // Téléphone v2 : les flèches de la semaine sont en haut du menu ☰ (la tablette les garde dans sa barre, comme l'ordinateur).
+  'bureau-semaine.nav': (e) => [
+    { ...e, surface: 'ordi' },
+    { ...e, surface: 'tablette', texte: e.mobile ?? e.texte },
+    { ...MENU_TEL },
+    { ecran: 'menu', cible: e.cible, surface: 'telephone', texte: 'Touchez → pour la semaine suivante (← pour la précédente), en haut du menu.' },
+  ],
+  // Téléphone v2 : « à relancer » est dans « Chiffres de la semaine », en haut du menu ☰.
+  'bureau-stat.relance': (e) => [
+    { ...e, surface: 'ordi' },
+    { ...e, surface: 'tablette' },
+    { ...MENU_TEL },
+    { ecran: 'menu', cible: e.cible, surface: 'telephone', texte: 'Touchez « Chiffres de la semaine ».' },
+    { cible: e.cible, surface: 'telephone', texte: 'Touchez « À relancer ».' },
+  ],
 };
 
 /** Remplacements propres à UNE fiche (la même cible sert ailleurs avec son texte d'avant). */

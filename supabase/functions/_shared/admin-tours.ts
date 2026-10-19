@@ -37,8 +37,9 @@ export interface AdminStep {
   texte: string;
   /** Phrase des petits écrans (< 1024 px) si elle diffère de `texte` (sinon dérivée). */
   mobile?: string;
-  /** Étape propre à une mise en page (le texte est alors déjà écrit avec le bon verbe). */
-  surface?: 'ordi' | 'mobile';
+  /** Étape propre à une mise en page (le texte est alors déjà écrit avec le bon verbe). `tablette` / `telephone` : sous 1024 px, bureau v2
+   *  seulement (adminStepsFor avec `sansBoutonMenu` = tablette, 768 à 1 023 px), quand la tablette et le téléphone n'ont pas le même écran. */
+  surface?: 'ordi' | 'mobile' | 'tablette' | 'telephone';
 }
 /** `ordi: true` = ordinateur seulement (le glisser-déposer n'existe pas sur téléphone). */
 export interface AdminTour { id: string; ordi?: true; etapes: AdminStep[] }
@@ -330,7 +331,7 @@ export function adminStepsFor(t: AdminTour, narrow: boolean, sansBoutonMenu = fa
   // Bureau v2 à la tablette (768 à 1 023 px) : pas de bouton ☰ à entourer ; l'écran `menu` (préparé par le guide) ouvre la même liste.
   let menuAnnonce = sansBoutonMenu;
   for (const e of t.etapes) {
-    if (e.surface && e.surface !== (narrow ? 'mobile' : 'ordi')) continue;
+    if (e.surface && !(e.surface === 'ordi' ? !narrow : narrow && (e.surface === 'mobile' || (e.surface === 'tablette') === sansBoutonMenu))) continue;
     if (!narrow) { out.push({ ...(e.ecran ? { ecran: e.ecran } : {}), cible: e.cible, texte: e.texte }); continue; }
     const texte = e.mobile ?? touchez(e.texte);
     if (MENU_CIBLES.includes(e.cible)) {

@@ -153,7 +153,7 @@ for (const w of WIDTHS) {
     const steps = adminStepsFor(t, mobile, w >= 768 && w < 1024); // tablette v2 : pas de bouton ☰ (components/admin-planning.tsx)
     if (t.ordi && mobile) continue;
     D = fresh(); REPLY = { id, extra: [] };
-    await p.goto(`http://localhost:${PORT}/admin`); await p.waitForSelector(READY, { timeout: 20000 }); await p.waitForTimeout(1200);
+    await p.goto(`http://localhost:${PORT}/admin`); await p.waitForSelector(`${READY} >> visible=true`, { timeout: 20000 }); await p.waitForTimeout(1200);
     // Lancement comme en vrai : l'assistant répond avec « Me guider pas à pas ».
     await p.locator(':is([data-testid=bar-assistant],[data-testid=m-assistant]):visible').first().click();
     await p.waitForSelector('.as-bar textarea'); await p.fill('.as-bar textarea', `Comment faire ${id.replace(/_/g, ' ')} ?`);
@@ -171,7 +171,9 @@ for (const w of WIDTHS) {
       try { await p.waitForFunction((n) => document.querySelector('[data-testid=guide-count]')?.textContent?.includes(`Étape ${n}`), i + 1, { timeout: 3000 }); } catch { res.push(`${i + 1}:carte?`); break; }
       let ph = 'search';
       for (let k = 0; k < 40 && ph === 'search'; k++) { await p.waitForTimeout(150); ph = await p.locator(G.text).getAttribute('data-phase'); }
-      res.push(ph === 'ok' ? `${i + 1}✓` : APRES_GESTE.has(`${id}:${s.cible}`) ? `${i + 1}✓(attendu : ${ph})` : `${i + 1}✗(${ph}) ${s.cible}`);
+      // « S'il y a… » : l'étape dit elle-même que la case peut manquer (et la suivante n'existe qu'après elle).
+      const conditionnel = /^S’il y a/.test(steps.find((x) => x.cible === s.cible)?.texte ?? '') || /^S’il y a/.test(steps[i - 1]?.texte ?? '');
+      res.push(ph === 'ok' ? `${i + 1}✓` : APRES_GESTE.has(`${id}:${s.cible}`) || conditionnel ? `${i + 1}✓(attendu : ${ph})` : `${i + 1}✗(${ph}) ${s.cible}`);
       if (ph !== 'ok' || process.env.SHOTS) await p.screenshot({ path: `${SH}/${w}-${id}-${i + 1}.png` });
       const next = steps[i + 1];
       if (ph === 'ok' && next && (!next.ecran || s.cible === 'bureau-nav.selection') && NAV.has(s.cible) && id !== 'deplacer') {
