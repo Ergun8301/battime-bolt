@@ -1,10 +1,11 @@
-# Point de reprise (16 octobre 2026) — à lire en premier dans un chat neuf
+# Point de reprise (19 octobre 2026) — à lire en premier dans un chat neuf
 
 ## Ce qui est EN LIGNE et vérifié
 - Assistant IA : Claude Sonnet 5.5 (Gemini en secours), chat avec mémoire (30 jours), registre d'outils + test de couverture, listes d'outils générées, **ouvrir 27 écrans** (secret `AI_ETAPE3` posé par le patron en mode `pilote` pour K Habitat). Mesures réelles : 160/160 anciens cas, « Ouvrir » 77/94 avant correction turque puis 21/22 turc.
 - Fonctions Supabase : assistant v33, worker-assistant v25, assistant-eval v48 (déploiement par fichier pointeur vers un sha GitHub, voir docs/ia-etape3/05-journal.md).
 - Tout le cœur métier (pointage, validation, export, clôture, borne, formations…) est déjà en production : **le produit est vendable tel quel** ; le reste est de l'amélioration.
 
+- **BUREAU v2 EN LIGNE POUR TOUS (19 oct. 2026, bascule autorisée par Ergun)** : PR #234. `BUREAU_UI2_PAR_DEFAUT` et `GUIDES_BUREAU_UI2` à `true` ; **porte de secours `/admin?ui=1`** (bureau d'avant, mémorisée pour la session, partout ; HTML identique à l'octet : `bureau-v1-identique` 7/7). Guides pas à pas v2 (48 fiches, `ADMIN_TOURS_V2` chargé avec le bureau v2) prouvés sur la vraie page à 1280 / 834 / 390 px (`scripts/tests/guides-bureau-v2.mjs`). Aide écrite de l'assistant (GUIDE) décrite pour le v2 : empreinte 02d2bbe4…5d4f, étalon `avant-3b1` régénéré (4ᵉ exception). Fonctions `assistant` et `assistant-eval` redéployées par pointeur après fusion. Pages publiques : crédit IPPYX (PR #233).
 ## Ce qui est EN COURS / ARRÊTÉ (rien n'est cassé, rien de fusionné)
 - Intégration du design salarié (plan : docs/design-brief/audit-salarie/03-plan-integration.md ; audit final : 05-audit-final.md). Étapes 0-1 (filets + alléger, invisibles) **FUSIONNÉES dans main (PR #205, 15 oct.)** : /poseur 335 → 269 kB JS, 14 scripts navigateur verts. Prochaine étape : 2 (logique pure + séparation modèle/vue). Décision : design FIGÉ, on s'appuie sur la planche finale du designer, on corrige soi-même focus/portail Radix/requêtes.
 - IA 3c réduit (8 lectures bureau + 3 salarié + boucle d'outils) : PR #207 FUSIONNÉE et déployée (assistant v33, worker-assistant v25, assistant-eval v48), ÉTEINT par défaut (secret `AI_ETAPE3.boucle` à poser par le patron, côté `bureau` et/ou `salarie`, en `pilote`). Mesures et détails : docs/ia-etape3/05-journal.md. Après cette livraison : l'IA est GELÉE (3d, écritures niveau 2/3 généralisées, seulement après les premiers clients).
