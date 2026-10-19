@@ -422,13 +422,13 @@ const etatAssistant = (page) => page.evaluate(() => {
   await ctx.close();
 }
 {
-  // Sans ?ui=2 : le bureau d'avant, aucune pastille (l'assistant reste ouvert à côté de la fenêtre, comme aujourd'hui).
+  // `?ui=1` (porte de secours depuis la bascule) : le bureau d'avant, aucune pastille (l'assistant reste ouvert à côté de la fenêtre, comme avant).
   sim.reinitialiser();
-  const { page, ctx } = await sim.page({ ui: null, largeur: 1440, hauteur: 900 });
+  const { page, ctx } = await sim.page({ ui: 1, largeur: 1440, hauteur: 900 });
   await assistantRepond(page, ctx, { label: 'Salariés', action: 'salaries' });
   await page.click('[data-testid=assistant-panel] .as-links button'); await page.waitForTimeout(600);
   const v1 = await etatAssistant(page);
-  check(v1.panneauVisible && !v1.pastille, `sans ?ui=2 : comportement d'avant, panneau visible et aucune pastille (${JSON.stringify(v1)})`);
+  check(v1.panneauVisible && !v1.pastille, `?ui=1 : comportement d'avant, panneau visible et aucune pastille (${JSON.stringify(v1)})`);
   await ctx.close();
 }
 

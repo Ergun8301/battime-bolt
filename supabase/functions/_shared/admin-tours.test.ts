@@ -641,5 +641,5 @@ Deno.test('Guides bureau v2 : chaque cible des fiches v2 existe dans le bureau v
   const orphelines = Array.from(v2.keys()).filter((k) => /^bureau-/.test(k) && !used.has(k));
   if (orphelines.length) throw new Error(`Ancres v2 posées mais jamais visées : ${orphelines.join(', ')}`);
   for (const a of ['bureau-nav.plus', 'bureau-nav.couts', 'bureau-nav.compte', 'bureau-nav.reglages', 'bureau-nav.menu', 'bureau-fiche.lignes', 'bureau-fiche.gerer',
-    'bureau-docs.envoyer-client', 'bureau-export.equipe', 'bureau-export.un-salarie']) if (!v2.has(a)) throw new Error(`ancre « ${a} » absente du bureau v2`);
+    'bureau-docs.envoyer-client', 'bureau-export.equipe', 'bureau-export.un-salarie', 'bureau-stat.tuile']) if (!v2.has(a)) throw new Error(`ancre « ${a} » absente du bureau v2`);
 });

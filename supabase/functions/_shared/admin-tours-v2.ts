@@ -46,13 +46,16 @@ export const REMPLACEMENTS_V2: Record<string, (e: AdminStep) => AdminStep[]> = {
     { ...MENU_TEL },
     { ecran: 'menu', cible: e.cible, surface: 'telephone', texte: 'Touchez → pour la semaine suivante (← pour la précédente), en haut du menu.' },
   ],
-  // Téléphone v2 : « à relancer » est dans « Chiffres de la semaine », en haut du menu ☰.
+  // La liste des noms s'ouvre par la tuile « À relancer » (aucune liste au repos, demande d'Ergun). Ordinateur, haut déplié : le compteur l'ouvre déjà
+  // (d'où « si elle n'est pas ouverte ») ; haut replié et tablette : le compteur ouvre les tuiles. Téléphone : « Chiffres de la semaine », en haut du menu ☰.
   'bureau-stat.relance': (e) => [
     { ...e, surface: 'ordi' },
+    { cible: 'bureau-stat.tuile', surface: 'ordi', texte: 'Si la liste n’est pas ouverte, cliquez sur la tuile « À relancer ».' },
     { ...e, surface: 'tablette' },
+    { cible: 'bureau-stat.tuile', surface: 'tablette', texte: 'Touchez la tuile « À relancer ».' },
     { ...MENU_TEL },
     { ecran: 'menu', cible: e.cible, surface: 'telephone', texte: 'Touchez « Chiffres de la semaine ».' },
-    { cible: e.cible, surface: 'telephone', texte: 'Touchez « À relancer ».' },
+    { cible: 'bureau-stat.tuile', surface: 'telephone', texte: 'Touchez la tuile « À relancer ».' },
   ],
 };
 

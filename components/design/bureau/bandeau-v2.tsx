@@ -27,7 +27,7 @@ function useClicDehors(ref: React.RefObject<HTMLElement>, fermer: () => void, ac
     if (!actif) return;
     const f = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
-      if (!t || ref.current?.contains(t) || t.closest('[data-ouvre-chiffres]') || t.closest('[role="dialog"],[role="alertdialog"]')) return;
+      if (!t || ref.current?.contains(t) || t.closest('[data-ouvre-chiffres]') || t.closest('[role="dialog"],[role="alertdialog"],[data-guide-ui]')) return;
       fermer();
     };
     document.addEventListener('pointerdown', f, true);
@@ -45,7 +45,8 @@ function useDeroulant(ref: React.RefObject<HTMLElement>, ouvert: boolean, fermer
     if (!ouvert) return;
     const clic = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
-      if (!t || ref.current?.contains(t) || t.closest('[data-ouvre-chiffres]')) return;
+      // La carte du guide pas à pas (data-guide-ui) ne referme pas la liste qu'elle montre.
+      if (!t || ref.current?.contains(t) || t.closest('[data-ouvre-chiffres]') || t.closest('[data-guide-ui]')) return;
       fermer();
     };
     const touche = (e: KeyboardEvent) => {
@@ -70,7 +71,7 @@ function Tuile({ classe = '', testId, guideRelance = false, ouvert, basculer, fe
   const id = useId();
   useDeroulant(ref, ouvert && !!liste, fermer);
   return (
-    <div ref={ref} className={`dzp-tuile ${classe}`} data-testid={testId} data-guide={guideRelance ? 'bureau-stat.relance' : undefined} data-ouvert={ouvert && liste ? '' : undefined}>
+    <div ref={ref} className={`dzp-tuile ${classe}`} data-testid={testId} data-guide={guideRelance ? 'bureau-stat.tuile' : undefined} data-ouvert={ouvert && liste ? '' : undefined}>
       {liste ? (
         <button type="button" className="dzp-tuile__corps" aria-expanded={ouvert} aria-controls={id} onClick={basculer}
           title={ouvert ? 'Refermer la liste' : `Voir la liste : ${libelle}`}>{children}</button>
@@ -86,11 +87,11 @@ function Tuile({ classe = '', testId, guideRelance = false, ouvert, basculer, fe
  * Aucune liste de noms au repos : un clic sur « À relancer » (ou « En direct », « Absents » quand il y a des noms) ouvre sa liste déroulante sous la tuile ;
  * clic dehors, Échap ou nouveau clic sur la tuile la referment. `liste` / `setListe` : l'état tenu par PlanningV2 (le compteur de la barre noire ouvre la même).
  */
-export function PanneauChiffres({ c, chiffres, fermer, enLigne = false, liste: listeParent, setListe: setListeParent, listeInitiale = null }: {
-  c: PlanningCtx; chiffres: Chiffres; fermer: () => void; enLigne?: boolean; liste?: ListeChiffres; setListe?: (l: ListeChiffres) => void; listeInitiale?: ListeChiffres;
+export function PanneauChiffres({ c, chiffres, fermer, enLigne = false, liste: listeParent, setListe: setListeParent }: {
+  c: PlanningCtx; chiffres: Chiffres; fermer: () => void; enLigne?: boolean; liste?: ListeChiffres; setListe?: (l: ListeChiffres) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [listeInterne, setListeInterne] = useState<ListeChiffres>(listeInitiale);
+  const [listeInterne, setListeInterne] = useState<ListeChiffres>(null);
   const liste = listeParent !== undefined ? listeParent : listeInterne;
   const poserListe = setListeParent ?? setListeInterne;
   const fermerListe = useCallback(() => poserListe(null), [poserListe]);
@@ -134,7 +135,7 @@ export function PanneauChiffres({ c, chiffres, fermer, enLigne = false, liste: l
         <span className="dzp-total__s">{passee ? 'Semaine passée' : `+ ${Math.round(chiffres.aVenir / 60)} h prévues${c.isCurrentWeek ? ' à venir' : ''}`}</span>
       </div>
 
-      <Tuile classe="dzp-tuile--relance" testId="stat-relance" guideRelance={!enLigne} libelle="À relancer"
+      <Tuile classe="dzp-tuile--relance" testId="stat-relance" guideRelance libelle="À relancer"
         ouvert={liste === 'relance'} basculer={basculer('relance')} fermer={fermerListe}
         liste={toutes.length === 0 ? null : (
           <>

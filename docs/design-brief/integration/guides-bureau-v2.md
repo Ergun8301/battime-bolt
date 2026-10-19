@@ -20,7 +20,10 @@ Les fiches v2 (`ADMIN_TOURS_V2`, `admin-tours-v2.ts`) sont chargées AVEC le bur
 | textes « Heures et paie » | `admin-tours-ui2.ts` | branchés (`TEXTES_HEURES_V2`, appliqués par `ficheV2`) |
 | tablette v2 (768 à 1 023 px) | étape « Menu (☰) » | pas d'étape « Menu » : le guide ouvre la même liste lui-même |
 
-Le compteur « à relancer » de la barre ouvre maintenant directement la liste des salariés à relancer (haut replié, tablette), comme au haut déplié.
+| `rappel` | « à relancer » puis la liste | le compteur, puis la tuile « À relancer » (`bureau-stat.tuile` ; « si la liste n'est pas ouverte » : au haut déplié le compteur l'ouvre déjà), puis la liste ; téléphone : ☰ → « Chiffres de la semaine » → la tuile |
+| `semaine` | flèches de la barre | téléphone : ☰ puis ← → en haut du menu (la tablette garde ceux de sa barre) |
+
+Aucune liste au repos (retouche d'Ergun) : rien ne change à l'écran pour le guide. Seul ajout : un clic sur la carte du guide ne referme plus la liste déroulante qu'il montre.
 
 Preuve réelle : `node scripts/tests/guides-bureau-v2.mjs out <dossier>` joue les 48 fiches comme l'assistant les lance, à 1280, 834 et 390 px, sur la vraie page.
 L'aide écrite de l'assistant (GUIDE, `assistant-actions-core.ts`) décrit aussi le bureau v2 : empreinte 5766f6e9…3198 → 02d2bbe4…5d4f (`admin-tours.test.ts`).

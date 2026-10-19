@@ -135,7 +135,8 @@ const NAV = new Set(['bureau-nav.salaries', 'bureau-nav.clients', 'bureau-nav.ex
   'bureau-salaries.nom', 'bureau-clients.nouveau', 'bureau-clients.crayon', 'bureau-planning.nom', 'bureau-planning.bulle', 'bureau-planning.case',
   'bureau-planning.ajouter', 'bureau-planning.autre', 'bureau-statut.feuille', 'bureau-edit.documents', 'bureau-export.un-salarie', 'bureau-stat.relance',
   'bureau-invit.voir', 'bureau-fiche.corriger', 'bureau-fiche.habilitations', 'bureau-versions.voir', 'bureau-nav.selection', 'bureau-reglages.rub-notif',
-  'bureau-reglages.rub-heures', 'bureau-reglages.rub-borne', 'bureau-fiche.gerer', 'bureau-fiche.lignes', 'bureau-docs.envoyer-client', 'bureau-statut.absences']);
+  'bureau-reglages.rub-heures', 'bureau-reglages.rub-borne', 'bureau-fiche.gerer', 'bureau-fiche.lignes', 'bureau-docs.envoyer-client', 'bureau-statut.absences',
+  'bureau-stat.tuile']);
 // Étapes qui ne s'affichent qu'après un geste qui AGIT (le guide ne le fait jamais, ce banc non plus), hors de l'essai, ou sans tablette reliée :
 // « Je ne vois pas ce bouton » y est juste.
 const APRES_GESTE = new Set(['lever_reserve:reserves.valider', 'abonnement:bureau-nav.abonner', 'borne:bureau-borne.deconnecter']);
@@ -176,7 +177,9 @@ for (const w of WIDTHS) {
       res.push(ph === 'ok' ? `${i + 1}✓` : APRES_GESTE.has(`${id}:${s.cible}`) || conditionnel ? `${i + 1}✓(attendu : ${ph})` : `${i + 1}✗(${ph}) ${s.cible}`);
       if (ph !== 'ok' || process.env.SHOTS) await p.screenshot({ path: `${SH}/${w}-${id}-${i + 1}.png` });
       const next = steps[i + 1];
-      if (ph === 'ok' && next && (!next.ecran || s.cible === 'bureau-nav.selection') && NAV.has(s.cible) && id !== 'deplacer') {
+      // La tuile « À relancer » BASCULE sa liste : on ne la touche que si la liste n'est pas déjà ouverte (comme le dit la phrase).
+      const listeOuverte = s.cible === 'bureau-stat.tuile' && await p.locator('[data-testid=relance-panel] >> visible=true').count() > 0;
+      if (ph === 'ok' && next && !listeOuverte && (!next.ecran || s.cible === 'bureau-nav.selection') && NAV.has(s.cible) && id !== 'deplacer') {
         const el = s.cible === 'bureau-statut.absences' ? p.locator('[data-guide="bureau-statut.absences"] >> visible=true').first().getByText('Congé', { exact: true })
           : s.cible === 'bureau-fiche.lignes' ? p.locator('[data-guide="bureau-fiche.lignes"] >> visible=true').first().locator(':is([data-testid=fiche-ligne-ouvrir],.dz-hb-carte-ligne)').first()
           : p.locator(`[data-guide="${s.cible}"] >> visible=true`).first();

@@ -286,7 +286,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
               <div className="dzp-haut dzp-haut--1a">
                 <BarreNoire1a c={c} replie={replie} deplier={() => { setStatPanel(null); poserReplie(false); }} replier={() => { setStatPanel(null); poserReplie(true); }} recherche={recherche} setRecherche={setRecherche} signaler={signaler} relanceOuverte={replie ? c.statPanel === 'waiting' : liste === 'relance'} />
                 {!replie && <LigneSemaine1a c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} />}
-                {replie && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} listeInitiale="relance" />}
+                {replie && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
                 {c.statPanel === 'docs' && <ListePieces c={c} />}
               </div>
               {!replie && (
@@ -298,7 +298,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           ) : (
             <div className="dzp-haut">
               <BarreUnique c={telephone ? { ...c, printMenu: null } : c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} />
-              {!telephone && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} listeInitiale="relance" />}
+              {!telephone && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
               {!telephone && c.statPanel === 'docs' && <ListePieces c={c} />}
             </div>
           )}
