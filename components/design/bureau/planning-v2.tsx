@@ -23,6 +23,8 @@ import type { PlanningCtx } from './contexte-v2';
 export { default as MenuMobileV2 } from './menu-mobile-v2';
 export { Ghost } from './bulle-v2';
 export { default as FicheV2 } from './fiche-v2';
+// Les fiches du guide pas à pas du bureau v2 : chargées avec ce morceau, jamais dans le premier chargement de /admin.
+export { findAdminTourV2 } from '@/supabase/functions/_shared/admin-tours-v2';
 
 const LEGENDE: { k: string; l: string }[] = [
   { k: 'matin', l: 'Matin (avant 12 h)' }, { k: 'apres-midi', l: 'Après-midi (12 h – 18 h)' }, { k: 'soir', l: 'Soir (après 18 h)' }, { k: 'journee', l: 'Journée entière ou sans horaire' },
@@ -284,7 +286,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
               <div className="dzp-haut dzp-haut--1a">
                 <BarreNoire1a c={c} replie={replie} deplier={() => { setStatPanel(null); poserReplie(false); }} replier={() => { setStatPanel(null); poserReplie(true); }} recherche={recherche} setRecherche={setRecherche} signaler={signaler} relanceOuverte={replie ? c.statPanel === 'waiting' : liste === 'relance'} />
                 {!replie && <LigneSemaine1a c={c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} />}
-                {replie && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
+                {replie && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} listeInitiale="relance" />}
                 {c.statPanel === 'docs' && <ListePieces c={c} />}
               </div>
               {!replie && (
@@ -296,7 +298,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           ) : (
             <div className="dzp-haut">
               <BarreUnique c={telephone ? { ...c, printMenu: null } : c} recherche={recherche} setRecherche={setRecherche} pleinEcran={() => setPleinEcran(true)} />
-              {!telephone && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} />}
+              {!telephone && c.statPanel === 'waiting' && <PanneauChiffres c={c} chiffres={chiffres} fermer={() => setStatPanel(null)} listeInitiale="relance" />}
               {!telephone && c.statPanel === 'docs' && <ListePieces c={c} />}
             </div>
           )}

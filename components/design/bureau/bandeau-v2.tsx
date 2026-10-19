@@ -86,11 +86,11 @@ function Tuile({ classe = '', testId, guideRelance = false, ouvert, basculer, fe
  * Aucune liste de noms au repos : un clic sur « À relancer » (ou « En direct », « Absents » quand il y a des noms) ouvre sa liste déroulante sous la tuile ;
  * clic dehors, Échap ou nouveau clic sur la tuile la referment. `liste` / `setListe` : l'état tenu par PlanningV2 (le compteur de la barre noire ouvre la même).
  */
-export function PanneauChiffres({ c, chiffres, fermer, enLigne = false, liste: listeParent, setListe: setListeParent }: {
-  c: PlanningCtx; chiffres: Chiffres; fermer: () => void; enLigne?: boolean; liste?: ListeChiffres; setListe?: (l: ListeChiffres) => void;
+export function PanneauChiffres({ c, chiffres, fermer, enLigne = false, liste: listeParent, setListe: setListeParent, listeInitiale = null }: {
+  c: PlanningCtx; chiffres: Chiffres; fermer: () => void; enLigne?: boolean; liste?: ListeChiffres; setListe?: (l: ListeChiffres) => void; listeInitiale?: ListeChiffres;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [listeInterne, setListeInterne] = useState<ListeChiffres>(null);
+  const [listeInterne, setListeInterne] = useState<ListeChiffres>(listeInitiale);
   const liste = listeParent !== undefined ? listeParent : listeInterne;
   const poserListe = setListeParent ?? setListeInterne;
   const fermerListe = useCallback(() => poserListe(null), [poserListe]);
@@ -138,7 +138,7 @@ export function PanneauChiffres({ c, chiffres, fermer, enLigne = false, liste: l
         ouvert={liste === 'relance'} basculer={basculer('relance')} fermer={fermerListe}
         liste={toutes.length === 0 ? null : (
           <>
-            <div className="dzp-deroulant__liste" data-testid="relance-panel" data-guide={enLigne ? undefined : 'bureau-stat.liste'}
+            <div className="dzp-deroulant__liste" data-testid="relance-panel" data-guide="bureau-stat.liste"
               onClickCapture={(e) => { if ((e.target as HTMLElement).closest('.bt-pl-sp-who')) { e.preventDefault(); e.stopPropagation(); } }}>
               {toutes}
             </div>

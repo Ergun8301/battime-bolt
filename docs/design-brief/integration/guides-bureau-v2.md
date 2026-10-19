@@ -1,4 +1,34 @@
-# Guides pas à pas du BUREAU pour le planning v2 (lot 1) : prêts, ÉTEINTS
+# Guides pas à pas du BUREAU pour le bureau v2 : ALLUMÉS à la bascule (19 oct. 2026)
+
+**Bascule faite** (accord d'Ergun) : `BUREAU_UI2_PAR_DEFAUT = true` (`lib/use-bureau-ui2.ts`) et `GUIDES_BUREAU_UI2 = true` (`guides-bureau-ui2.ts`).
+Le bureau d'avant reste joignable par `?ui=1` (porte de secours, mémorisée pour la session) ; il garde ses fiches d'avant (`ADMIN_TOURS`, `admin-tours.ts`).
+Les fiches v2 (`ADMIN_TOURS_V2`, `admin-tours-v2.ts`) sont chargées AVEC le bureau v2 (`planning-v2.tsx`), jamais dans le premier chargement de `/admin`.
+
+## Ce qui change à la bascule (en plus du tableau du lot 1 plus bas)
+
+| Fiche | v1 | v2 |
+|---|---|---|
+| `reserves`, `lever_reserve` | « Réserves » dans la barre | « Plus ⋯ » puis « Réserves » |
+| `borne` | « Borne » dans la barre | « Plus ⋯ » puis « Borne » |
+| `abonnement` | « S'abonner » en haut | « Si vous êtes en essai, cliquez sur « Plus ⋯ », puis sur « S'abonner » » (téléphone : en haut de l'écran) |
+| `relancer`, `annuler_invitation` | « Voir la liste » au-dessus du planning | « Salariés » puis « Invitations en attente » |
+| `telecharger` | « Un seul salarié ? » puis « Exporter » | « Un salarié » puis « Toute l'équipe », la période, « PDF », « Excel » ou « CSV paie » |
+| `corriger` | « Corriger les heures » sur la journée | la ligne de la journée (`bureau-fiche.lignes`), puis « Corriger » |
+| `cloture_salarie` | « Clôturer jusqu'au… » | « Gérer » (`bureau-fiche.gerer`), puis « Clôturer jusqu'au… » |
+| `envoyer_client` | « E-mail du client » | « Envoyer au client » (`bureau-docs.envoyer-client`), puis l'adresse |
+| `versions` | ⟲ | jamais proposé (l'interface v2 n'offre plus les versions, demande d'Ergun) |
+| textes « Heures et paie » | `admin-tours-ui2.ts` | branchés (`TEXTES_HEURES_V2`, appliqués par `ficheV2`) |
+| tablette v2 (768 à 1 023 px) | étape « Menu (☰) » | pas d'étape « Menu » : le guide ouvre la même liste lui-même |
+
+Le compteur « à relancer » de la barre ouvre maintenant directement la liste des salariés à relancer (haut replié, tablette), comme au haut déplié.
+
+Preuve réelle : `node scripts/tests/guides-bureau-v2.mjs out <dossier>` joue les 48 fiches comme l'assistant les lance, à 1280, 834 et 390 px, sur la vraie page.
+L'aide écrite de l'assistant (GUIDE, `assistant-actions-core.ts`) décrit aussi le bureau v2 : empreinte 5766f6e9…3198 → 02d2bbe4…5d4f (`admin-tours.test.ts`).
+
+---
+
+## Historique : lot 1 (guides préparés, éteints)
+
 
 Interrupteur unique : `GUIDES_BUREAU_UI2` dans `supabase/functions/_shared/guides-bureau-ui2.ts` (**`false`** à la livraison du lot 1).
 Textes v2 : `supabase/functions/_shared/admin-tours-v2.ts` (`ficheV2`, appliquée par `admin-tours.ts` seulement quand l'interrupteur est `true`).

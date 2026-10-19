@@ -56,7 +56,7 @@ export default function DocumentsV2(p: DocumentsV2Props) {
       <Coque open={p.open} onOpenChange={p.onOpenChange} forme="panneau" largeur={760} kicker="Documents du chantier" titre={p.chantier || 'Documents'} testId="documents-v2"
         onglets={<Onglets nom="Documents" valeur={p.tab} onChange={p.setTab} options={[{ v: 'photos', l: `Photos (${p.nPhotos})`, testId: 'doc-tab-photos' }, { v: 'files', l: `Fichiers (${p.nFichiers})`, testId: 'doc-tab-files' }]} />}
         pied={<>
-          <Btn pousse onClick={() => setEnvoi(true)} data-testid="doc-envoyer">Envoyer au client</Btn>
+          <Btn pousse onClick={() => setEnvoi(true)} data-testid="doc-envoyer" data-guide="bureau-docs.envoyer-client">Envoyer au client</Btn>
           <Btn onClick={() => fileRef.current?.click()} disabled={p.uploading}>+ Fichier</Btn>
           <Btn ton="principal" onClick={() => photoRef.current?.click()} disabled={p.uploading} busy={p.uploading} data-guide="docs.photo">+ Photo</Btn>
         </>}>

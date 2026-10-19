@@ -108,8 +108,8 @@ export default function ExporterV2(p: ExporterV2Props) {
       sousTete={avecSalarie ? (
         <div className="dz-hb-bascule">
           <div className="dz-hb-seg" role="group" aria-label="Qui exporter" data-testid="export-bascule">
-            <button type="button" aria-pressed={mode === 'equipe'} onClick={() => setMode('equipe')} data-testid="export-bascule-equipe">Toute l&apos;équipe</button>
-            <button type="button" aria-pressed={mode === 'salarie'} onClick={() => setMode('salarie')} data-testid="export-bascule-salarie">Un salarié</button>
+            <button type="button" aria-pressed={mode === 'equipe'} onClick={() => setMode('equipe')} data-testid="export-bascule-equipe" data-guide="bureau-export.equipe">Toute l&apos;équipe</button>
+            <button type="button" aria-pressed={mode === 'salarie'} onClick={() => setMode('salarie')} data-testid="export-bascule-salarie" data-guide="bureau-export.un-salarie">Un salarié</button>
           </div>
         </div>
       ) : undefined}>

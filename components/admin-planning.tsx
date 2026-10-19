@@ -4498,11 +4498,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
             // Lot 7 : « Me guider pas à pas » — l'assistant se replie, le guide entoure le vrai bouton.
             // Fiche inconnue (y compris « guide: » seul) : rien.
             if (tourIdOf(action) !== null) {
-              const t = findAdminTour(tourIdOf(action)!);
+              const t = (v2on && v2 ? v2.findAdminTourV2 : findAdminTour)(tourIdOf(action)!);
               if (!t) return;
               setAssistantOpen(false);
               if (t.ordi && narrow()) { toast.info('Ce guide se fait sur ordinateur : le glisser-déposer n’existe pas sur téléphone ni sur tablette.'); return; }
-              setTour({ id: t.id, etapes: adminStepsFor(t, narrow()) });
+              setTour({ id: t.id, etapes: adminStepsFor(t, narrow(), v2on && !window.matchMedia('(max-width: 767px)').matches) });
             }
             else if (action === 'couts') setCostOpen(true);
             else if (action === 'conges') setLeaveOpen(true);

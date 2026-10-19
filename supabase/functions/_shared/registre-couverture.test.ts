@@ -26,6 +26,7 @@ import { WORKER_ATTACHMENT_ACTIONS, WORKER_GUIDE, WORKER_NAV, WORKER_REMOVAL_TYP
 import { WORKER_FUNCTIONS } from './worker-outils.ts';
 import { OFFICE_DOMAINS, WORKER_DOMAINS } from './tool-domains.ts';
 import { ADMIN_SCREENS, ADMIN_TOURS } from './admin-tours.ts';
+import { ADMIN_TOURS_V2 } from './admin-tours-v2.ts';
 import { WORKER_TOURS } from './worker-tours.ts';
 import { CASES } from '../assistant-eval/cases.ts';
 import { grouperParCle, masquer, scannerSurfaces, type ResultatScan } from './registre-surfaces.ts';
@@ -285,7 +286,8 @@ function contexteReel(): ContexteT1 {
   const guidesDe = (cote: Cote) => new Set(REGISTRE.capacites.filter((c) => c.cote === cote).flatMap((c) => c.guides ?? []));
   const gb = guidesDe('bureau'); const gs = guidesDe('salarie');
   const ancres = new Set<string>();
-  for (const t of ADMIN_TOURS) if (gb.has(t.id)) for (const e of t.etapes) ancres.add(`ancre:${e.cible}`);
+  // Les fiches d'avant (`?ui=1`) ET celles du bureau v2 (bascule) : leurs ancres sont portées par la même capacité.
+  for (const t of [...ADMIN_TOURS, ...ADMIN_TOURS_V2]) if (gb.has(t.id)) for (const e of t.etapes) ancres.add(`ancre:${e.cible}`);
   for (const t of WORKER_TOURS) if (gs.has(t.id)) for (const e of t.etapes) ancres.add(`ancre:${e.cible}`);
   const clesNav = [...Object.keys(NAV_ACTIONS).map((k) => `nav:bureau:${k}`), ...Object.keys(WORKER_NAV).map((k) => `nav:salarie:${k}`)];
   return {
