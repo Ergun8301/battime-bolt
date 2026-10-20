@@ -46,11 +46,12 @@
  * vraie, c'est le DNS ; alors ce champ suit le DNS, et rien d'autre.
  * ──────────────────────────────────────────────────────────────────────────
  */
+// Bascule DNS faite le 20 oct. 2026 : bemexo.com est servi par Cloudflare Pages (serveurs de noms Cloudflare).
 export const WEB_HOST = {
-  name: 'Netlify, Inc.',
-  address: '44 Montgomery Street, Suite 300, San Francisco, CA 94104, États-Unis',
-  url: 'https://www.netlify.com',
-  label: 'netlify.com',
+  name: 'Cloudflare, Inc.',
+  address: '101 Townsend Street, San Francisco, CA 94107, États-Unis',
+  url: 'https://www.cloudflare.com',
+  label: 'cloudflare.com',
 } as const;
 
 /**

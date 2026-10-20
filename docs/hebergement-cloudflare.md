@@ -194,6 +194,21 @@ Infomaniak existe encore : ne pas la supprimer avant plusieurs jours.
 
 Et garder le projet Netlify en place aussi longtemps.
 
+## Bascule faite (20 oct. 2026) — et le piège du `wrangler.toml`
+
+Les serveurs de noms de bemexo.com sont passés chez Cloudflare ; `WEB_HOST` nomme Cloudflare.
+
+**Piège rencontré juste après :** le bundle publié lisait encore `process.env.NEXT_PUBLIC_PAYWALL_ENFORCED` au lieu de
+la valeur inlinée, alors que la variable était posée à `true` dans le tableau de bord. Next n'inline une variable
+`NEXT_PUBLIC_*` que si elle existe AU BUILD ; absente, la lecture reste dans le code et vaut `undefined` dans le
+navigateur : **le blocage des essais expirés était éteint, sans un mot.** Cause : un `wrangler.toml` (avec
+`pages_build_output_dir`) faisait foi pour la configuration du projet, et le build ne recevait pas les variables du
+tableau de bord. Le fichier est retiré (le tableau de bord porte déjà la sortie `out`), et `next.config.js` refuse
+désormais de construire la branche de production Cloudflare sans `NEXT_PUBLIC_PAYWALL_ENFORCED`.
+
+Vérification après chaque build de production : dans le morceau `app/admin/page-*.js`, on doit lire `j&&!0` (inliné à
+`true`), et **jamais** `NEXT_PUBLIC_PAYWALL_ENFORCED`.
+
 ## Ce que la migration ne touche pas
 
 Supabase — base, authentification, storage, fonctions edge et tâches planifiées
