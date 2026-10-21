@@ -31,7 +31,8 @@ export function useBloquePage(actif: boolean) {
     const h = document.documentElement;
     const avant = { o: h.style.overflow, g: h.style.scrollbarGutter, b: document.body.style.overflow };
     const garder = h.scrollHeight > h.clientHeight;
-    h.style.overflow = 'hidden'; document.body.style.overflow = 'hidden';
+    // `clip` et non `hidden` sur le corps : `hidden` en ferait un conteneur de défilement et la barre collante (position: sticky) partirait avec la page, menu compris.
+    h.style.overflow = 'hidden'; document.body.style.overflow = 'clip';
     if (garder) h.style.scrollbarGutter = 'stable';
     h.setAttribute('data-dz-page-bloquee', '');
     return () => { h.style.overflow = avant.o; h.style.scrollbarGutter = avant.g; document.body.style.overflow = avant.b; h.removeAttribute('data-dz-page-bloquee'); };
