@@ -6,11 +6,12 @@
 import './bureau-jetons.css';
 import './heures-v2.css';
 
-export default function OngletsFicheV2({ mode, onGerer, onHeures }: { mode: 'hours' | 'manage'; onGerer: () => void; onHeures: () => void }) {
+export default function OngletsFicheV2({ mode, onGerer, onHeures, onDocs }: { mode: 'hours' | 'manage' | 'docs'; onGerer: () => void; onHeures: () => void; onDocs?: () => void }) {
   return (
     <div className="bt-skin dz-hb-onglets dz-hb-onglets--fiche" role="tablist" aria-label="Fiche salarié">
       <button type="button" role="tab" aria-selected={mode === 'manage'} data-testid="fiche-onglet-gerer" data-guide="bureau-fiche.gerer" onClick={onGerer}>Gérer</button>
       <button type="button" role="tab" aria-selected={mode === 'hours'} data-testid="fiche-onglet-heures" onClick={onHeures}>Feuille d’heures</button>
+      {onDocs ? <button type="button" role="tab" aria-selected={mode === 'docs'} data-testid="fiche-onglet-docs" onClick={onDocs}>Documents</button> : null}
     </div>
   );
 }

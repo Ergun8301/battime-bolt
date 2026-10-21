@@ -1,5 +1,5 @@
 {
-  "_aide": "Budgets de poids (kB, First Load JS compressé) lus par scripts/check-bundle-budget.mjs. max = mesure arrondie au kB supérieur + marge (+10 pour /admin et /poseur, +5 ailleurs). 'objectif' est affiché mais ne bloque pas. Toute croissance de plus de 10 kB sur une route est à justifier dans la PR, puis à reporter ici. /borne 167 → 171 (max 170 → 172, design du bureau lot 2) : la borne partage un morceau avec le bureau ; le drapeau use-bureau-ui2 et les import() différés des fenêtres (export, congés, fiche salarié) y ajoutent ≈ 1 kB ; les vues v2 elles-mêmes restent dans un morceau à part, chargé seulement avec ?ui=2.",
+  "_aide": "Budgets de poids (kB, First Load JS compressé) lus par scripts/check-bundle-budget.mjs. max = mesure arrondie au kB supérieur + marge (+10 pour /admin et /poseur, +5 ailleurs). 'objectif' est affiché mais ne bloque pas. Toute croissance de plus de 10 kB sur une route est à justifier dans la PR, puis à reporter ici. /borne 167 → 171 (max 170 → 172, design du bureau lot 2) : la borne partage un morceau avec le bureau ; le drapeau use-bureau-ui2 et les import() différés des fenêtres (export, congés, fiche salarié) y ajoutent ≈ 1 kB ; les vues v2 elles-mêmes restent dans un morceau à part, chargé seulement avec ?ui=2. /admin max 363 → 364 et /poseur max 280 → 281 (21 oct. 2026, « Envoyer à sa place », menu du compte dans Statistiques, onglet Documents de la fiche salarié et « Mes documents » ; l'écriture et les documents sont chargés à la demande, il reste ~0,5 kB au premier chargement de chaque page). Puis /admin max 364 → 365 (21 oct. 2026, « Tout valider » : la fenêtre et son écriture sont chargées au clic ; restent au premier chargement ses boutons d'entrée (tuile, Salariés, feuille d'heures, en-tête du jour, case, statut), ≈ 1 kB).",
   "default": 150,
   "shared": {
     "mesure": 88.6,
@@ -21,7 +21,7 @@
     },
     "/admin": {
       "mesure": 353.0,
-      "max": 363,
+      "max": 365,
       "objectif": 350
     },
     "/auth/confirm": {
@@ -86,7 +86,7 @@
     },
     "/poseur": {
       "mesure": 278.0,
-      "max": 280,
+      "max": 281,
       "objectif": 300
     },
     "/suisse": {

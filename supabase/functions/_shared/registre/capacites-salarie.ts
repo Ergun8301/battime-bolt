@@ -964,4 +964,13 @@ export const CAPACITES_SALARIE: Capacite[] = [
       note: "capacité réelle absente de l'annexe (elle est rangée dans « les 5 états » du geste S39) : quand des lignes attendent sur le téléphone, le bouton du bas devient « Envoyer ce qui reste (N) » et ne fait QUE transférer les saisies (elles arrivent « à envoyer »)… À créer : envoyer_saisies_telephone, outil exécuté dans le navigateur (la file est dans localStorage), niveau 2 : rien n'est envoyé au bureau.",
     },
   },
+  // S106 · humain · niveau 3
+  {
+    id: 'S106', cote: 'salarie', libelle: 'Voir ses documents (bulletins, contrat) et en envoyer au bureau (photo, fichier)',
+    genre: 'humain', niveau: 3,
+    humain: {
+      categorie: 'donnee_sensible',
+      raison: "Ajouté le 21 octobre 2026 à la demande d'Ergun : bulletins de paie et contrat sont des données personnelles, et un fichier se choisit à la main. L'assistant ne dépose ni ne retire de document ; leur lecture par l'IA est l'étape suivante.",
+    },
+  },
 ];

@@ -5,6 +5,7 @@
 // Les états et les gestionnaires restent dans admin-planning.tsx : ils arrivent ici TELS QUELS, en listes ordonnées (`Lot3Ctx`) pour ne presque
 // rien ajouter au premier chargement de /admin (les noms de clés ne seraient pas raccourcis par le minificateur ; plafond de poids à 1 kB près).
 // Rien n'est copié : chaque bouton appelle le gestionnaire d'avant. Chargé en différé, seulement avec ?ui=2.
+import { CheckCheck } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { format, parseISO } from 'date-fns';
 import type { Invitation, User, Worksite } from '@/lib/types';
@@ -39,6 +40,8 @@ export interface Lot3Ctx {
     (u: User) => unknown, string | null, Fx<'hours' | 'manage'>, Fx<User | null>,
     /** La logique de la liste d'invitations (pending-invitations.tsx), passée telle quelle (même raison). */
     typeof useInvitationsAttente];
+  /** « Tout valider » (toute l'entreprise), bureau seulement. */
+  vt?: () => void;
   /** Nouveau salarié : ouvert, ouvrir/fermer, vider, effacer la note, note, envoyer, prénom, nom, e-mail, téléphone (+ changeurs), en cours. */
   ns: [boolean, Fx<boolean>, () => void, Fx<string | null>, string | null, (e: FormEvent) => void, string, Fx<string>, string, Fx<string>, string, Fx<string>,
     string, Fx<string>, boolean];
@@ -119,11 +122,11 @@ function FicheClientV2({ c }: { c: Lot3Ctx }) {
           </div>
           <P ton="doux">Alertes e-mail à 70, 80 et 100 %. Hors matériaux et sous-traitance ; le montant n’est juste que si tous les salariés ont un taux horaire. Suivi détaillé dans Coût chantiers.</P>
           <Lignes>
-            <Ligne t="Documents" droite={String(nDocs)} chev onClick={() => setDocs({ ws, day: null })} clicTestId="fiche-client-documents" />
-            {ui.bilan ? <Ligne t="Bilan" s="Lecture seule" chev onClick={() => setTermine({ ws, mode: 'bilan' })} clicTestId="ct-bilan" /> : null}
+            <Ligne t="Documents" icone="documents" droite={String(nDocs)} chev onClick={() => setDocs({ ws, day: null })} clicTestId="fiche-client-documents" />
+            {ui.bilan ? <Ligne t="Bilan" icone="bilan" s="Lecture seule" chev onClick={() => setTermine({ ws, mode: 'bilan' })} clicTestId="ct-bilan" /> : null}
             {ui.bilan && ui.write ? (fin
-              ? <Ligne t="Rouvrir le chantier" s={fin} chev onClick={() => setTermine({ ws, mode: 'rouvrir' })} clicTestId="ct-rouvrir" />
-              : canFinishWorksite(ws) ? <Ligne t="Terminer le chantier" chev onClick={() => setTermine({ ws, mode: 'terminer' })} clicTestId="ct-terminer" /> : null) : null}
+              ? <Ligne t="Rouvrir le chantier" icone="rouvrir" s={fin} chev onClick={() => setTermine({ ws, mode: 'rouvrir' })} clicTestId="ct-rouvrir" />
+              : canFinishWorksite(ws) ? <Ligne t="Terminer le chantier" icone="terminer" chev onClick={() => setTermine({ ws, mode: 'terminer' })} clicTestId="ct-terminer" /> : null) : null}
           </Lignes>
         </>) : null}
       </Coque>
@@ -177,6 +180,7 @@ function SalariesV2({ c }: { c: Lot3Ctx }) {
         <div className="dz-l3-btns">
           <Btn ton="principal" onClick={() => { setOpen(false); setWorkerOpen(true); }} data-guide="bureau-salaries.nouveau"><span className="dz-hb-long">+ Nouveau salarié</span><span className="dz-hb-court">+ Nouveau</span></Btn>
           <Btn onClick={() => { setOpen(false); setImportOpen(true); }} data-guide="bureau-salaries.importer">Importer</Btn>
+          {c.vt ? <Btn onClick={() => { setOpen(false); c.vt?.(); }} data-testid="salaries-valider-tout"><CheckCheck className="h-4 w-4" aria-hidden="true" /> Tout valider</Btn> : null}
           <Btn onClick={() => { setOpen(false); setLeaveOpen(true); }} data-guide="bureau-salaries.conges">Demandes de congé{conges > 0 ? ` (${conges})` : ''}</Btn>
           {nInv > 0 && companyId ? <Btn onClick={() => setInvOpen(true)} data-testid="inv-toggle" data-guide="bureau-invit.voir"><span className="dz-hb-long">Invitations en attente ({nInv})</span><span className="dz-hb-court">Invitations ({nInv})</span></Btn> : null}
         </div>
@@ -204,9 +208,10 @@ function SalariesV2({ c }: { c: Lot3Ctx }) {
                 const badge = clos ? `CLÔTURÉ AU ${format(parseISO(clos), 'dd/MM')}` : miss > 0 ? `${miss} J` : role === 'lead' ? 'CHEF' : undefined;
                 return (
                   <Ligne key={w.id} t={nom(w)} s={sous} ini={initiales(w.first_name, w.last_name)} avFond={fondAvatar(w.id)}
-                    badge={badge} badgeTon={clos ? 'clos' : miss > 0 ? 'erreur' : 'chef'} chev
+                    badge={badge} badgeTon={clos ? 'clos' : miss > 0 ? 'erreur' : 'chef'}
                     onClick={() => { setOpen(false); setFicheMode('manage'); setFicheWorker(w); }} guide="bureau-salaries.nom" titre="Ouvrir sa fiche"
                     actions={<>
+                      <Btn taille="ligne" onClick={() => { setOpen(false); setFicheMode('hours'); setFicheWorker(w); }} title="Voir et valider ses heures" data-testid="salarie-heures">Heures</Btn>
                       {miss > 0 ? <Btn taille="ligne" busy={relanceId === w.id} disabled={relanceId === w.id} onClick={() => relancer(w)} title="Envoyer un rappel">Relancer</Btn> : null}
                       <select className="dz-l3-select" aria-label={`Rôle de ${nom(w)}`} value={role} disabled={roleBusy === w.id}
                         onChange={(e) => setAsk({ u: w, role: e.target.value as Role })}>

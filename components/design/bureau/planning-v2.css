@@ -970,8 +970,9 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-noire[data-replie] .dzp-onglet { padding: 8px 8px; }
   .dzp-noire[data-replie] .dzp-assistant__l { display: none; }
   .dzp-noire[data-replie] .dzp-assistant { width: 38px; padding: 0; justify-content: center; }
-  .dzp-noire[data-replie] .dzp-compte__btn span:nth-child(2), .dzp-noire[data-replie] .dzp-compte__btn span:nth-child(3) { display: none; }
-  .dzp-noire[data-replie] .dzp-compte__btn { padding: 0 4px; }
+  /* Le nom de l'entreprise reste lisible (menu Réglages / Déconnexion toujours repérable), raccourci par « … » si besoin. */
+  .dzp-noire[data-replie] .dzp-compte__btn span:nth-child(2) { max-width: 96px; }
+  .dzp-noire[data-replie] .dzp-compte__btn { padding: 0 10px 0 4px; gap: 8px; }
   /* Grille : colonne salarié de 176 px (celle que la planche rend vraiment) ; une seule ligne par texte, coupée par « … » (le tout reste dans l'infobulle et la fiche). */
   .dzp-table col:first-child { width: 176px; }
   .dzp-table .dzp-nom { display: block; white-space: nowrap; text-overflow: ellipsis; }
@@ -1088,6 +1089,9 @@ button.dzp-tuile__corps[aria-expanded="true"] .dzp-tuile__k::after { content: ' 
 .dzp-deroulant__tous { display: block; width: 100%; min-height: 36px; margin-top: 4px; padding: 6px 8px; border: 0; border-top: 1px solid #EFE7D9; background: transparent; color: #8E1B14; font: inherit; font-size: 13px; font-weight: 800; text-align: left; cursor: pointer; border-radius: 0 0 10px 10px; }
 .dzp-deroulant__tous:hover { background: #FCE4E1; }
 .dzp-deroulant__tous:focus-visible { outline: 2px solid #15120F; outline-offset: -2px; }
+.dzp-deroulant__valider { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 8px; padding: 0 12px; border: 0; border-radius: 12px; background: #FFC21A; color: #15120F; font: inherit; font-size: 14px; font-weight: 900; cursor: pointer; box-shadow: 0 2px 0 #C79400; }
+.dzp-deroulant__valider:hover { background: #FFB800; }
+.dzp-deroulant__valider:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
 .dzp-tuile--relance .bt-pl-sp-who { pointer-events: none; cursor: default; }
 /* Mini graphique : la valeur au-dessus de la barre seulement quand la colonne a la place (sinon la lettre seule, jamais coupée). */
 @container (max-width: 17px) { .dzp-barre__n { display: none; } }
@@ -1103,3 +1107,13 @@ button.dzp-tuile__corps[aria-expanded="true"] .dzp-tuile__k::after { content: ' 
 .dzp-menu-legende__liste { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; padding: 6px; font-size: 12.5px; color: var(--dz-texte-note); }
 .dzp-menu-legende .dzp-pastille { width: 14px; height: 14px; }
 @media (max-width: 1023px) { .dzp-menu-legende .dzp-legende__astuce { display: none; } }
+/* « Valider » depuis la grille (21 oct. 2026) : en-tête d'un jour = toute l'équipe (noir, texte jaune : geste qui touche plusieurs personnes) ;
+   case = toutes les interventions d'un salarié ce jour-là (jaune). Les deux ouvrent « Tout valider » réglé sur l'endroit cliqué. */
+.dzp-jour__valider { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; min-height: 26px; padding: 0 9px; border: 0; border-radius: 999px;
+  background: #15120F; color: #FFC21A; font: inherit; font-size: 11.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.dzp-jour__valider:hover { background: #2B2620; }
+.dzp-case-valider { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 28px; margin-top: 4px; padding: 0 8px; border: 0; border-radius: 9px;
+  background: #FFC21A; color: #15120F; font: inherit; font-size: 11.5px; font-weight: 900; cursor: pointer; box-shadow: 0 1px 0 #C79400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dzp-case-valider:hover { background: #FFB800; }
+.dzp-jour__valider:focus-visible, .dzp-case-valider:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
+@media print { .dzp-jour__valider, .dzp-case-valider { display: none !important; } }

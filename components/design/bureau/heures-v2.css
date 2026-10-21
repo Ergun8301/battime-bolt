@@ -605,3 +605,10 @@ button.dz-l3-ligne:hover, .dz-l3-ligne__clic:hover { background: var(--dz-jaune-
 .dz-l3-coque .bt-fo-chk input[type="checkbox"]:checked::after, .dz-l3-coque .bt-em-row input[type="checkbox"]:checked::after { content: "✓"; color: var(--dz-jaune); font: 900 13px/1 var(--dz-font-ui); }
 .dz-l3-coque .bt-em-row input[type="checkbox"]:disabled { background: var(--dz-verrou-fond); border-color: var(--dz-trait-fort); cursor: default; }
 .dz-l3-coque .bt-em-row input[type="checkbox"]:disabled::after { content: "–"; color: var(--dz-texte-2); font: 900 13px/1 var(--dz-font-ui); }
+
+/* Icône d'une ligne de fiche (lot3a-ui.tsx, `icone`) : pastille teintée de 40 px, un pictogramme connu (document, euro, graphique…). */
+.dz-l3-ico { flex: none; width: 40px; height: 40px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; background: #F3EEE4; color: #5B534A; }
+.dz-l3-ico[data-icone="documents"] { background: #DDE7F6; color: #1F4E8C; }
+.dz-l3-ico[data-icone="cout"], .dz-l3-ico[data-icone="terminer"] { background: #E3F1E8; color: #17663F; }
+.dz-l3-ico[data-icone="bilan"], .dz-l3-ico[data-icone="ajouter"] { background: #FFE9A8; color: #7A5A00; }
+.dz-l3-ico[data-icone="habilitation"] { background: #EDE3F8; color: #5B2BA8; }

@@ -122,6 +122,8 @@ export interface TimeEntry {
   status: 'draft' | 'submitted' | 'validated' | 'cancelled';
   created_at: string;
   submitted_at?: string;
+  /** Personne du bureau qui a envoyé ces heures à la place du salarié (absent = envoyées par le salarié). */
+  submitted_by?: string | null;
   validated_at?: string;
   validated_by?: string;
   locked?: boolean;

@@ -8,13 +8,18 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { ChevronDown, LogOut, Settings } from 'lucide-react';
 import {
   calculerStatsV2, contratTheorique, dowLun, joursSalarie, lireStatsV2, LIB_ABSENCE, MS, periodeV2, somme,
   type Cellule, type JourV2, type Periode, type SalarieV2, type StatsV2, type Vue,
 } from '@/lib/statistiques-v2';
 import './statistiques-v2.css';
 
-interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId?: string; initiales?: string }
+interface Props {
+  open: boolean; onOpenChange: (o: boolean) => void; companyId?: string; initiales?: string;
+  /** Le menu du compte, comme sur le planning : nom de l'entreprise, « Réglages de l'entreprise », « Déconnexion » (absents = rond décoratif). */
+  entreprise?: string; onReglages?: () => void; onDeconnexion?: () => void;
+}
 
 // ─── Formats (fr-FR) ─────────────────────────────────────────────────────────
 const fN = (v: number, d = 0) => v.toLocaleString('fr-FR', { maximumFractionDigits: d });
@@ -52,7 +57,8 @@ const fusion = (l: Map<string, number>[]) => { const out = new Map<string, numbe
 
 type Etat = 'loading' | 'ok' | 'ko';
 
-export default function StatistiquesV2({ open, onOpenChange, companyId, initiales }: Props) {
+export default function StatistiquesV2({ open, onOpenChange, companyId, initiales, entreprise, onReglages, onDeconnexion }: Props) {
+  const [compteOuvert, setCompteOuvert] = useState(false);
   const [today] = useState(todayISO);
   const [vue, setVue] = useState<Vue>('semaine');
   const [off, setOff] = useState(0);
@@ -219,7 +225,25 @@ export default function StatistiquesV2({ open, onOpenChange, companyId, initiale
               </div>
               <div className="sx-head__d">
                 {!mob && <span className="sx-sync sx-mono" data-testid="sx-sync">{sync}</span>}
-                {initiales && <span className="sx-av" aria-hidden>{initiales}</span>}
+                {initiales && (onReglages || onDeconnexion) ? (
+                  <div className="sx-compte">
+                    <button type="button" className="sx-compte__btn" onClick={() => setCompteOuvert((o) => !o)} aria-expanded={compteOuvert} aria-haspopup="menu" data-testid="sx-compte">
+                      <span className="sx-av" aria-hidden>{initiales}</span>
+                      {entreprise ? <span className="sx-compte__nom">{entreprise}</span> : null}
+                      <ChevronDown className="h-4 w-4" aria-hidden />
+                    </button>
+                    {compteOuvert && (
+                      <>
+                        <div className="sx-compte__fond" onClick={() => setCompteOuvert(false)} />
+                        <div className="sx-compte__menu" role="menu" data-testid="sx-compte-menu">
+                          {entreprise ? <div className="sx-compte__tete">{entreprise}</div> : null}
+                          {onReglages && <button type="button" role="menuitem" onClick={() => { setCompteOuvert(false); onReglages(); }}><Settings className="h-[18px] w-[18px]" aria-hidden /> Réglages de l’entreprise</button>}
+                          {onDeconnexion && <button type="button" role="menuitem" data-ton="danger" onClick={() => { setCompteOuvert(false); onDeconnexion(); }}><LogOut className="h-[18px] w-[18px]" aria-hidden /> Déconnexion</button>}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : initiales ? <span className="sx-av" aria-hidden>{initiales}</span> : null}
                 {!nav && <button type="button" className="sx-close" onClick={close} aria-label="Fermer les statistiques" data-testid="sx-fermer">✕</button>}
               </div>
             </header>

@@ -4,7 +4,7 @@
 // À relancer, En direct, Absents) ; les noms ne s'affichent que dans la liste déroulante ouverte au clic sur une tuile (retouches 4). La liste des pièces jointes
 // (ancienne tuile « Pièces ») s'ouvre depuis « Plus ⋯ » au même endroit. Les chiffres viennent de ce que l'écran a DÉJÀ lu (aucune requête de plus) ; règles pures de bureau-vue.ts.
 import { Fragment, useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Building2, FileText, Image as ImageIcon } from 'lucide-react';
+import { Building2, CheckCheck, FileText, Image as ImageIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { degradeJour } from './grille-v2';
@@ -143,6 +143,11 @@ export function PanneauChiffres({ c, chiffres, fermer, enLigne = false, liste: l
               onClickCapture={(e) => { if ((e.target as HTMLElement).closest('.bt-pl-sp-who')) { e.preventDefault(); e.stopPropagation(); } }}>
               {toutes}
             </div>
+            {c.openValiderTout ? (
+              <button type="button" className="dzp-deroulant__valider" data-testid="relance-valider-tout" onClick={() => { fermerListe(); if (!enLigne) fermer(); c.openValiderTout?.(); }}>
+                <CheckCheck className="h-[18px] w-[18px]" aria-hidden="true" /> Tout valider d’un coup
+              </button>
+            ) : null}
             <button type="button" className="dzp-deroulant__tous" data-testid="relance-tous" onClick={() => { fermerListe(); if (!enLigne) fermer(); c.setSalariesOpen(true); }}>
               Voir tous dans Salariés
             </button>

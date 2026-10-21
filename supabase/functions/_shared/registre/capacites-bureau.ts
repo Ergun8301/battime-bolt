@@ -1400,4 +1400,22 @@ export const CAPACITES_BUREAU: Capacite[] = [
       note: "Volet de lire_formations (B57) : nombre de fichiers du dossier privé sans formation et de formations publiées dont le fichier manque, avec les premières lignes. Lecture seule comme à l'écran : aucun bouton de suppression.",
     },
   },
+  // B141 · humain · niveau 3
+  {
+    id: 'B141', cote: 'bureau', libelle: "Envoyer à sa place les heures qu'un salarié a saisies sans les envoyer, ou valider une intervention prévue où rien n'a été saisi (fenêtre de l'intervention, fiche d'une ligne)",
+    genre: 'humain', niveau: 3,
+    humain: {
+      categorie: 'doute_patron',
+      raison: "Geste ajouté le 21 octobre 2026 à la demande d'Ergun, côté écran seulement : envoyer des heures à la place du salarié les fait compter dans la paie. À ne confier à l'assistant que si le patron le demande.",
+    },
+  },
+  // B142 · humain · niveau 3
+  {
+    id: 'B142', cote: 'bureau', libelle: "Tout valider : envoyer ou valider en une fois les journées oubliées d'un salarié ou de toute l'entreprise, sur un jour, une semaine ou un mois",
+    genre: 'humain', niveau: 3,
+    humain: {
+      categorie: 'doute_patron',
+      raison: "Geste groupé ajouté le 21 octobre 2026 à la demande d'Ergun, côté écran seulement : il fait compter d'un coup des dizaines de journées dans la paie, après une liste cochée et une confirmation. Jamais confié à l'assistant sans demande du patron.",
+    },
+  },
 ];

@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 
 import { Textarea } from '@/components/ui/textarea';
 import {
-  ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
+  ChevronLeft, ChevronRight, Plus, Trash2, Loader2, CheckCheck,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Mail, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
   Check, CheckSquare,
@@ -128,6 +128,8 @@ const KioskAdmin = lazyWindow(() => import('@/components/kiosk-admin'), { isOpen
 const TrainingsAdmin = lazyWindow(() => import('@/components/trainings-admin'), { isOpen: (p) => p.open, priority: 12, warm: 'mounted' });
 // Lot 19 : « Envoyer par e-mail » — chargée à l'OUVERTURE seulement (jamais préchauffée), et ses lectures aussi.
 const StaffEmailDialog = lazyWindow(() => import('@/components/staff-email-dialog'), { isOpen: (p) => p.open, priority: 13, warm: 'never' });
+// « Tout valider » (bureau v2) : les journées oubliées d'un salarié ou de toute l'entreprise, en une fois.
+const ValiderToutV2 = lazyWindow(() => import('@/components/design/bureau/valider-tout-v2'), { isOpen: (p) => p.open, priority: 14, warm: 'never' });
 // Lot 18 : l'alerte de verrouillage de l'export d'équipe. Chargée à l'ouverture de la fenêtre « Exporter l'équipe »
 // (preload), pas au repos : la plupart des visites n'exportent jamais. Elle n'importe ni Excel ni jsPDF.
 const ExportVerrou = lazyWindow(() => import('@/components/export-verrou-dialog'), { isOpen: (p) => p.ask != null, close: (p) => p.onCancel(), warm: 'never' });
@@ -1890,6 +1892,33 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     return realMap.has(k) ? undefined : draftMap.get(k);
   };
 
+  // « Envoyer à sa place » depuis la fenêtre de l'intervention : les heures saisies (brouillon) de cette case, envoyées par le bureau, avec trace et notification.
+  // Jamais une sortie oubliée (fin à compléter) ni une journée renvoyée au salarié (sendDraftForWorker les refuse).
+  const [sendingForWorker, setSendingForWorker] = useState(false);
+  // « Tout valider » : ouvert pour un salarié (sa feuille d'heures) ou pour toute l'entreprise (null).
+  const [validerTout, setValiderTout] = useState<{ userId: string | null; periode?: 'jour' | 'semaine' | 'mois'; date?: string } | null>(null);
+  const sendSlotForWorker = async (p: PlanningWithWorksite) => {
+    const ids = draftEntries.filter((e) => e.id && bubbleKeyOf(e) === `p:${p.id}`).map((e) => e.id as string);
+    if (!user || !ids.length) return;
+    setSendingForWorker(true);
+    try {
+      const prenom = workers.find((x) => x.id === p.user_id)?.first_name || 'le salarié';
+      if (await (await import('@/lib/office-send')).envoyerAPlace({ companyId: user.company_id, entryIds: ids, officeUserId: user.id, prenom })) { closeEdit(); refresh(); }
+    } finally { setSendingForWorker(false); }
+  };
+
+  const dureeHm = (a: string, b: string) => { const m = (+b.slice(0, 2) * 60 + +b.slice(3, 5)) - (+a.slice(0, 2) * 60 + +a.slice(3, 5)); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
+  // « Valider ses heures » : intervention prévue (aujourd'hui ou passée) sans rien de saisi par le salarié ; le bureau crée la ligne envoyée sur l'horaire affiché.
+  const validateSlotForWorker = async (p: PlanningWithWorksite) => {
+    if (!user || !p.worksite_id || !editStart || !editEnd || editTimeBad) return;
+    setSendingForWorker(true);
+    try {
+      const prenom = workers.find((x) => x.id === p.user_id)?.first_name || 'le salarié';
+      if (await (await import('@/lib/office-send')).validerPourSalarie({ companyId: user.company_id, officeUserId: user.id, prenom,
+        slot: { id: p.id, user_id: p.user_id, worksite_id: p.worksite_id, work_date: p.work_date }, debut: editStart, fin: editEnd })) { closeEdit(); refresh(); }
+    } finally { setSendingForWorker(false); }
+  };
+
   // Declared hours that DON'T match a planned chantier of the cell (hors-planning) —
   // shown as a distinct "déclaré par le salarié" chip on the grid.
   const worksiteNameById = useMemo(() => {
@@ -3273,11 +3302,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   ouvH.current = {
     pret: !loading, workers, worksites, tracesOn, versionsOn, trainingsOn,
     occupe: () => workerOpen || clientOpen || !!ficheWorker || !!clientFiche || !!pendingAbsence || addOpen || !!docsWorksite || settingsOpen || !!editing || importOpen
-      || importWorkersOpen || !!attributeTarget || !!extraTarget || !!termineTarget || emailOpen || !!copyFor,
+      || importWorkersOpen || !!attributeTarget || !!extraTarget || !!termineTarget || emailOpen || !!copyFor || !!validerTout,
     fermer: () => {
       setMobileMenuOpen(false); setAccountMenuOpen(false); setChantierMenuOpen(false); setMobileChantiersOpen(false); setSalariesOpen(false); setLeaveOpen(false);
       setExportOpen(false); setCostOpen(false); setReservesOpen(false); setVersionsOpen(false); setStatsOpen(false); setTracesOpen(false); setTrainingsOpen(false);
-      setKioskOpen(false); setExportWorkerOpen(false); setRelanceOpen(false); setStatPanel(null); setStatusTarget(null);
+      setKioskOpen(false); setExportWorkerOpen(false); setRelanceOpen(false); setStatPanel(null); setStatusTarget(null); setValiderTout(null);
     },
     pre: setPre, garde: () => { garde3.current = Date.now() + 700; },
     salaries: { query: setSalariesQuery, open: setSalariesOpen, importer: setImportWorkersOpen },
@@ -3426,6 +3455,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     preloadTrainings: () => TrainingsAdmin.preload(), preloadEmail: () => StaffEmailDialog.preload(),
     accountMenuOpen, setAccountMenuOpen, chantierMenuOpen, setChantierMenuOpen, clientsQuery, setClientsQuery, filteredClients,
     statPanel, setStatPanel, renderRelanceRows, monthLabel, docListState, docsByChantier, waitingByWorker, openRelance: () => setRelanceOpen(true),
+    openValiderTout: user?.role === 'admin' ? (o?: { userId?: string | null; periode?: 'jour' | 'semaine' | 'mois'; date?: string }) => setValiderTout({ userId: o?.userId ?? null, periode: o?.periode, date: o?.date }) : undefined,
     printOpen, setPrintOpen, closePrintMenu, printMenu: printMenuNode,
     coachHidden, dismissCoach,
     copyTipDesk: <CopyTip variant="desk" />, copyTipHelpCorner: <CopyTipHelp variant="corner" />, copyTipMobile: <CopyTip variant="mobile" />, copyTipHelpMobile: <CopyTipHelp variant="mobile" />,
@@ -4267,9 +4297,19 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                 </Button>
               ))}
               <div className="border-t pt-2 mt-1">
-                <Button variant="ghost" className="w-full justify-start text-muted-foreground" data-guide="bureau-statut.feuille" onClick={() => { setFicheMode('hours'); setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
-                  <FileText className="h-4 w-4 mr-2" /> Feuille d'heures
+                <Button variant="outline" className="w-full justify-start h-12 text-[15px] font-semibold bg-[#FBF7EE] border-[#E3DACB] hover:bg-[#F3EEE4]" data-guide="bureau-statut.feuille" onClick={() => { setFicheMode('hours'); setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
+                  <span className="mr-3 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#FFC21A] text-[#15120F]"><FileText className="h-4 w-4" aria-hidden="true" /></span>
+                  Voir et valider ses heures
+                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 </Button>
+                {ui2b && user?.role === 'admin' && format(currentWeekStart, 'yyyy-MM-dd') <= todayStr ? (
+                  <Button variant="outline" className="mt-2 w-full justify-start h-12 text-[15px] font-semibold bg-[#FBF7EE] border-[#E3DACB] hover:bg-[#F3EEE4]" data-testid="statut-valider-semaine"
+                    onClick={() => { const w = statusTarget.worker; setStatusTarget(null); setValiderTout({ userId: w.id, periode: 'semaine', date: format(currentWeekStart, 'yyyy-MM-dd') }); }}>
+                    <span className="mr-3 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#FFC21A] text-[#15120F]"><CheckCheck className="h-4 w-4" aria-hidden="true" /></span>
+                    Valider sa semaine (S-{format(currentWeekStart, 'I')})
+                    <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                  </Button>
+                ) : null}
               </div>
             </div>
           )}
@@ -4283,6 +4323,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         onOpenChange={(open) => { if (!open) setFicheWorker(null); }}
         onChanged={() => { fetchData(); refresh(); }}
         onRelancer={(w) => sendReminder(w)}
+        onValiderTout={ui2b && user?.role === 'admin' ? (w) => { setFicheWorker(null); setValiderTout({ userId: w.id }); } : undefined}
       />
 
       <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen}
@@ -4346,6 +4387,10 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       {/* Lot 10 : la gestion des bornes, ouverte directement depuis la barre — le MÊME
           composant que dans les réglages (KioskAdmin est lui-même la fenêtre). */}
+      {ui2b && user?.company_id && user.role === 'admin' && (
+        <ValiderToutV2 open={!!validerTout} onOpenChange={(o) => { if (!o) setValiderTout(null); }} companyId={user.company_id} officeUserId={user.id}
+          workers={workers} worksiteNames={worksiteNameById} today={todayStr} userId={validerTout?.userId ?? null} periode={validerTout?.periode} date={validerTout?.date} onDone={() => { refresh(); fetchExtras(); }} />
+      )}
       {kioskOn && user?.company_id && (
         <KioskAdmin open={kioskOpen} onOpenChange={setKioskOpen} companyId={user.company_id} />
       )}
@@ -4359,6 +4404,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
             nc: [clientOpen, setClientOpen, resetClient, setPre, pre, createClient, cName, setCName, cProduct, setCProduct, cPhone, setCPhone, cEmail, setCEmail, cCity, setCCity, cAddress, setCAddress, cDesc, setCDesc, cSaving],
             sa: [salariesOpen, setSalariesOpen, setWorkerOpen, setImportWorkersOpen, setLeaveOpen, pendingLeaves, pendingInvites, user?.company_id, () => { fetchData(); fetchExtras(); }, officeUsers, user,
               roleBusyId, changeRole, salariesQuery, setSalariesQuery, workers, filteredWorkers, missingEffective, workerClosures, sendReminder, remindingId, setFicheMode, setFicheWorker, useInvitationsAttente],
+            vt: user?.role === 'admin' ? () => setValiderTout({ userId: null }) : undefined,
             ns: [workerOpen, setWorkerOpen, resetWorker, setPre, pre, createWorker, wFirst, setWFirst, wLast, setWLast, wEmail, setWEmail, wPhone, setWPhone, wSaving],
           }} />
         </Suspense>
@@ -4485,7 +4531,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       {ui2b ? (statsOpen && (
         <Suspense fallback={null}>
           <StatistiquesV2 open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id}
-            initiales={`${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase() || undefined} />
+            initiales={`${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase() || undefined}
+            entreprise={companyLabel} onReglages={() => { setStatsOpen(false); setSettingsOpen(true); }} onDeconnexion={() => { setStatsOpen(false); signOut(); }} />
         </Suspense>
       )) : <TeamStats open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id} />}
 
@@ -4965,6 +5012,10 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           openTaskAdd(w.user_id, w.work_date, w.estimated_start && w.estimated_end ? { start: w.estimated_start.slice(0, 5), end: w.estimated_end.slice(0, 5) } : null);
         } : undefined,
         onFiche: () => openClientFiche(editing.worksite), onDocs: () => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); },
+        onSendForWorker: user?.role === 'admin' && draftForPlanning(editing) && !exitDraftKeys.has(`p:${editing.id}`) ? () => sendSlotForWorker(editing) : undefined, sendingForWorker,
+        onValidateForWorker: user?.role === 'admin' && editing.worksite_id && !editing.absence_type && editing.work_date <= todayStr && !editRealAgg && !draftForPlanning(editing)
+          && !liveForBubble(editing) && !withdrawnIds.has(editing.id) && !emptyDraftPids.has(editing.id) ? () => validateSlotForWorker(editing) : undefined,
+        horaireValide: editStart && editEnd && !editTimeBad && editEnd > editStart ? `${editStart} → ${editEnd} · ${dureeHm(editStart, editEnd)}` : null,
       }} /> : null) : (<>
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) closeEdit(); }}>
         <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">

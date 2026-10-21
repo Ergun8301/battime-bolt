@@ -53,6 +53,7 @@ import type { FicheHeuresCtx } from '@/components/design/bureau/feuille-heures-v
 // Design bureau, lot 2 (?ui=2 sur aperçu seulement) : la feuille d'heures habillée v2, chargée en différé seulement quand le drapeau est actif.
 // Elle reçoit les MÊMES états et les MÊMES gestes que l'écran d'avant (ci-dessous) : aucune logique n'est copiée.
 const FicheHeuresV2 = lazy(() => import('@/components/design/bureau/feuille-heures-v2'));
+const DocumentsSalarieV2 = lazy(() => import('@/components/design/bureau/documents-salarie-v2'));
 const OngletsFicheV2 = lazy(() => import('@/components/design/bureau/onglets-fiche-v2'));
 // Lot 3 A : l'onglet « Gérer » habillé v2 (mêmes états, mêmes gestes), dans le morceau différé du lot.
 const GererV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.GererV2 })));
@@ -75,6 +76,8 @@ interface WorkerDetailDialogProps {
   onChanged?: () => void;
   /** Design bureau v2 : « Relancer » dans la fiche (même envoi que « À relancer » du planning). Absent = pas de bouton. */
   onRelancer?: (worker: User) => void | Promise<unknown>;
+  /** « Tout valider » pour ce salarié (bureau v2). */
+  onValiderTout?: (worker: User) => void;
 }
 
 const OTHER_NAME = 'Autre';
@@ -127,11 +130,11 @@ interface PositionRow {
   captured_at: string;
 }
 
-export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged, onRelancer }: WorkerDetailDialogProps) {
+export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged, onRelancer, onValiderTout }: WorkerDetailDialogProps) {
   const { user: me } = useAuth();
   const ui2 = useBureauUi2();
   // v2 : « Gérer » et « Feuille d'heures » sont deux onglets d'une même fiche ; sans le drapeau, `mode` seul décide (comme avant).
-  const [modeV2, setModeV2] = useState<'hours' | 'manage'>(mode);
+  const [modeV2, setModeV2] = useState<'hours' | 'manage' | 'docs'>(mode);
   useEffect(() => { setModeV2(mode); }, [mode, worker?.id]);
   const modeEff = ui2 ? modeV2 : mode;
   // v2 : la raison d'un refus du serveur reste affichée dans la fenêtre (le toast, lui, disparaît).
@@ -440,6 +443,17 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       toast.error((err as { message?: string })?.message || 'Renvoi impossible');
     } finally {
       setCReturning(false);
+    }
+  };
+
+  /**
+   * « Envoyer à sa place » : le patron ou la secrétaire envoie une ligne que le salarié a saisie sans l'envoyer. Même écriture que partout (lib/admin-writes.ts),
+   * avec la trace de la personne du bureau. La ligne compte ensuite comme une journée envoyée.
+   */
+  const doSendForWorker = async (entry: ExportEntry) => {
+    if (!worker || !me) return;
+    if (await (await import('@/lib/office-send')).envoyerAPlace({ companyId: worker.company_id, entryIds: [entry.id], officeUserId: me.id, prenom: worker.first_name })) {
+      fetchEntries(); fetchMissing(); onChanged?.();
     }
   };
 
@@ -951,21 +965,25 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // Design bureau v2 : « Feuille d'heures » habillée à la planche. Mêmes états, mêmes gestes ; chargée en différé.
   if (ui2 && modeEff === 'hours' && worker) {
     const ctx: FicheHeuresCtx = {
-      worker, onOpenChange, allerGerer: () => setModeV2('manage'), taux: mRate, range, setRange, loading, entries, liveEntries, totalMinutes, weeks, overtimeMinutes,
+      worker, onOpenChange, allerGerer: () => setModeV2('manage'), allerDocs: me ? () => setModeV2('docs') : undefined, taux: mRate, range, setRange, loading, entries, liveEntries, totalMinutes, weeks, overtimeMinutes,
       effectiveWeeklyHours, ownWeekly: !!mWeekly.trim(), travelPaid, weekRoute, meId: me?.id, missingOpen, closedUntil, exporting, doExport,
-      onRelancer: onRelancer ? () => onRelancer(worker) : undefined, erasedDraft, deleteEmptyDraft, edits, corrections, qrFlags, leadMarks, positions, editsAvailable,
+      onRelancer: onRelancer ? () => onRelancer(worker) : undefined, onValiderTout: onValiderTout ? () => onValiderTout(worker) : undefined, erasedDraft, deleteEmptyDraft, edits, corrections, qrFlags, leadMarks, positions, editsAvailable,
       worksites, reassigningId, setReassigningId, creatingFor, setCreatingFor, newClientName, setNewClientName, reassignEntry, createAndAttribute,
       correctingId, setCorrectingId, cStart, setCStart, cEnd, setCEnd, cBreak, setCBreak, cMeal, setCMeal, cGap, setCGap, cReason, setCReason,
-      cBadStart, cBadEnd, setCBadStart, setCBadEnd, cPauseErr, setCPauseErr, cSaving, cReturning, mealOn, previousEnd, actionErr, setActionErr, doCorrection, doReturn,
+      cBadStart, cBadEnd, setCBadStart, setCBadEnd, cPauseErr, setCPauseErr, cSaving, cReturning, mealOn, previousEnd, actionErr, setActionErr, doCorrection, doReturn, doSendForWorker,
     };
     return <Suspense fallback={null}><FicheHeuresV2 ctx={ctx} /></Suspense>;
+  }
+
+  if (ui2 && modeEff === 'docs' && worker && me) {
+    return <Suspense fallback={null}><DocumentsSalarieV2 worker={worker} meId={me.id} onOpenChange={onOpenChange} allerGerer={() => setModeV2('manage')} allerHeures={() => setModeV2('hours')} /></Suspense>;
   }
 
   if (ui2 && modeEff === 'manage' && worker) {
     return (
       <Suspense fallback={null}>
         <GererV2 c={{
-          worker, onOpenChange, allerHeures: () => setModeV2('hours'), mFirst, setMFirst, mLast, setMLast, mPhone, setMPhone, mRate, setMRate, mWeekly, setMWeekly, companyWeeklyHours,
+          worker, onOpenChange, allerHeures: () => setModeV2('hours'), allerDocs: me ? () => setModeV2('docs') : undefined, mFirst, setMFirst, mLast, setMLast, mPhone, setMPhone, mRate, setMRate, mWeekly, setMWeekly, companyWeeklyHours,
           mNir, setMNir, mHireDate, setMHireDate, mContract, setMContract, matriculeDispo, mMatricule, setMMatricule, certs, certLabels: CERT_LABEL, certTypes: CERT_TYPES,
           certAdding, setCertAdding, certType, setCertType, certLabel, setCertLabel, certExpiry, setCertExpiry, certSaving, addCert, deleteCert,
           saveWorker, mSaving, mBusy, onArchiveClick, toggleArchive, deleteWorker, closureDispo, closedUntil, closeBusy, doReopen,

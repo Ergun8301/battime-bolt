@@ -7,7 +7,7 @@ import './bureau-jetons.css';
 import './heures-v2.css';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import * as AlertPrimitive from '@radix-ui/react-alert-dialog';
-import { Loader2 } from 'lucide-react';
+import { BarChart3, CircleCheck, Euro, FileText, Loader2, Plus, RotateCcw, ShieldCheck, type LucideIcon } from 'lucide-react';
 import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react';
 
 type Style = CSSProperties & Record<`--${string}`, string | number>;
@@ -94,8 +94,13 @@ export function Etiquette({ children, droite }: { children: ReactNode; droite?: 
 }
 
 // ───────────────────────── Lignes ─────────────────────────
+/** L'icône d'une ligne de fiche (Documents, Coût, Bilan…) : un pictogramme connu de tous, sur une pastille teintée, pour repérer la ligne d'un coup d'œil. */
+export type IconeLigne = 'documents' | 'cout' | 'bilan' | 'terminer' | 'rouvrir' | 'ajouter' | 'habilitation';
+const ICONES: Record<IconeLigne, LucideIcon> = { documents: FileText, cout: Euro, bilan: BarChart3, terminer: CircleCheck, rouvrir: RotateCcw, ajouter: Plus, habilitation: ShieldCheck };
+
 export interface LigneProps {
   t: ReactNode;
+  icone?: IconeLigne;
   s?: ReactNode;
   pourquoi?: ReactNode;
   ini?: string;
@@ -118,11 +123,12 @@ export interface LigneProps {
   guide?: string;
   titre?: string;
 }
-export function Ligne({ t, s, pourquoi, ini, avFond, point, prise, badge, badgeTon, droite, droiteTon, droiteUi, actions, chev, actif, doux, onClick, testId, clicTestId, guide, titre }: LigneProps) {
+export function Ligne({ t, icone, s, pourquoi, ini, avFond, point, prise, badge, badgeTon, droite, droiteTon, droiteUi, actions, chev, actif, doux, onClick, testId, clicTestId, guide, titre }: LigneProps) {
   const debut = (
     <>
       {prise ? <span className="dz-l3-prise" aria-hidden="true">⠿</span> : null}
       {point ? <span className="dz-l3-point" style={{ background: point }} aria-hidden="true" /> : null}
+      {icone ? (() => { const Ico = ICONES[icone]; return <span className="dz-l3-ico" data-icone={icone} aria-hidden="true"><Ico className="h-5 w-5" strokeWidth={2} /></span>; })() : null}
       {ini ? <span className="dz-l3-av" style={avFond ? { background: avFond } : undefined} aria-hidden="true">{ini}</span> : null}
       <span className="dz-l3-ligne__txt">
         <span className="dz-l3-ligne__t">{t}</span>

@@ -15,7 +15,7 @@
 import { useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Bell, Loader2, Trash2 } from 'lucide-react';
+import { Bell, CheckCheck, Loader2, Trash2 } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 import type { User, Worksite } from '@/lib/types';
 import type { ExportEntry } from '@/lib/export-utils';
@@ -32,6 +32,7 @@ import { parisHHmm } from '@/lib/utils';
 import { spanMinutes } from '@/supabase/functions/_shared/day-hours';
 import { TimeField } from '@/components/time-field';
 import PausePicker from '@/components/pause-picker';
+import { EnvoiASaPlace } from './envoi-a-sa-place';
 import { ActionDone, type UndoResult } from '@/components/action-done';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ExportPreload } from '@/components/export-menu';
@@ -52,6 +53,8 @@ export interface FicheHeuresCtx {
   worker: User;
   onOpenChange: (o: boolean) => void;
   allerGerer: () => void;
+  /** Onglet « Documents » de la fiche salarié (bulletins, contrat…). */
+  allerDocs?: () => void;
   taux: string;
   range: DateRange | undefined;
   setRange: (r: DateRange | undefined) => void;
@@ -72,6 +75,8 @@ export interface FicheHeuresCtx {
   doExport: (k: KindExport) => void | Promise<void>;
   /** Relancer ce salarié (même envoi que « À relancer » du planning) : absent = pas de bouton. */
   onRelancer?: () => void | Promise<unknown>;
+  /** « Tout valider » pour ce salarié (jour, semaine, mois) : bureau seulement. */
+  onValiderTout?: () => void;
   erasedDraft: { key: number; undo: () => Promise<UndoResult> } | null;
   deleteEmptyDraft: (e: ExportEntry) => void | Promise<void>;
   edits: Map<string, EntryEdit[]>;
@@ -99,6 +104,8 @@ export interface FicheHeuresCtx {
   actionErr: string | null; setActionErr: (v: string | null) => void;
   doCorrection: (e: ExportEntry) => Promise<unknown>;
   doReturn: (e: ExportEntry) => Promise<unknown>;
+  /** « Envoyer à sa place » : le bureau envoie les heures d'un salarié qui ne l'a pas fait (brouillon → envoyée, avec trace). */
+  doSendForWorker: (e: ExportEntry) => Promise<unknown>;
 }
 
 const OTHER_NAME = 'Autre';
@@ -127,6 +134,7 @@ function etatLigne(entry: ExportEntry, c: FicheHeuresCtx) {
   if (isCancelled) chips.push({ etat: 'retiree', texte: 'Retirée' });
   else if (isEmptyDraft) chips.push({ etat: 'brouillon', texte: 'brouillon vide', testId: 'badge-empty-draft', titre: 'Début = fin : ne compte nulle part' });
   else if (entry.status === 'draft') chips.push({ etat: 'brouillon', texte: 'brouillon', testId: 'badge-draft' });
+  else if (entry.submitted_by && entry.submitted_by !== c.worker.id) chips.push({ etat: 'envoye', texte: 'Envoyé par le bureau', testId: 'badge-sent-by-office', titre: 'Envoyé à la place du salarié' });
   else chips.push({ etat: 'envoye', texte: 'Envoyé' });
   if (returned) chips.push({ etat: 'renvoyee', texte: 'renvoyée · en attente du salarié', testId: 'badge-returned' });
   if (isWorkerAdded) chips.push({ etat: 'ajoute', texte: 'ajouté par le salarié' });
@@ -182,10 +190,15 @@ export default function FicheHeuresV2({ ctx: c }: { ctx: FicheHeuresCtx }) {
   };
   const ouvrirRenvoi = (entry: ExportEntry) => { c.setCReason(''); c.setActionErr(null); setRenvoiId(entry.id); };
 
-  const onglets = <OngletsFicheV2 mode="hours" onGerer={c.allerGerer} onHeures={() => {}} />;
+  const onglets = <OngletsFicheV2 mode="hours" onGerer={c.allerGerer} onHeures={() => {}} onDocs={c.allerDocs} />;
 
   const pied = (
     <>
+      {c.onValiderTout ? (
+        <button type="button" className="dz-hb-btn" data-testid="fiche-valider-tout" onClick={c.onValiderTout}>
+          <CheckCheck className="h-4 w-4" aria-hidden="true" /> Tout valider
+        </button>
+      ) : null}
       {c.onRelancer && c.missingOpen.length > 0 ? (
         <button type="button" className="dz-hb-btn" data-testid="fiche-relancer" onClick={() => { void c.onRelancer?.(); }}>
           <Bell className="h-4 w-4" aria-hidden="true" /> Relancer
@@ -341,6 +354,8 @@ function LigneV2({ c, entry, fermer, corriger, renvoyer }: { c: FicheHeuresCtx; 
   const e = etatLigne(entry, c);
   const route = c.weekRoute.get(entry.id) || 0;
   const corrigeable = isCounted(entry.status);
+  // « Envoyer à sa place » : une ligne saisie mais jamais envoyée, ni vide, ni renvoyée au salarié, ni verrouillée.
+  const envoyable = entry.status === 'draft' && !entry.submitted_at && !entry.locked && !e.isEmptyDraft && !e.returned;
   const linkedCorr = new Set(e.lineEdits.map((x) => x.correction_id).filter(Boolean));
   const history = [
     ...(c.corrections.get(entry.id) || []).filter((x) => !linkedCorr.has(x.id)).map((x) => ({ at: x.corrected_at, c: x, x: null as EntryEdit | null })),
@@ -360,6 +375,7 @@ function LigneV2({ c, entry, fermer, corriger, renvoyer }: { c: FicheHeuresCtx; 
         </>
       ) : undefined}>
       <Chips chips={e.chips} />
+      {envoyable ? <EnvoiASaPlace prenom={c.worker.first_name} heures={`${hhmm(entry.start_time)} → ${hhmm(entry.end_time)}`} envoyer={() => c.doSendForWorker(entry)} /> : null}
       <ul className="dz-hb-kv dz-hb-carte">
         <li>Début<b>{hhmm(entry.start_time)}</b></li>
         <li>Fin<b>{hhmm(entry.end_time)}</b></li>
@@ -434,7 +450,11 @@ function LigneV2({ c, entry, fermer, corriger, renvoyer }: { c: FicheHeuresCtx; 
           </li>
         ) : null))}
         {entry.submitted_at ? (
-          <li><small>{format(new Date(entry.submitted_at), 'dd/MM HH:mm')} · {c.worker.first_name} {c.worker.last_name}</small><b>Envoyée</b></li>
+          entry.submitted_by && entry.submitted_by !== c.worker.id ? (
+            <li data-testid="sent-by-office"><small>{format(new Date(entry.submitted_at), 'dd/MM HH:mm')} · {entry.submitted_by === c.meId ? 'vous' : 'le bureau'}</small><b>Envoyée à la place de {c.worker.first_name}</b></li>
+          ) : (
+            <li><small>{format(new Date(entry.submitted_at), 'dd/MM HH:mm')} · {c.worker.first_name} {c.worker.last_name}</small><b>Envoyée</b></li>
+          )
         ) : null}
         {history.length === 0 && !entry.submitted_at ? <li><b>Pas encore envoyée</b></li> : null}
       </ol>

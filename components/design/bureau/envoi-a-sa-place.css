@@ -1,0 +1,14 @@
+/* « Envoyer à sa place » (envoi-a-sa-place.tsx) : un encadré jaune pâle et un gros bouton jaune, le même au planning et dans la feuille d'heures. */
+.dz-envoi { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 14px; background: #FFF4D6; border: 1px solid #F4D27A; }
+.dz-envoi__txt { margin: 0; font-size: 13.5px; line-height: 1.4; color: #4A3700; }
+.dz-envoi__txt b { font-weight: 800; color: #2E2200; }
+.dz-envoi__btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 18px; border-radius: 14px; border: 0;
+  background: #FFC21A; color: #15120F; font-family: inherit; font-size: 16px; font-weight: 900; cursor: pointer; box-shadow: 0 2px 0 #C79400; }
+.dz-envoi__btn:hover { background: #FFB800; }
+.dz-envoi__btn:focus-visible, .dz-envoi__non:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
+.dz-envoi__btn:disabled, .dz-envoi__non:disabled { opacity: .6; cursor: default; }
+.dz-envoi__confirm { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; font-weight: 700; color: #2E2200; }
+.dz-envoi__choix { display: flex; gap: 8px; }
+.dz-envoi__choix > * { flex: 1; }
+.dz-envoi__non { min-height: 52px; border-radius: 14px; border: 1px solid #E3DACB; background: #FFFDF8; color: #15120F; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.dz-envoi__bloque { font-size: 12.5px; font-weight: 700; color: #7A5A00; }

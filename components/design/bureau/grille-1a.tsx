@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { CheckCheck, Users } from 'lucide-react';
 import type { User } from '@/lib/types';
 import { closedFor } from '@/lib/worker-closure';
 import { hm, plageAbsence, type TotauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
@@ -25,6 +26,17 @@ function sousJour(date: string, c: PlanningCtx, charge: number): string {
   const ids = new Set(c.displayWorkers.map((w) => w.id));
   const n = c.planning.filter((p) => p.work_date === date && ids.has(p.user_id) && !p.absence_type).length;
   return n > 0 ? `${n} interv. · ${Math.round(charge / 60)} h` : '—';
+}
+
+/** Une intervention que le bureau pourrait valider d'ici (heures pas encore envoyées, saisie à envoyer ou horaire prévu). Le détail exact (clôture, sortie oubliée,
+ *  renvoi, pointage en cours…) est refait par la fenêtre « Tout valider » (lib/office-send#chargerAValider) : ce n'est qu'un signal pour montrer le bouton. */
+const heureParis = () => new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+function aValider(c: PlanningCtx, p: import('@/lib/types').PlanningWithWorksite): boolean {
+  if (p.absence_type || !p.worksite_id || c.realForPlanning(p) || c.withdrawnIds.has(p.id) || c.liveForBubble(p)) return false;
+  if (c.draftForPlanning(p)) return true;
+  if (!p.estimated_start || !p.estimated_end) return false;
+  // Aujourd'hui : seulement une intervention déjà finie (même règle que la fenêtre).
+  return p.work_date < c.todayStr || p.estimated_end.slice(0, 5) <= heureParis();
 }
 
 function nomAbsence(c: PlanningCtx, worker: User, date: string) {
@@ -67,6 +79,13 @@ export function Grille1a({ c, totaux, recherche = '', navPE = null }: { c: Plann
                     {clos && <span className="dzp-etiq" data-clos="" title="Mois clôturé">CLOS</span>}
                   </div>
                   <span className="dzp-jour__sub">{clos && totaux.jours[i] === 0 ? 'CLOS' : sousJour(d, c, charge[i])}</span>
+                  {c.openValiderTout && !c.selectMode && !clos && d <= c.todayStr
+                    && c.planning.some((p) => p.work_date === d && c.displayWorkers.some((w) => w.id === p.user_id) && aValider(c, p)) ? (
+                    <button type="button" className="dzp-jour__valider" data-testid="jour-valider" title="Valider les heures de toute l’équipe ce jour-là"
+                      onClick={() => c.openValiderTout?.({ periode: 'jour', date: d })}>
+                      <Users className="h-3.5 w-3.5" aria-hidden="true" /> Valider le jour
+                    </button>
+                  ) : null}
                 </th>
               );
             })}
@@ -184,6 +203,12 @@ function Cellule({ c, worker, d, jour }: { c: PlanningCtx; worker: User; d: stri
         })}
         {liveChip}{chips}
         {vide && (clos ? <div className="dzp-clos-txt">Mois clôturé</div> : <div className="dzp-vide" aria-hidden="true">+</div>)}
+        {c.openValiderTout && !ferme && d <= c.todayStr && chantiers.filter((p) => aValider(c, p)).length >= 2 ? (
+          <button type="button" className="dzp-case-valider" data-testid="case-valider" title="Valider toutes ses interventions de ce jour"
+            onClick={(e) => { e.stopPropagation(); c.openValiderTout?.({ userId: worker.id, periode: 'jour', date: d }); }}>
+            <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" /> Valider la journée ({chantiers.filter((p) => aValider(c, p)).length})
+          </button>
+        ) : null}
         {!vide && !ferme && nbElements < 3 && <button type="button" className="dzp-ajouter" onClick={(e) => { e.stopPropagation(); c.openAdd(worker.id, d); }} data-guide="bureau-planning.ajouter">+ ajouter</button>}
       </div>
     );
