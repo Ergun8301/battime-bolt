@@ -12,10 +12,30 @@
 - Ne jamais réécrire ni supprimer une ligne passée. Si une chose est faite plus tard, l'écrire dans une nouvelle ligne.
 - Le journal se met à jour dans la même PR que le changement qu'il décrit (ou dans une petite PR à part pour une décision sans code).
 
+## Ergun n'utilise pas de terminal
+
+- Ne jamais lui demander de taper une commande ni de coller du SQL.
+- Tout SQL ou déploiement de fonction à venir : l'écrire dans la PR, puis terminer la PR par un message court :
+  « Pour Claude du chat : appliquer ce SQL, déployer la fonction X au commit Y ».
+
+## Déployer une fonction Supabase
+
+- Les fonctions Supabase de BEMEXO sont des **fichiers d'une ligne** qui importent le code depuis `raw.githubusercontent.com`, **figé à un commit précis**.
+- Pour redéployer :
+  1. Passer le dépôt GitHub en **public** quelques minutes (en privé, GitHub répond 404).
+  2. Mettre le **nouveau numéro de commit** dans la ligne.
+  3. Déployer.
+  4. **Vérifier la version** de la fonction dans Supabase.
+  5. Repasser le dépôt en **privé**.
+- Le code déjà déployé ne redemande pas GitHub (à notre connaissance) : le dépôt privé ne casse pas une fonction en place.
+- Ordre quand un lot a une fonction ET du SQL : **la fonction d'abord, le SQL ensuite** (la fonction sait marcher sans la colonne neuve).
+- `kiosk` : déployée sans vérification du jeton (`verify_jwt` désactivé).
+
 ## Journal des changements importants
 
 | Date | Ce qui a changé | Pourquoi | Reste à faire |
 |---|---|---|---|
+| 2026-10-22 | Lot kiosque terminé : fonction `kiosk` redéployée (version 13, `verify_jwt` désactivé), figée au commit `30d1bc36be5505b7121694381e694777f8ba0146` (avant : `aeb4f160f9e6546932832077e67cc4aa19d2ce04` ; seuls `kiosk/index.ts` et `_shared/fixed-qr.ts` ont changé entre les deux). Migration `20261021170000_qr_fixe_par_chantier` appliquée en production : colonne `worksites.fixed_qr_allowed`, 9 chantiers sur 9 à « oui », inscrite dans l'historique | Mise en ligne de la PR #241, vérifiée | Lot zones BTP ; lot stores (Play Store puis App Store) |
 | 2026-10-21 | Décision : NFC V2 notée, pas faite : puce sécurisée NTAG 424 DNA (lien signé à chaque lecture, non rejouable, vérifié par le serveur) | Une puce V1 se copie comme une photo du QR fixe | À ouvrir dans un lot à part : achat des puces 424 DNA, clé par puce, vérification du compteur côté serveur |
 | 2026-10-21 | Lot « Kiosque : pointage plus sûr » (PR #241) : puce NFC V1 (même lien que le QR fixe, donc même connexion et même lecture de position ; bouton « Écrire le lien sur une puce » sur Android Chrome, guide iPhone avec NFC Tools) ; réglage par chantier « QR fixe et puce NFC » dans la fiche client (Oui par défaut sur tous les chantiers) | Une photo du QR fixe ou une copie de la puce ne doit pas servir sur un chantier où le bureau l'interdit | Coller dans Supabase `20261021170000_qr_fixe_par_chantier.sql` (sans lui, tout marche comme avant, ligne cachée) ; redéployer la fonction `kiosk`. QR tournant de la tablette NON modifié (reste à 1 min, demande d'Ergun) |
 | 2026-10-21 | Ce fichier CLAUDE.md et son journal | Garder la mémoire du projet d'une session à l'autre | Le tenir à jour à chaque lot ou décision |
