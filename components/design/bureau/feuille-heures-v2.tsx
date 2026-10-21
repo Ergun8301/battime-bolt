@@ -106,6 +106,8 @@ export interface FicheHeuresCtx {
   doReturn: (e: ExportEntry) => Promise<unknown>;
   /** « Envoyer à sa place » : le bureau envoie les heures d'un salarié qui ne l'a pas fait (brouillon → envoyée, avec trace). */
   doSendForWorker: (e: ExportEntry) => Promise<unknown>;
+  /** Zones BTP (réglage allumé, ouvrier) : ligne → zone du jour. Absent ou null = pas de colonne « Zone ». */
+  btpZones?: Map<string, string> | null;
 }
 
 const OTHER_NAME = 'Autre';
@@ -266,7 +268,7 @@ export default function FicheHeuresV2({ ctx: c }: { ctx: FicheHeuresCtx }) {
             {!tel ? (
             <div className="dz-hb-tableau" data-guide="bureau-fiche.lignes">
               <table>
-                <thead><tr><th>Date</th><th>Client</th><th>Début–fin</th><th>Durée</th><th>Panier</th><th>Pause</th><th>Route</th><th>État</th></tr></thead>
+                <thead><tr><th>Date</th><th>Client</th>{c.btpZones ? <th>Zone</th> : null}<th>Début–fin</th><th>Durée</th><th>Panier</th><th>Pause</th><th>Route</th><th>État</th></tr></thead>
                 <tbody>
                   {lignes.map((entry) => {
                     const e = etatLigne(entry, c);
@@ -283,6 +285,7 @@ export default function FicheHeuresV2({ ctx: c }: { ctx: FicheHeuresCtx }) {
                             </span>
                           </button>
                         </td>
+                        {c.btpZones ? <td data-testid="line-btp-zone" title={c.btpZones.get(entry.id) === 'GD' ? 'Grand déplacement' : undefined}>{c.btpZones.get(entry.id) || '—'}</td> : null}
                         <td className="dz-hb-heures">{hhmm(entry.start_time)}–{hhmm(entry.end_time)}</td>
                         <td className="dz-hb-duree">{hmm(entry.total_minutes)}</td>
                         <td>{entry.meal_allowance ? 'Oui' : '—'}</td>
@@ -307,7 +310,8 @@ export default function FicheHeuresV2({ ctx: c }: { ctx: FicheHeuresCtx }) {
               {lignes.map((entry) => {
                 const e = etatLigne(entry, c);
                 const route = c.weekRoute.get(entry.id) || 0;
-                const infos = [`${hhmm(entry.start_time)}–${hhmm(entry.end_time)}`, entry.meal_allowance ? 'panier' : '', (entry.break_minutes || 0) > 0 ? `pause ${dureeCourte(entry.break_minutes)}` : '', route > 0 ? `route ${dureeCourte(route)}` : ''].filter(Boolean).join(' · ');
+                const zone = c.btpZones?.get(entry.id);
+                const infos = [`${hhmm(entry.start_time)}–${hhmm(entry.end_time)}`, zone ? (zone.startsWith('À') ? 'zone à vérifier' : zone === 'GD' ? 'grand déplacement' : `zone ${zone}`) : '', entry.meal_allowance ? 'panier' : '', (entry.break_minutes || 0) > 0 ? `pause ${dureeCourte(entry.break_minutes)}` : '', route > 0 ? `route ${dureeCourte(route)}` : ''].filter(Boolean).join(' · ');
                 return (
                   <li key={entry.id}>
                     <button type="button" className="dz-hb-carte-ligne" onClick={() => setDetailId(entry.id)}>
