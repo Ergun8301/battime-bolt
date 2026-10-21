@@ -119,11 +119,11 @@ function FicheClientV2({ c }: { c: Lot3Ctx }) {
           </div>
           <P ton="doux">Alertes e-mail à 70, 80 et 100 %. Hors matériaux et sous-traitance ; le montant n’est juste que si tous les salariés ont un taux horaire. Suivi détaillé dans Coût chantiers.</P>
           <Lignes>
-            <Ligne t="Documents" droite={String(nDocs)} chev onClick={() => setDocs({ ws, day: null })} clicTestId="fiche-client-documents" />
-            {ui.bilan ? <Ligne t="Bilan" s="Lecture seule" chev onClick={() => setTermine({ ws, mode: 'bilan' })} clicTestId="ct-bilan" /> : null}
+            <Ligne t="Documents" icone="documents" droite={String(nDocs)} chev onClick={() => setDocs({ ws, day: null })} clicTestId="fiche-client-documents" />
+            {ui.bilan ? <Ligne t="Bilan" icone="bilan" s="Lecture seule" chev onClick={() => setTermine({ ws, mode: 'bilan' })} clicTestId="ct-bilan" /> : null}
             {ui.bilan && ui.write ? (fin
-              ? <Ligne t="Rouvrir le chantier" s={fin} chev onClick={() => setTermine({ ws, mode: 'rouvrir' })} clicTestId="ct-rouvrir" />
-              : canFinishWorksite(ws) ? <Ligne t="Terminer le chantier" chev onClick={() => setTermine({ ws, mode: 'terminer' })} clicTestId="ct-terminer" /> : null) : null}
+              ? <Ligne t="Rouvrir le chantier" icone="rouvrir" s={fin} chev onClick={() => setTermine({ ws, mode: 'rouvrir' })} clicTestId="ct-rouvrir" />
+              : canFinishWorksite(ws) ? <Ligne t="Terminer le chantier" icone="terminer" chev onClick={() => setTermine({ ws, mode: 'terminer' })} clicTestId="ct-terminer" /> : null) : null}
           </Lignes>
         </>) : null}
       </Coque>

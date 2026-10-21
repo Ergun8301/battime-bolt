@@ -517,11 +517,11 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'ancre-dynamique:components/design/bureau/menu-mobile-v2.tsx:30',
     // Design du bureau, lot 3 A (?ui=2) : les briques d'affichage (components/design/bureau/lot3a-ui.tsx : ligne, liste, champ, onglets) relaient la prop
     // `guide` de leurs appelants, comme le menu ☰ v2 ci-dessus ; leurs valeurs sont les guide="…" littéraux des fenêtres v2, déjà comptés comme ancres.
-    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:143',
-    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:156',
-    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:191',
-    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:204',
-    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:262',
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:149',
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:162',
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:197',
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:210',
+    'ancre-dynamique:components/design/bureau/lot3a-ui.tsx:268',
     'ancre:bureau-nav.borne',
     'ancre:bureau-nav.clients',
     'ancre:bureau-nav.couts',
@@ -988,6 +988,8 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
   ],
   // B141 · Envoyer à sa place les heures qu'un salarié a saisies sans les envoyer (fiche d'une ligne)
   B141: [
-    'ecriture:lib/admin-writes#sendDraftForWorker',
+    'ecriture:lib/office-send#sendDraftForWorker',
+    'ecriture:lib/office-send#sendDraftsForWorker',
+    'ecriture:lib/office-send#envoyerAPlace',
   ],
 };

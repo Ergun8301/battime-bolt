@@ -4,10 +4,10 @@
 // Mêmes entrées, mêmes libellés et mêmes repères que l'ancien menu déroulant (role=menu / menuitem, data-guide, data-testid) ; ?ui=2 seulement.
 // Aucune lecture, aucune règle : l'état et les gestes viennent de app/poseur/page.tsx, qui ne les a pas changés.
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
-import { AlertTriangle, Bell, BellOff, Camera, GraduationCap, History, Info, Loader2, Palmtree, Users } from 'lucide-react';
+import { AlertTriangle, Bell, BellOff, Camera, FileText, GraduationCap, History, Info, Loader2, Palmtree, Users } from 'lucide-react';
 
 /** Le petit rond jaune de chaque ligne (les mêmes icônes que l'ancien menu déroulant). */
-const ICONES = { historique: History, reserves: AlertTriangle, formations: GraduationCap, conges: Palmtree, equipe: Users, photo: Camera, infos: Info, notifications: Bell, 'notifications-off': BellOff } as const;
+const ICONES = { documents: FileText, historique: History, reserves: AlertTriangle, formations: GraduationCap, conges: Palmtree, equipe: Users, photo: Camera, infos: Info, notifications: Bell, 'notifications-off': BellOff } as const;
 export type IconeEntree = keyof typeof ICONES;
 
 export type EntreePlus = {

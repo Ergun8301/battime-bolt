@@ -309,3 +309,16 @@
 @media (prefers-reduced-motion:reduce){
   .sx *,.sx *::before,.sx *::after{transition:none !important;animation:none !important}
 }
+
+/* Menu du compte (comme sur le planning) : nom de l'entreprise, Réglages, Déconnexion — toujours accessibles depuis les Statistiques. */
+.sx-compte{position:relative}
+.sx-compte__btn{display:flex;align-items:center;gap:8px;height:42px;padding:0 12px 0 3px;border-radius:999px;border:0;background:#25201B;color:#F2EDE3;font:inherit;font-weight:700;font-size:13.5px;cursor:pointer}
+.sx-compte__btn:hover,.sx-compte__btn[aria-expanded="true"]{box-shadow:inset 0 0 0 1px rgba(255,194,26,.6)}
+.sx-compte__btn:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
+.sx-compte__nom{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sx-compte__fond{position:fixed;inset:0;z-index:40}
+.sx-compte__menu{position:absolute;right:0;top:calc(100% + 8px);z-index:45;width:260px;padding:8px;background:#FFFDF8;border:1px solid #E3DACB;border-radius:14px;box-shadow:0 16px 40px rgba(21,18,15,.18);display:flex;flex-direction:column;color:#15120F}
+.sx-compte__tete{padding:6px 10px 10px;font-weight:900;font-size:15px;border-bottom:1px solid #EFE7D9;margin-bottom:4px}
+.sx-compte__menu button{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#15120F;font:inherit;font-weight:700;font-size:14px;text-align:left;cursor:pointer}
+.sx-compte__menu button:hover{background:#F3EEE4}
+.sx-compte__menu button[data-ton="danger"]{color:#A12A1E}

@@ -12,6 +12,7 @@ import { hm } from '@/supabase/functions/_shared/bureau-vue';
 import { BoutonBureau, FenetreBureau } from './fenetre-bureau';
 import { CarteBulle, duree2a } from './bulle-v2';
 import { useLargeur, REQ_FEUILLE } from './pont-v2';
+import { EnvoiASaPlace } from './envoi-a-sa-place';
 import './planning-v2.css';
 
 export interface FicheCtx {
@@ -22,6 +23,8 @@ export interface FicheCtx {
   note: string; setNote: (v: string) => void; dirty: boolean; saving: boolean; deleting: boolean; copyBusy: boolean;
   onSave: () => void; onDelete: () => void; onCopyTo: () => void; onDuplicate: () => void; onAddTask?: () => void;
   onFiche: () => void; onDocs: () => void;
+  /** « Envoyer à sa place » : présent seulement pour une case dont les heures sont saisies mais pas envoyées (administrateur). */
+  onSendForWorker?: () => unknown | Promise<unknown>; sendingForWorker?: boolean;
 }
 
 /**
@@ -36,6 +39,12 @@ function etatHeures(f: FicheCtx): { ton: string; grand: string; texte: string } 
   if (live) return { ton: 'en-cours', grand: `En cours depuis ${live}`, texte: 'Pointage en direct' };
   if (f.withdrawn) return { ton: 'retiree', grand: 'Retirée', texte: 'Retirée par le salarié, gardée dans sa fiche' };
   return { ton: 'prevue', grand: 'Pas encore déclarées', texte: 'Le salarié verra cet horaire comme « prévu »' };
+}
+
+/** Le bloc « Envoyer à sa place », en haut de la fenêtre, quand les heures de la case sont saisies mais pas envoyées. */
+function Envoi({ f }: { f: FicheCtx }) {
+  if (!f.onSendForWorker || !f.draft || f.real) return null;
+  return <EnvoiASaPlace prenom={f.worker?.first_name || 'le salarié'} heures={`${f.draft.start.slice(0, 5)} → ${f.draft.end.slice(0, 5)}`} envoyer={f.onSendForWorker} enCours={f.sendingForWorker} testId="slot-send-for-worker" />;
 }
 
 /** Planche 2c « Panneau sous 1024 px » : la fiche en feuille du bas (92 % de la hauteur), mêmes champs et mêmes actions que le panneau. */
@@ -68,6 +77,7 @@ function FicheFeuille({ f }: { f: FicheCtx }) {
           <b>{e.grand}</b>
           <span>{e.texte}</span>
         </div>
+        <Envoi f={f} />
         {!real && f.emptyDraft && <p className="dzp-fiche__aide" data-testid="edit-empty-draft">Brouillon vide du salarié (0 min) : supprimé avec l’intervention.</p>}
         {!real && f.withdrawn && <p className="dzp-fiche__aide" data-testid="edit-withdrawn">Retirée par le salarié : ses heures retirées restent dans sa fiche.</p>}
         {real?.reception === 'avec' && <p className="dzp-fiche__aide" data-ton={real.reserveOpen ? 'alerte' : 'ok'}>{real.reserveOpen ? 'Réception avec réserve — à traiter' : 'Réception avec réserve — levée'}</p>}
@@ -120,6 +130,7 @@ function FichePanneau({ f }: { f: FicheCtx }) {
       <div className="dzp-fiche">
         {sous && <p className="dzp-fiche__sous">{sous}</p>}
         <CarteBulle d={{ p, real: f.real, draft: f.draft, docs: f.docs, live: f.live, withdrawn: f.withdrawn, enRetard: f.enRetard }} />
+        <Envoi f={f} />
         {ws && (
           <div className="dzp-fiche__liens">
             <BoutonBureau onClick={f.onFiche}>Fiche client</BoutonBureau>

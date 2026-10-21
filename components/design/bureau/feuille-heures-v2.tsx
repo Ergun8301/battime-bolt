@@ -32,6 +32,7 @@ import { parisHHmm } from '@/lib/utils';
 import { spanMinutes } from '@/supabase/functions/_shared/day-hours';
 import { TimeField } from '@/components/time-field';
 import PausePicker from '@/components/pause-picker';
+import { EnvoiASaPlace } from './envoi-a-sa-place';
 import { ActionDone, type UndoResult } from '@/components/action-done';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ExportPreload } from '@/components/export-menu';
@@ -52,6 +53,8 @@ export interface FicheHeuresCtx {
   worker: User;
   onOpenChange: (o: boolean) => void;
   allerGerer: () => void;
+  /** Onglet « Documents » de la fiche salarié (bulletins, contrat…). */
+  allerDocs?: () => void;
   taux: string;
   range: DateRange | undefined;
   setRange: (r: DateRange | undefined) => void;
@@ -185,7 +188,7 @@ export default function FicheHeuresV2({ ctx: c }: { ctx: FicheHeuresCtx }) {
   };
   const ouvrirRenvoi = (entry: ExportEntry) => { c.setCReason(''); c.setActionErr(null); setRenvoiId(entry.id); };
 
-  const onglets = <OngletsFicheV2 mode="hours" onGerer={c.allerGerer} onHeures={() => {}} />;
+  const onglets = <OngletsFicheV2 mode="hours" onGerer={c.allerGerer} onHeures={() => {}} onDocs={c.allerDocs} />;
 
   const pied = (
     <>
@@ -346,9 +349,6 @@ function LigneV2({ c, entry, fermer, corriger, renvoyer }: { c: FicheHeuresCtx; 
   const corrigeable = isCounted(entry.status);
   // « Envoyer à sa place » : une ligne saisie mais jamais envoyée, ni vide, ni renvoyée au salarié, ni verrouillée.
   const envoyable = entry.status === 'draft' && !entry.submitted_at && !entry.locked && !e.isEmptyDraft && !e.returned;
-  const [confirmer, setConfirmer] = useState(false);
-  const [envoi, setEnvoi] = useState(false);
-  const envoyer = async () => { setEnvoi(true); try { await c.doSendForWorker(entry); } finally { setEnvoi(false); setConfirmer(false); } };
   const linkedCorr = new Set(e.lineEdits.map((x) => x.correction_id).filter(Boolean));
   const history = [
     ...(c.corrections.get(entry.id) || []).filter((x) => !linkedCorr.has(x.id)).map((x) => ({ at: x.corrected_at, c: x, x: null as EntryEdit | null })),
@@ -366,20 +366,9 @@ function LigneV2({ c, entry, fermer, corriger, renvoyer }: { c: FicheHeuresCtx; 
           {c.editsAvailable ? <button type="button" className="dz-hb-btn" data-testid="correct-return" onClick={renvoyer}>Renvoyer au salarié</button> : null}
           <button type="button" className="dz-hb-btn" data-ton="principal" data-guide="bureau-fiche.corriger" data-testid="correct-open" onClick={corriger}>Corriger</button>
         </>
-      ) : envoyable ? (
-        confirmer ? (
-          <>
-            <span className="dz-hb-aide" data-testid="send-for-worker-confirm">Envoyer ces heures pour {c.worker.first_name} ? Elles compteront comme envoyées.</span>
-            <button type="button" className="dz-hb-btn" disabled={envoi} onClick={() => setConfirmer(false)}>Annuler</button>
-            <button type="button" className="dz-hb-btn" data-ton="principal" disabled={envoi} data-testid="send-for-worker-ok" onClick={envoyer}>
-              {envoi ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null} Envoyer
-            </button>
-          </>
-        ) : (
-          <button type="button" className="dz-hb-btn" data-ton="principal" data-testid="send-for-worker" onClick={() => setConfirmer(true)}>Envoyer à sa place</button>
-        )
       ) : undefined}>
       <Chips chips={e.chips} />
+      {envoyable ? <EnvoiASaPlace prenom={c.worker.first_name} heures={`${hhmm(entry.start_time)} → ${hhmm(entry.end_time)}`} envoyer={() => c.doSendForWorker(entry)} /> : null}
       <ul className="dz-hb-kv dz-hb-carte">
         <li>Début<b>{hhmm(entry.start_time)}</b></li>
         <li>Fin<b>{hhmm(entry.end_time)}</b></li>

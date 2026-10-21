@@ -12,7 +12,7 @@ import { Alerte, Btn, Champ, ChampLibre, Champs, Coche, Coque, Etiquette, Lignes
 
 type Fx<T> = (v: T) => void;
 export interface GererV2Ctx {
-  worker: User; onOpenChange: Fx<boolean>; allerHeures: () => void;
+  worker: User; onOpenChange: Fx<boolean>; allerHeures: () => void; allerDocs?: () => void;
   mFirst: string; setMFirst: Fx<string>; mLast: string; setMLast: Fx<string>; mPhone: string; setMPhone: Fx<string>;
   mRate: string; setMRate: Fx<string>; mWeekly: string; setMWeekly: Fx<string>; companyWeeklyHours: number;
   mNir: string; setMNir: Fx<string>; mHireDate: string; setMHireDate: Fx<string>; mContract: string; setMContract: Fx<string>;
@@ -59,7 +59,7 @@ export default function GererV2({ c }: { c: GererV2Ctx }) {
     <>
       <Coque open onOpenChange={c.onOpenChange} forme="panneau" largeur={760} kicker={archive ? 'Fiche salarié · archivé' : 'Fiche salarié'} titre={nom || 'Salarié'}
         sous={[role, c.closedUntil ? `clôturé au ${format(parseISO(c.closedUntil), 'dd/MM')}` : ''].filter(Boolean).join(' · ')} testId="fiche-gerer-v2"
-        onglets={<Onglets nom="Fiche salarié" valeur="gerer" onChange={(v) => { if (v === 'heures') c.allerHeures(); }} options={[{ v: 'gerer', l: 'Gérer' }, { v: 'heures', l: 'Feuille d’heures', testId: 'onglet-heures' }]} />}
+        onglets={<Onglets nom="Fiche salarié" valeur="gerer" onChange={(v) => { if (v === 'heures') c.allerHeures(); if (v === 'docs') c.allerDocs?.(); }} options={[{ v: 'gerer', l: 'Gérer' }, { v: 'heures', l: 'Feuille d’heures', testId: 'onglet-heures' }, ...(c.allerDocs ? [{ v: 'docs' as const, l: 'Documents', testId: 'onglet-docs' }] : [])]} />}
         pied={<>
           <Btn ton="danger-contour" onClick={c.deleteWorker} disabled={c.mBusy} title="Supprimer (seulement sans donnée)">Supprimer</Btn>
           <Btn pousse onClick={c.onArchiveClick} disabled={c.mBusy} data-testid="worker-archive" data-guide="bureau-fiche.archiver">{archive ? 'Réactiver' : 'Archiver'}</Btn>
@@ -90,7 +90,7 @@ export default function GererV2({ c }: { c: GererV2Ctx }) {
             {c.certs.length === 0 && !c.certAdding ? <Ligne t="Aucune habilitation enregistrée." doux /> : null}
             {c.certs.map((ct) => {
               const j = differenceInCalendarDays(parseISO(ct.expiry_date), new Date());
-              return <Ligne key={ct.id} t={`${c.certLabels[ct.type]}${ct.label ? ` — ${ct.label}` : ''}`} s={`Expire le ${format(parseISO(ct.expiry_date), 'dd/MM/yyyy')}`}
+              return <Ligne key={ct.id} icone="habilitation" t={`${c.certLabels[ct.type]}${ct.label ? ` — ${ct.label}` : ''}`} s={`Expire le ${format(parseISO(ct.expiry_date), 'dd/MM/yyyy')}`}
                 badge={j <= 30 ? (j < 0 ? `EXPIRÉE DEPUIS ${-j} J` : j === 0 ? 'EXPIRE AUJOURD’HUI' : `DANS ${j} J`) : undefined} badgeTon={j <= 7 ? 'erreur' : 'jaune'}
                 actions={<Btn taille="ligne" ton="danger-contour" onClick={() => c.deleteCert(ct.id)} aria-label={`Supprimer ${c.certLabels[ct.type]}`}>Supprimer</Btn>} />;
             })}
@@ -105,7 +105,7 @@ export default function GererV2({ c }: { c: GererV2Ctx }) {
                 <Champ nom="Expire le" type="date" value={c.certExpiry} onChange={(e) => c.setCertExpiry(e.target.value)} />
                 <span className="dz-l3-btns"><Btn taille="ligne" onClick={() => c.setCertAdding(false)}>Annuler</Btn><Btn taille="ligne" ton="encre" onClick={c.addCert} disabled={c.certSaving} busy={c.certSaving}>Ajouter</Btn></span>
               </div>
-            ) : <Ligne t="+ Ajouter une habilitation" chev onClick={() => c.setCertAdding(true)} clicTestId="cert-ajouter" />}
+            ) : <Ligne t="Ajouter une habilitation" icone="ajouter" chev onClick={() => c.setCertAdding(true)} clicTestId="cert-ajouter" />}
           </div>
           <P ton="doux">Alertes e-mail à 30 et 7 jours avant l’expiration.</P>
         </div>
@@ -181,7 +181,7 @@ export function CoutReelV2(p: CoutReelV2Props) {
   );
   return (
     <>
-      <Ligne t="Coût réel" s={p.horaire ? `${p.horaire} / heure · ${p.detail}` : `Déposez un bulletin${p.prenom ? ` de ${p.prenom}` : ''} pour connaître son vrai coût horaire.`} chev
+      <Ligne t="Coût réel" icone="cout" s={p.horaire ? `${p.horaire} / heure · ${p.detail}` : `Déposez un bulletin${p.prenom ? ` de ${p.prenom}` : ''} pour connaître son vrai coût horaire.`} chev
         onClick={() => setOpen(true)} clicTestId="real-cost" guide="bureau-fiche.cout-bulletin" />
       <Coque open={open} onOpenChange={(o) => { if (!o && !p.saving) { setOpen(false); p.annuler(); } }} forme="panneau" kicker="Coût réel · si IA" titre={p.draft ? (p.draftSource === 'ai' ? 'Vérifiez les chiffres lus' : 'Chiffres du bulletin') : 'Coût réel'} testId="real-cost-v2"
         pied={p.draft ? <><Btn onClick={p.annuler} disabled={p.saving}>Annuler</Btn><Btn ton="principal" onClick={p.validate} disabled={p.saving} busy={p.saving}>Valider</Btn></> : undefined}>

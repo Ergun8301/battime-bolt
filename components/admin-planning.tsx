@@ -1890,6 +1890,19 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     return realMap.has(k) ? undefined : draftMap.get(k);
   };
 
+  // « Envoyer à sa place » depuis la fenêtre de l'intervention : les heures saisies (brouillon) de cette case, envoyées par le bureau, avec trace et notification.
+  // Jamais une sortie oubliée (fin à compléter) ni une journée renvoyée au salarié (sendDraftForWorker les refuse).
+  const [sendingForWorker, setSendingForWorker] = useState(false);
+  const sendSlotForWorker = async (p: PlanningWithWorksite) => {
+    const ids = draftEntries.filter((e) => e.id && bubbleKeyOf(e) === `p:${p.id}`).map((e) => e.id as string);
+    if (!user || !ids.length) return;
+    setSendingForWorker(true);
+    try {
+      const prenom = workers.find((x) => x.id === p.user_id)?.first_name || 'le salarié';
+      if (await (await import('@/lib/office-send')).envoyerAPlace({ companyId: user.company_id, entryIds: ids, officeUserId: user.id, prenom })) { closeEdit(); refresh(); }
+    } finally { setSendingForWorker(false); }
+  };
+
   // Declared hours that DON'T match a planned chantier of the cell (hors-planning) —
   // shown as a distinct "déclaré par le salarié" chip on the grid.
   const worksiteNameById = useMemo(() => {
@@ -4485,7 +4498,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       {ui2b ? (statsOpen && (
         <Suspense fallback={null}>
           <StatistiquesV2 open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id}
-            initiales={`${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase() || undefined} />
+            initiales={`${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase() || undefined}
+            entreprise={companyLabel} onReglages={() => { setStatsOpen(false); setSettingsOpen(true); }} onDeconnexion={() => { setStatsOpen(false); signOut(); }} />
         </Suspense>
       )) : <TeamStats open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id} />}
 
@@ -4965,6 +4979,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           openTaskAdd(w.user_id, w.work_date, w.estimated_start && w.estimated_end ? { start: w.estimated_start.slice(0, 5), end: w.estimated_end.slice(0, 5) } : null);
         } : undefined,
         onFiche: () => openClientFiche(editing.worksite), onDocs: () => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); },
+        onSendForWorker: user?.role === 'admin' && draftForPlanning(editing) && !exitDraftKeys.has(`p:${editing.id}`) ? () => sendSlotForWorker(editing) : undefined, sendingForWorker,
       }} /> : null) : (<>
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) closeEdit(); }}>
         <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">

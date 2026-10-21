@@ -970,8 +970,9 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-noire[data-replie] .dzp-onglet { padding: 8px 8px; }
   .dzp-noire[data-replie] .dzp-assistant__l { display: none; }
   .dzp-noire[data-replie] .dzp-assistant { width: 38px; padding: 0; justify-content: center; }
-  .dzp-noire[data-replie] .dzp-compte__btn span:nth-child(2), .dzp-noire[data-replie] .dzp-compte__btn span:nth-child(3) { display: none; }
-  .dzp-noire[data-replie] .dzp-compte__btn { padding: 0 4px; }
+  /* Le nom de l'entreprise reste lisible (menu Réglages / Déconnexion toujours repérable), raccourci par « … » si besoin. */
+  .dzp-noire[data-replie] .dzp-compte__btn span:nth-child(2) { max-width: 96px; }
+  .dzp-noire[data-replie] .dzp-compte__btn { padding: 0 10px 0 4px; gap: 8px; }
   /* Grille : colonne salarié de 176 px (celle que la planche rend vraiment) ; une seule ligne par texte, coupée par « … » (le tout reste dans l'infobulle et la fiche). */
   .dzp-table col:first-child { width: 176px; }
   .dzp-table .dzp-nom { display: block; white-space: nowrap; text-overflow: ellipsis; }

@@ -141,7 +141,7 @@ export const SURFACES_SALARIE: Record<string, string[]> = {
   // Navigation (octobre 2026) : Journée · Semaine · Mois sont dans la barre du bas (l'onglet Semaine porte l'ancre barre.semaine) ; le menu « Mon compte » ne répète plus ces trois-là.
   // L'entrée « Historique » du menu porte un `data-guide` calculé (MENU_GUIDE[t.value]) : le scanner n'en voit
   // qu'une expression, clé `ancre-dynamique:<fichier>:<ligne>` (la ligne bougera si le fichier est remanié au-dessus : T2 le signalera).
-  S77: ['ancre-dynamique:app/poseur/page.tsx:686', 'ancre:barre.semaine', 'route:/poseur'],
+  S77: ['ancre-dynamique:app/poseur/page.tsx:690', 'ancre:barre.semaine', 'route:/poseur'],
 
   // ── O12 · Sans réseau ─────────────────────────────────────────────────────
   // Le transfert des saisies gardées sur le téléphone, automatique au retour du réseau : insère les lignes, puis les bascule (S105 : le bouton).
@@ -172,4 +172,8 @@ export const SURFACES_SALARIE: Record<string, string[]> = {
   // ── Capacité réelle absente de l'annexe (S105) ───────────────────────────
   // « Envoyer ce qui reste (N) » : même transfert que S80, déclenché à la main.
   S105: ['ecriture:lib/offline-sync#syncAllPending', 'table:time_entries:insert', 'table:time_entries:update'],
+
+  // ── Documents du salarié (S106) ──────────────────────────────────────────
+  // « Mon compte › Mes documents » (bulletins, contrat, justificatifs) ; le bureau y dépose par l'onglet « Documents » de la fiche salarié.
+  S106: ['fenetre:mes-documents', 'ecriture:lib/worker-docs#uploadWorkerDocument', 'ecriture:lib/worker-docs#deleteWorkerDocument', 'table:worker_documents:insert', 'table:worker_documents:delete'],
 };

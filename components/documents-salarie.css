@@ -1,0 +1,38 @@
+/* Documents d'un salarié (components/documents-salarie.tsx) : même dessin au bureau et dans l'appli salarié (maquette « Documents et envoi à sa place »). */
+.ds { display: flex; flex-direction: column; gap: 14px; color: #15120F; font-family: inherit; }
+.ds-depot { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 2px dashed #CDBFA6; border-radius: 16px; background: #FBF7EE; }
+.ds-depot__choix, .ds-filtres { display: flex; flex-wrap: wrap; gap: 8px; }
+.ds-puce { min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #E3DACB; background: #FFFDF8; color: #15120F; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.ds-puce[aria-pressed="true"] { background: #FFC21A; border-color: #E0A800; }
+.ds-puce[data-sombre][aria-pressed="true"] { background: #15120F; border-color: #15120F; color: #F2EDE3; }
+.ds-puce:focus-visible, .ds-rond:focus-visible, .ds-depot__btn:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
+.ds-depot__nom { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: #5B534A; }
+.ds-depot__nom input { min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #E3DACB; background: #FFFFFF; font: inherit; font-size: 14px; font-weight: 500; color: #15120F; }
+.ds-depot__nom input:focus { outline: none; border-color: #15120F; box-shadow: 0 0 0 3px rgba(255,194,26,.35); }
+.ds-depot__boutons { display: flex; flex-wrap: wrap; gap: 8px; }
+.ds-depot__btn { flex: 1 1 200px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 16px; border-radius: 14px; border: 0;
+  background: #FFC21A; color: #15120F; font: inherit; font-size: 15px; font-weight: 900; cursor: pointer; box-shadow: 0 2px 0 #C79400; }
+.ds-depot__btn:hover { background: #FFB800; }
+.ds-depot__btn:disabled { opacity: .6; cursor: default; }
+.ds-depot__btn[data-ton="photo"] { background: #15120F; color: #F2EDE3; box-shadow: none; }
+.ds-depot__btn[data-ton="clair"] { background: #FFFDF8; border: 1px solid #E3DACB; box-shadow: none; font-weight: 700; }
+.ds-depot__btn[data-ton="danger"] { background: #A12A1E; color: #FFFFFF; box-shadow: none; }
+.ds-depot__s { font-size: 12.5px; color: #5B534A; }
+.ds-liste { list-style: none; margin: 0; padding: 0; border: 1px solid #E3DACB; border-radius: 16px; overflow: hidden; background: #FFFFFF; }
+.ds-doc { display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 64px; box-sizing: border-box; }
+.ds-doc + .ds-doc { border-top: 1px solid #EFE7D9; }
+.ds-ico { flex: none; width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: #F3EEE4; color: #5B534A; }
+.ds-ico[data-k="bulletin"] { background: #E3F1E8; color: #17663F; }
+.ds-ico[data-k="contrat"] { background: #DDE7F6; color: #1F4E8C; }
+.ds-ico[data-k="image"] { background: #FCE3CF; color: #9A4A12; }
+.ds-doc__txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ds-doc__t { font-weight: 800; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-doc__s { font-size: 12px; color: #5B534A; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-rond { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid #E3DACB; background: #FFFDF8; color: #15120F; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.ds-rond:hover { background: #F3EEE4; }
+.ds-rond[data-ton="danger"] { color: #A12A1E; }
+.ds-vide { margin: 0; padding: 18px; border-radius: 14px; background: #F3EEE4; font-size: 14px; color: #3A342D; text-align: center; }
+.ds-aide { display: flex; align-items: center; gap: 8px; margin: 0; padding: 12px 14px; border-radius: 12px; background: #F3EEE4; font-size: 13.5px; color: #3A342D; }
+.ds-squelette { height: 128px; border-radius: 16px; background: linear-gradient(90deg, #EFE7D9, #F7F1E6, #EFE7D9); }
+.ds-confirme { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; background: #FFF1EE; border: 1px solid #F2C3BA; font-size: 14px; font-weight: 700; }
+.ds-confirme > div { display: flex; gap: 8px; }

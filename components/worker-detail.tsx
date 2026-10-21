@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
-import { addCertification, sendDraftForWorker, setWorkerActive, updateWorkerIdentity } from '@/lib/admin-writes';
+import { addCertification, setWorkerActive, updateWorkerIdentity } from '@/lib/admin-writes';
 import { useAuth } from '@/components/auth-provider';
 import { corrigerHeures, fmtHeure } from '@/lib/corrections';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
@@ -53,6 +53,7 @@ import type { FicheHeuresCtx } from '@/components/design/bureau/feuille-heures-v
 // Design bureau, lot 2 (?ui=2 sur aperçu seulement) : la feuille d'heures habillée v2, chargée en différé seulement quand le drapeau est actif.
 // Elle reçoit les MÊMES états et les MÊMES gestes que l'écran d'avant (ci-dessous) : aucune logique n'est copiée.
 const FicheHeuresV2 = lazy(() => import('@/components/design/bureau/feuille-heures-v2'));
+const DocumentsSalarieV2 = lazy(() => import('@/components/design/bureau/documents-salarie-v2'));
 const OngletsFicheV2 = lazy(() => import('@/components/design/bureau/onglets-fiche-v2'));
 // Lot 3 A : l'onglet « Gérer » habillé v2 (mêmes états, mêmes gestes), dans le morceau différé du lot.
 const GererV2 = lazy(() => import('@/components/design/bureau/exporter-v2').then((m) => ({ default: m.GererV2 })));
@@ -131,7 +132,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const { user: me } = useAuth();
   const ui2 = useBureauUi2();
   // v2 : « Gérer » et « Feuille d'heures » sont deux onglets d'une même fiche ; sans le drapeau, `mode` seul décide (comme avant).
-  const [modeV2, setModeV2] = useState<'hours' | 'manage'>(mode);
+  const [modeV2, setModeV2] = useState<'hours' | 'manage' | 'docs'>(mode);
   useEffect(() => { setModeV2(mode); }, [mode, worker?.id]);
   const modeEff = ui2 ? modeV2 : mode;
   // v2 : la raison d'un refus du serveur reste affichée dans la fenêtre (le toast, lui, disparaît).
@@ -449,21 +450,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
    */
   const doSendForWorker = async (entry: ExportEntry) => {
     if (!worker || !me) return;
-    try {
-      const ok = await sendDraftForWorker(worker.company_id, entry.id, me.id);
-      if (!ok) { setActionErr('Cette ligne a déjà changé : rechargez la fiche.'); toast.error('Cette ligne a déjà changé : rechargez la fiche.'); return; }
-      toast.success(`Heures envoyées pour ${worker.first_name}`);
-      setActionErr(null);
-      fetchEntries();
-      fetchMissing();
-      onChanged?.();
-      return true;
-    } catch (err) {
-      console.error('Error sending draft for worker:', err);
-      const msg = (err as { message?: string })?.message || 'Envoi impossible';
-      const clair = /submitted_by/.test(msg) ? 'Mise à jour de la base en attente : envoi impossible pour le moment.' : msg;
-      setActionErr(clair);
-      toast.error(clair);
+    if (await (await import('@/lib/office-send')).envoyerAPlace({ companyId: worker.company_id, entryIds: [entry.id], officeUserId: me.id, prenom: worker.first_name })) {
+      fetchEntries(); fetchMissing(); onChanged?.();
     }
   };
 
@@ -975,7 +963,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // Design bureau v2 : « Feuille d'heures » habillée à la planche. Mêmes états, mêmes gestes ; chargée en différé.
   if (ui2 && modeEff === 'hours' && worker) {
     const ctx: FicheHeuresCtx = {
-      worker, onOpenChange, allerGerer: () => setModeV2('manage'), taux: mRate, range, setRange, loading, entries, liveEntries, totalMinutes, weeks, overtimeMinutes,
+      worker, onOpenChange, allerGerer: () => setModeV2('manage'), allerDocs: me ? () => setModeV2('docs') : undefined, taux: mRate, range, setRange, loading, entries, liveEntries, totalMinutes, weeks, overtimeMinutes,
       effectiveWeeklyHours, ownWeekly: !!mWeekly.trim(), travelPaid, weekRoute, meId: me?.id, missingOpen, closedUntil, exporting, doExport,
       onRelancer: onRelancer ? () => onRelancer(worker) : undefined, erasedDraft, deleteEmptyDraft, edits, corrections, qrFlags, leadMarks, positions, editsAvailable,
       worksites, reassigningId, setReassigningId, creatingFor, setCreatingFor, newClientName, setNewClientName, reassignEntry, createAndAttribute,
@@ -985,11 +973,15 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     return <Suspense fallback={null}><FicheHeuresV2 ctx={ctx} /></Suspense>;
   }
 
+  if (ui2 && modeEff === 'docs' && worker && me) {
+    return <Suspense fallback={null}><DocumentsSalarieV2 worker={worker} meId={me.id} onOpenChange={onOpenChange} allerGerer={() => setModeV2('manage')} allerHeures={() => setModeV2('hours')} /></Suspense>;
+  }
+
   if (ui2 && modeEff === 'manage' && worker) {
     return (
       <Suspense fallback={null}>
         <GererV2 c={{
-          worker, onOpenChange, allerHeures: () => setModeV2('hours'), mFirst, setMFirst, mLast, setMLast, mPhone, setMPhone, mRate, setMRate, mWeekly, setMWeekly, companyWeeklyHours,
+          worker, onOpenChange, allerHeures: () => setModeV2('hours'), allerDocs: me ? () => setModeV2('docs') : undefined, mFirst, setMFirst, mLast, setMLast, mPhone, setMPhone, mRate, setMRate, mWeekly, setMWeekly, companyWeeklyHours,
           mNir, setMNir, mHireDate, setMHireDate, mContract, setMContract, matriculeDispo, mMatricule, setMMatricule, certs, certLabels: CERT_LABEL, certTypes: CERT_TYPES,
           certAdding, setCertAdding, certType, setCertType, certLabel, setCertLabel, certExpiry, setCertExpiry, certSaving, addCert, deleteCert,
           saveWorker, mSaving, mBusy, onArchiveClick, toggleArchive, deleteWorker, closureDispo, closedUntil, closeBusy, doReopen,

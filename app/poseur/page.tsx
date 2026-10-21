@@ -64,6 +64,8 @@ const PoseurTrainings = lazyWindow(() => import('@/components/poseur-trainings-l
 const PageEquipe = lazyWindow<{ me: User; onChanged: () => void }>(() => import('@/components/design/salarie/page-equipe'), { isOpen: () => true, priority: 7, warm: 'never', errorFallback: NON_CHARGE, /* ?ui=2 seulement : jamais préchauffé, pour que l'ancienne interface ne télécharge rien de plus */
   loadingFallback: <div className="space-y-4"><Skeleton className="h-12 w-full" />{[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div> });
 const LeaveRequestDialog = lazyWindow(() => import('@/components/leave-request-dialog'), { isOpen: (p) => p.open, priority: 4 });
+// « Mes documents » : bulletins, contrat, justificatifs (chargé seulement quand on l'ouvre).
+const MesDocuments = lazyWindow(() => import('@/components/mes-documents'), { isOpen: () => true, priority: 7 });
 // Assistant : monté dès que son code est là, même fermé (il garde la mémoire de la conversation).
 const WorkerAssistant = lazyWindow(() => import('@/components/worker-assistant'), { isOpen: (p) => !!p.open, priority: 5, warm: 'mounted', mount: 'warm' });
 // Le lecteur de QR ne se préchauffe pas et n'est jamais « collant » : démonté à la fermeture, la caméra s'éteint.
@@ -115,6 +117,7 @@ export default function PoseurPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé
+  const [docsOpen, setDocsOpen] = useState(false); // « Mes documents » (bulletins, contrat, justificatifs)
   // Lot 6 : assistant ouvert par ✨ (barre du bas / menu), scanner 📷 (en-tête),
   // « ℹ️ Informations » (menu). Chacun n'existe que si l'interrupteur de
   // l'entreprise est allumé (ai_enabled / kiosk_enabled).
@@ -547,6 +550,7 @@ export default function PoseurPage() {
     { id: 'reserves', label: 'Réserves à lever', icone: 'reserves', guide: 'menu.reserves', testid: 'menu-reserves', inactif: reserves.length === 0, compteur: reserves.length, compteurTestid: 'menu-reserves-compteur', onSelect: () => { setMenuOpen(false); if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); } },
     ...(trainingsMenu ? [{ id: 'formations', label: 'Formations à voir', icone: 'formations' as const, testid: 'menu-formations', compteur: trainings.unseen, compteurTestid: 'menu-formations-badge', onSelect: () => { setMenuOpen(false); goTo('formations'); } }] : []),
     { id: 'conges', label: 'Mes congés', icone: 'conges', guide: 'menu.conges', onSelect: () => { setMenuOpen(false); setLeaveOpen(true); } },
+    { id: 'documents', label: 'Mes documents', icone: 'documents', testid: 'menu-documents', onSelect: () => { setMenuOpen(false); setDocsOpen(true); } },
     ...(user?.role === 'lead' ? [{ id: 'equipe', label: 'Mon équipe', icone: 'equipe' as const, guide: 'menu.equipe', etiquette: 'chef', testid: 'menu-equipe', onSelect: () => { setMenuOpen(false); goTo('team'); } }] : []),
   ] : [];
   const entreesCompte: EntreePlus[] = ui2 ? [
@@ -735,6 +739,7 @@ export default function PoseurPage() {
         {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} />}
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
+        {docsOpen && user ? <MesDocuments companyId={user.company_id} userId={user.id} prenom={user.first_name} onClose={() => setDocsOpen(false)} /> : null}
         {/* Lot 12 : un QR fixe (/pointer#f=…) s'ouvre par une vraie navigation, pour que la page lise le fragment. */}
         {scanOpen && <QrScanner onClose={() => setScanOpen(false)} onPath={(path) => { setScanOpen(false); if (path.includes('#')) window.location.assign(path); else router.push(path); }} />}
         {infoOpen && (
