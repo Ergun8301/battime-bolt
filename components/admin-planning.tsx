@@ -128,6 +128,8 @@ const KioskAdmin = lazyWindow(() => import('@/components/kiosk-admin'), { isOpen
 const TrainingsAdmin = lazyWindow(() => import('@/components/trainings-admin'), { isOpen: (p) => p.open, priority: 12, warm: 'mounted' });
 // Lot 19 : « Envoyer par e-mail » — chargée à l'OUVERTURE seulement (jamais préchauffée), et ses lectures aussi.
 const StaffEmailDialog = lazyWindow(() => import('@/components/staff-email-dialog'), { isOpen: (p) => p.open, priority: 13, warm: 'never' });
+// « Tout valider » (bureau v2) : les journées oubliées d'un salarié ou de toute l'entreprise, en une fois.
+const ValiderToutV2 = lazyWindow(() => import('@/components/design/bureau/valider-tout-v2'), { isOpen: (p) => p.open, priority: 14, warm: 'never' });
 // Lot 18 : l'alerte de verrouillage de l'export d'équipe. Chargée à l'ouverture de la fenêtre « Exporter l'équipe »
 // (preload), pas au repos : la plupart des visites n'exportent jamais. Elle n'importe ni Excel ni jsPDF.
 const ExportVerrou = lazyWindow(() => import('@/components/export-verrou-dialog'), { isOpen: (p) => p.ask != null, close: (p) => p.onCancel(), warm: 'never' });
@@ -1893,6 +1895,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   // « Envoyer à sa place » depuis la fenêtre de l'intervention : les heures saisies (brouillon) de cette case, envoyées par le bureau, avec trace et notification.
   // Jamais une sortie oubliée (fin à compléter) ni une journée renvoyée au salarié (sendDraftForWorker les refuse).
   const [sendingForWorker, setSendingForWorker] = useState(false);
+  // « Tout valider » : ouvert pour un salarié (sa feuille d'heures) ou pour toute l'entreprise (null).
+  const [validerTout, setValiderTout] = useState<{ userId: string | null } | null>(null);
   const sendSlotForWorker = async (p: PlanningWithWorksite) => {
     const ids = draftEntries.filter((e) => e.id && bubbleKeyOf(e) === `p:${p.id}`).map((e) => e.id as string);
     if (!user || !ids.length) return;
@@ -3298,11 +3302,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   ouvH.current = {
     pret: !loading, workers, worksites, tracesOn, versionsOn, trainingsOn,
     occupe: () => workerOpen || clientOpen || !!ficheWorker || !!clientFiche || !!pendingAbsence || addOpen || !!docsWorksite || settingsOpen || !!editing || importOpen
-      || importWorkersOpen || !!attributeTarget || !!extraTarget || !!termineTarget || emailOpen || !!copyFor,
+      || importWorkersOpen || !!attributeTarget || !!extraTarget || !!termineTarget || emailOpen || !!copyFor || !!validerTout,
     fermer: () => {
       setMobileMenuOpen(false); setAccountMenuOpen(false); setChantierMenuOpen(false); setMobileChantiersOpen(false); setSalariesOpen(false); setLeaveOpen(false);
       setExportOpen(false); setCostOpen(false); setReservesOpen(false); setVersionsOpen(false); setStatsOpen(false); setTracesOpen(false); setTrainingsOpen(false);
-      setKioskOpen(false); setExportWorkerOpen(false); setRelanceOpen(false); setStatPanel(null); setStatusTarget(null);
+      setKioskOpen(false); setExportWorkerOpen(false); setRelanceOpen(false); setStatPanel(null); setStatusTarget(null); setValiderTout(null);
     },
     pre: setPre, garde: () => { garde3.current = Date.now() + 700; },
     salaries: { query: setSalariesQuery, open: setSalariesOpen, importer: setImportWorkersOpen },
@@ -3451,6 +3455,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     preloadTrainings: () => TrainingsAdmin.preload(), preloadEmail: () => StaffEmailDialog.preload(),
     accountMenuOpen, setAccountMenuOpen, chantierMenuOpen, setChantierMenuOpen, clientsQuery, setClientsQuery, filteredClients,
     statPanel, setStatPanel, renderRelanceRows, monthLabel, docListState, docsByChantier, waitingByWorker, openRelance: () => setRelanceOpen(true),
+    openValiderTout: user?.role === 'admin' ? () => setValiderTout({ userId: null }) : undefined,
     printOpen, setPrintOpen, closePrintMenu, printMenu: printMenuNode,
     coachHidden, dismissCoach,
     copyTipDesk: <CopyTip variant="desk" />, copyTipHelpCorner: <CopyTipHelp variant="corner" />, copyTipMobile: <CopyTip variant="mobile" />, copyTipHelpMobile: <CopyTipHelp variant="mobile" />,
@@ -4310,6 +4315,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         onOpenChange={(open) => { if (!open) setFicheWorker(null); }}
         onChanged={() => { fetchData(); refresh(); }}
         onRelancer={(w) => sendReminder(w)}
+        onValiderTout={ui2b && user?.role === 'admin' ? (w) => { setFicheWorker(null); setValiderTout({ userId: w.id }); } : undefined}
       />
 
       <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen}
@@ -4373,6 +4379,10 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       {/* Lot 10 : la gestion des bornes, ouverte directement depuis la barre — le MÊME
           composant que dans les réglages (KioskAdmin est lui-même la fenêtre). */}
+      {ui2b && user?.company_id && user.role === 'admin' && (
+        <ValiderToutV2 open={!!validerTout} onOpenChange={(o) => { if (!o) setValiderTout(null); }} companyId={user.company_id} officeUserId={user.id}
+          workers={workers} worksiteNames={worksiteNameById} today={todayStr} userId={validerTout?.userId ?? null} onDone={() => { refresh(); fetchExtras(); }} />
+      )}
       {kioskOn && user?.company_id && (
         <KioskAdmin open={kioskOpen} onOpenChange={setKioskOpen} companyId={user.company_id} />
       )}
@@ -4386,6 +4396,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
             nc: [clientOpen, setClientOpen, resetClient, setPre, pre, createClient, cName, setCName, cProduct, setCProduct, cPhone, setCPhone, cEmail, setCEmail, cCity, setCCity, cAddress, setCAddress, cDesc, setCDesc, cSaving],
             sa: [salariesOpen, setSalariesOpen, setWorkerOpen, setImportWorkersOpen, setLeaveOpen, pendingLeaves, pendingInvites, user?.company_id, () => { fetchData(); fetchExtras(); }, officeUsers, user,
               roleBusyId, changeRole, salariesQuery, setSalariesQuery, workers, filteredWorkers, missingEffective, workerClosures, sendReminder, remindingId, setFicheMode, setFicheWorker, useInvitationsAttente],
+            vt: user?.role === 'admin' ? () => setValiderTout({ userId: null }) : undefined,
             ns: [workerOpen, setWorkerOpen, resetWorker, setPre, pre, createWorker, wFirst, setWFirst, wLast, setWLast, wEmail, setWEmail, wPhone, setWPhone, wSaving],
           }} />
         </Suspense>

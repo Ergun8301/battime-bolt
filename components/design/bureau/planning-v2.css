@@ -1089,6 +1089,9 @@ button.dzp-tuile__corps[aria-expanded="true"] .dzp-tuile__k::after { content: ' 
 .dzp-deroulant__tous { display: block; width: 100%; min-height: 36px; margin-top: 4px; padding: 6px 8px; border: 0; border-top: 1px solid #EFE7D9; background: transparent; color: #8E1B14; font: inherit; font-size: 13px; font-weight: 800; text-align: left; cursor: pointer; border-radius: 0 0 10px 10px; }
 .dzp-deroulant__tous:hover { background: #FCE4E1; }
 .dzp-deroulant__tous:focus-visible { outline: 2px solid #15120F; outline-offset: -2px; }
+.dzp-deroulant__valider { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 8px; padding: 0 12px; border: 0; border-radius: 12px; background: #FFC21A; color: #15120F; font: inherit; font-size: 14px; font-weight: 900; cursor: pointer; box-shadow: 0 2px 0 #C79400; }
+.dzp-deroulant__valider:hover { background: #FFB800; }
+.dzp-deroulant__valider:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
 .dzp-tuile--relance .bt-pl-sp-who { pointer-events: none; cursor: default; }
 /* Mini graphique : la valeur au-dessus de la barre seulement quand la colonne a la place (sinon la lettre seule, jamais coupée). */
 @container (max-width: 17px) { .dzp-barre__n { display: none; } }

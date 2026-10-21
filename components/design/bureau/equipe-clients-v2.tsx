@@ -5,6 +5,7 @@
 // Les états et les gestionnaires restent dans admin-planning.tsx : ils arrivent ici TELS QUELS, en listes ordonnées (`Lot3Ctx`) pour ne presque
 // rien ajouter au premier chargement de /admin (les noms de clés ne seraient pas raccourcis par le minificateur ; plafond de poids à 1 kB près).
 // Rien n'est copié : chaque bouton appelle le gestionnaire d'avant. Chargé en différé, seulement avec ?ui=2.
+import { CheckCheck } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { format, parseISO } from 'date-fns';
 import type { Invitation, User, Worksite } from '@/lib/types';
@@ -39,6 +40,8 @@ export interface Lot3Ctx {
     (u: User) => unknown, string | null, Fx<'hours' | 'manage'>, Fx<User | null>,
     /** La logique de la liste d'invitations (pending-invitations.tsx), passée telle quelle (même raison). */
     typeof useInvitationsAttente];
+  /** « Tout valider » (toute l'entreprise), bureau seulement. */
+  vt?: () => void;
   /** Nouveau salarié : ouvert, ouvrir/fermer, vider, effacer la note, note, envoyer, prénom, nom, e-mail, téléphone (+ changeurs), en cours. */
   ns: [boolean, Fx<boolean>, () => void, Fx<string | null>, string | null, (e: FormEvent) => void, string, Fx<string>, string, Fx<string>, string, Fx<string>,
     string, Fx<string>, boolean];
@@ -177,6 +180,7 @@ function SalariesV2({ c }: { c: Lot3Ctx }) {
         <div className="dz-l3-btns">
           <Btn ton="principal" onClick={() => { setOpen(false); setWorkerOpen(true); }} data-guide="bureau-salaries.nouveau"><span className="dz-hb-long">+ Nouveau salarié</span><span className="dz-hb-court">+ Nouveau</span></Btn>
           <Btn onClick={() => { setOpen(false); setImportOpen(true); }} data-guide="bureau-salaries.importer">Importer</Btn>
+          {c.vt ? <Btn onClick={() => { setOpen(false); c.vt?.(); }} data-testid="salaries-valider-tout"><CheckCheck className="h-4 w-4" aria-hidden="true" /> Tout valider</Btn> : null}
           <Btn onClick={() => { setOpen(false); setLeaveOpen(true); }} data-guide="bureau-salaries.conges">Demandes de congé{conges > 0 ? ` (${conges})` : ''}</Btn>
           {nInv > 0 && companyId ? <Btn onClick={() => setInvOpen(true)} data-testid="inv-toggle" data-guide="bureau-invit.voir"><span className="dz-hb-long">Invitations en attente ({nInv})</span><span className="dz-hb-court">Invitations ({nInv})</span></Btn> : null}
         </div>

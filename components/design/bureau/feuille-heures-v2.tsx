@@ -15,7 +15,7 @@
 import { useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Bell, Loader2, Trash2 } from 'lucide-react';
+import { Bell, CheckCheck, Loader2, Trash2 } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 import type { User, Worksite } from '@/lib/types';
 import type { ExportEntry } from '@/lib/export-utils';
@@ -75,6 +75,8 @@ export interface FicheHeuresCtx {
   doExport: (k: KindExport) => void | Promise<void>;
   /** Relancer ce salarié (même envoi que « À relancer » du planning) : absent = pas de bouton. */
   onRelancer?: () => void | Promise<unknown>;
+  /** « Tout valider » pour ce salarié (jour, semaine, mois) : bureau seulement. */
+  onValiderTout?: () => void;
   erasedDraft: { key: number; undo: () => Promise<UndoResult> } | null;
   deleteEmptyDraft: (e: ExportEntry) => void | Promise<void>;
   edits: Map<string, EntryEdit[]>;
@@ -192,6 +194,11 @@ export default function FicheHeuresV2({ ctx: c }: { ctx: FicheHeuresCtx }) {
 
   const pied = (
     <>
+      {c.onValiderTout ? (
+        <button type="button" className="dz-hb-btn" data-testid="fiche-valider-tout" onClick={c.onValiderTout}>
+          <CheckCheck className="h-4 w-4" aria-hidden="true" /> Tout valider
+        </button>
+      ) : null}
       {c.onRelancer && c.missingOpen.length > 0 ? (
         <button type="button" className="dz-hb-btn" data-testid="fiche-relancer" onClick={() => { void c.onRelancer?.(); }}>
           <Bell className="h-4 w-4" aria-hidden="true" /> Relancer

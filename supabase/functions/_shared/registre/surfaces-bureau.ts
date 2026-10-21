@@ -67,7 +67,7 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'ancre:bureau-edit.enregistrer',
     'ancre:bureau-edit.horaire',
     'ancre:bureau-planning.bulle',
-    'ancre-dynamique:components/admin-planning.tsx:404',
+    'ancre-dynamique:components/admin-planning.tsx:406',
   ],
   // B18 · Déplacer, réordonner par glisser
   // prepareMove défait ce qui bloque un déplacement (brouillon vide effacé, ligne retirée détachée) avant que la case
@@ -992,5 +992,10 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'ecriture:lib/office-send#sendDraftsForWorker',
     'ecriture:lib/office-send#envoyerAPlace',
     'ecriture:lib/office-send#validerPourSalarie',
+  ],
+  // B142 · Tout valider (tuile « À relancer », liste Salariés, feuille d'heures d'un salarié)
+  B142: [
+    'fenetre:design/bureau/valider-tout-v2',
+    'ecriture:lib/office-send#validerEnLot',
   ],
 };

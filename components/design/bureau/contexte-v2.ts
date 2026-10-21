@@ -48,6 +48,8 @@ export interface PlanningCtx {
   docsByChantier: { id: string; name: string; docs: { id: string; label: string | null; file_name: string | null; mime_type: string | null; work_date: string | null; created_at: string }[] }[];
   waitingByWorker: { id: string; name: string; days: string[] }[];
   openRelance: () => void;
+  /** « Tout valider » pour toute l'entreprise (bureau seulement). */
+  openValiderTout?: () => void;
   // imprimer
   printOpen: boolean; setPrintOpen: (o: boolean) => void; closePrintMenu: () => void; printMenu: ReactNode;
   // coach, astuce

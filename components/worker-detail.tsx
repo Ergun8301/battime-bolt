@@ -76,6 +76,8 @@ interface WorkerDetailDialogProps {
   onChanged?: () => void;
   /** Design bureau v2 : « Relancer » dans la fiche (même envoi que « À relancer » du planning). Absent = pas de bouton. */
   onRelancer?: (worker: User) => void | Promise<unknown>;
+  /** « Tout valider » pour ce salarié (bureau v2). */
+  onValiderTout?: (worker: User) => void;
 }
 
 const OTHER_NAME = 'Autre';
@@ -128,7 +130,7 @@ interface PositionRow {
   captured_at: string;
 }
 
-export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged, onRelancer }: WorkerDetailDialogProps) {
+export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged, onRelancer, onValiderTout }: WorkerDetailDialogProps) {
   const { user: me } = useAuth();
   const ui2 = useBureauUi2();
   // v2 : « Gérer » et « Feuille d'heures » sont deux onglets d'une même fiche ; sans le drapeau, `mode` seul décide (comme avant).
@@ -965,7 +967,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     const ctx: FicheHeuresCtx = {
       worker, onOpenChange, allerGerer: () => setModeV2('manage'), allerDocs: me ? () => setModeV2('docs') : undefined, taux: mRate, range, setRange, loading, entries, liveEntries, totalMinutes, weeks, overtimeMinutes,
       effectiveWeeklyHours, ownWeekly: !!mWeekly.trim(), travelPaid, weekRoute, meId: me?.id, missingOpen, closedUntil, exporting, doExport,
-      onRelancer: onRelancer ? () => onRelancer(worker) : undefined, erasedDraft, deleteEmptyDraft, edits, corrections, qrFlags, leadMarks, positions, editsAvailable,
+      onRelancer: onRelancer ? () => onRelancer(worker) : undefined, onValiderTout: onValiderTout ? () => onValiderTout(worker) : undefined, erasedDraft, deleteEmptyDraft, edits, corrections, qrFlags, leadMarks, positions, editsAvailable,
       worksites, reassigningId, setReassigningId, creatingFor, setCreatingFor, newClientName, setNewClientName, reassignEntry, createAndAttribute,
       correctingId, setCorrectingId, cStart, setCStart, cEnd, setCEnd, cBreak, setCBreak, cMeal, setCMeal, cGap, setCGap, cReason, setCReason,
       cBadStart, cBadEnd, setCBadStart, setCBadEnd, cPauseErr, setCPauseErr, cSaving, cReturning, mealOn, previousEnd, actionErr, setActionErr, doCorrection, doReturn, doSendForWorker,
