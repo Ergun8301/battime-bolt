@@ -106,7 +106,7 @@ import {
   schemaMissing, ticketBucket, ticketBucketFull, ticketBucketNext, REFUSAL_MESSAGES, type PlannedSlot, type TicketBucketRow,
 } from '../_shared/kiosk-rules.ts';
 import {
-  checkFixedPosition, fixedQrRef, fixedQrSignature, fixedQrToken, fixedRefusalMessage, parsePosition, parseRadius, safeEqual, splitFixedToken,
+  checkFixedPosition, fixedQrRef, fixedQrSignature, fixedQrToken, fixedRefusalMessage, parsePosition, parseRadius, safeEqual, siteAcceptsFixed, splitFixedToken,
   FIXED_QR_POINT_MAX_ACCURACY_M, FIXED_QR_RADIUS_DEFAULT_M, FIXED_REFUSAL_MESSAGES, FIXED_SALT_PREFIX, type FixedRefusal,
 } from '../_shared/fixed-qr.ts';
 import {
@@ -1197,6 +1197,15 @@ async function ticketFixed(admin: SupabaseClient, ip: string, body: Record<strin
   });
 }
 
+// Réglage par chantier (fiche client) : le QR fixe et la puce NFC (même lien)
+// peuvent y être refusés. Colonne absente (migration pas passée) ou lecture
+// impossible : accepté, comme avant.
+async function fixedAllowedOn(admin: SupabaseClient, worksiteId: string): Promise<boolean> {
+  const { data, error } = await admin.from('worksites').select('fixed_qr_allowed').eq('id', worksiteId).maybeSingle();
+  if (error) { if (!schemaMissing(error)) console.error('[kiosk] fixed_qr_allowed', error.code); return true; }
+  return siteAcceptsFixed(data as { fixed_qr_allowed?: boolean | null } | null);
+}
+
 async function punch(admin: SupabaseClient, req: Request, body: Record<string, unknown>) {
   // 1) Le ticket : signé par nous, pas expiré.
   const [payload, sig] = String(body.ticket || '').split('.');
@@ -1300,6 +1309,10 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
     const place = arrivalPlace(kiosk!.worksite_id, kioskIsOther, (plans || []) as PlannedSlot[]);
     if (!place) return json({ error: 'Aucun lieu rattaché à cette borne. Prévenez le bureau.', code: 'no_worksite' }, 409);
     const worksiteId = place.worksiteId;
+    // QR fixe ou puce NFC (même lien) : refusés si le bureau l'a décoché pour ce chantier.
+    if (fixed && !(await fixedAllowedOn(admin, worksiteId))) {
+      return refuseFixed('site_refused', 403, await hasTablet(admin, kiosk!.company_id));
+    }
     // Lot 12 : arrivée par `kiosk_open_session` (service seulement) — le chrono
     // est inséré au nom du salarié (tous ses gardes s'appliquent) et marqué QR,
     // seule façon de COMMENCER une journée quand une tablette est reliée.
@@ -1322,6 +1335,14 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
     const { data: w } = await admin.from('worksites').select('client_name').eq('id', worksiteId).maybeSingle();
     worksiteName = (w as { client_name?: string } | null)?.client_name ?? null;
   } else {
+    // QR fixe ou puce NFC : même réglage du chantier pour le départ (celui du pointage en cours).
+    if (fixed) {
+      const { data: cur } = await admin.from('active_sessions').select('worksite_id').eq('user_id', profile.id).maybeSingle();
+      const openSite = (cur as { worksite_id: string | null } | null)?.worksite_id;
+      if (openSite && !(await fixedAllowedOn(admin, openSite))) {
+        return refuseFixed('site_refused', 403, await hasTablet(admin, kiosk!.company_id));
+      }
+    }
     // Lot 9 : « une seule logique » de fermeture, celle de l'appli. Moins d'une
     // minute → le chrono est supprimé et rien n'est enregistré (cancelled).
     // Aucune position à la borne : positions nulles, comme avant.

@@ -77,6 +77,9 @@ export interface Worksite {
   // que si tous les salariés du chantier ont un taux horaire renseigné.
   budget_hours?: number | null;
   budget_amount?: number | null;
+  // QR fixe et puce NFC (même lien) acceptés sur ce chantier ? Vrai par défaut.
+  // `undefined` = colonne pas encore en base : le réglage reste caché.
+  fixed_qr_allowed?: boolean;
 }
 
 export interface Planning {

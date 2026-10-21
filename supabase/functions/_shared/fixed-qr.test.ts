@@ -3,7 +3,7 @@
 import { createHmac } from 'node:crypto';
 import {
   checkFixedPosition, distanceM, fixedQrRef, fixedQrSignature, fixedQrToken, fixedQrUrl, parsePosition, parseRadius,
-  safeEqual, splitFixedToken,
+  safeEqual, siteAcceptsFixed, splitFixedToken,
   fixedAlternative, fixedRefusalMessage, lowerFirst,
   FIXED_QR_ALTERNATIVE, FIXED_QR_MARGIN_MAX_M, FIXED_QR_RADIUS_DEFAULT_M, FIXED_QR_SCAN_MAX_ACCURACY_M, FIXED_REFUSAL_MESSAGES,
 } from './fixed-qr.ts';
@@ -87,7 +87,7 @@ Deno.test('jeton : HMAC(clé serveur, id, sel), non stocké, régénérable', as
 });
 
 Deno.test('messages : chaque refus propose l’autre moyen — « la tablette » seulement s’il y en a une', () => {
-  const stems = ['fixed_unavailable', 'fixed_invalid', 'fixed_revoked', 'fixed_no_point', 'position_missing', 'position_imprecise', 'out_of_zone'] as const;
+  const stems = ['fixed_unavailable', 'fixed_invalid', 'fixed_revoked', 'fixed_no_point', 'position_missing', 'position_imprecise', 'out_of_zone', 'site_refused'] as const;
   for (const k of stems) {
     ok(fixedRefusalMessage(k, true).endsWith(FIXED_QR_ALTERNATIVE), `${k} avec tablette : « ${FIXED_QR_ALTERNATIVE} »`);
     const sans = fixedRefusalMessage(k, false);
@@ -117,4 +117,11 @@ Deno.test('plafond des essais refusés : seaux de 12 bits, fenêtre de 10 minute
   const fresh = ticketBucketNext(row, t0 + TICKET_FAILURE_WINDOW_MS + 5000);
   eq([fresh.failures, fresh.window_start], [1, new Date(t0 + TICKET_FAILURE_WINDOW_MS + 5000).toISOString()], 'après la fenêtre : le compteur repart à 1 (ligne réécrite, rien à effacer)');
   eq([ticketBucketFull(null, t0), ticketThrottled(MAX_TICKET_FAILURES_PER_IP - 1), ticketThrottled(MAX_TICKET_FAILURES_PER_IP)], [false, false, true], 'pas de ligne : jamais plein');
+});
+
+Deno.test('réglage du chantier : seul un « non » écrit par le bureau refuse le QR fixe et la puce NFC', () => {
+  eq([siteAcceptsFixed({ fixed_qr_allowed: true }), siteAcceptsFixed({ fixed_qr_allowed: false })], [true, false], 'oui / non');
+  eq([siteAcceptsFixed({}), siteAcceptsFixed(null), siteAcceptsFixed(undefined), siteAcceptsFixed({ fixed_qr_allowed: null })], [true, true, true, true],
+    'colonne absente, chantier introuvable, valeur vide : accepté comme avant');
+  ok(/NFC/.test(fixedRefusalMessage('site_refused', true)), 'le refus nomme aussi la puce NFC');
 });
