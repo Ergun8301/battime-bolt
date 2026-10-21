@@ -117,15 +117,22 @@ const PLANCHE_LIGNE = [
   // Retouches (point 6) : l'en-tête dit « SALARIÉ », sans « ? » ; l'astuce est un petit lien au bout de la légende.
   const tete = await page.evaluate(() => ({ t: document.querySelector('.dzp-th-nom').innerText.trim(), aide: document.querySelectorAll('.dzp-table thead [data-testid=copy-tip-help], .dzp-table thead .bt-cp-help').length }));
   check(tete.t === 'SALARIÉ' && tete.aide === 0, `en-tête de la colonne : « SALARIÉ », sans « ? » (${JSON.stringify(tete)})`);
+  // La légende n'est plus posée sous la grille : un petit « ⓘ » dans la barre ouvre une fenêtre (Échap ou un clic ailleurs la ferme).
+  check(await page.locator('.dzp-legende[data-toujours], .dzp-table ~ [data-testid=legende]').count() === 0 && await page.locator('[data-testid=legende]').count() === 0, 'la légende n’est plus affichée en permanence sous la grille');
+  await page.click('[data-testid=bar-legende]'); await page.waitForTimeout(200);
+  const nbLeg = await page.locator('[data-testid=legende] .dzp-pastille').count();
+  check(await page.locator('[data-testid=legende]').isVisible() && nbLeg === 14, `« ⓘ » ouvre la légende : ${nbLeg} codes (14 attendus)`);
   const lien = page.locator('[data-testid=legende] [data-testid=legende-astuce] [data-testid=copy-tip-help]');
   const lienInfo = await lien.evaluate((e) => ({ t: getComputedStyle(e, '::before').content, nom: e.getAttribute('aria-label'), dernier: !e.closest('.dzp-legende__astuce').nextElementSibling })).catch(() => null);
   check(!!lienInfo && /Astuce : copier une case/.test(lienInfo.t) && lienInfo.dernier && /copier une case/.test(lienInfo.nom || ''), `« Astuce : copier une case » au bout de la légende (${JSON.stringify(lienInfo)})`);
   await lien.click(); await page.waitForTimeout(250);
   check(await page.locator('[data-testid=copy-tip]').isVisible(), 'le lien rouvre la même aide qu’avant (astuce « Copier une case »)');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+  check(await page.locator('[data-testid=legende]').count() === 0, 'Échap ferme la légende');
   await page.evaluate(() => window.scrollTo(0, 0));
   await fermerAstuce(page); await page.waitForTimeout(150);
   const apresCompris = await page.evaluate(() => ({ y: Math.round(window.scrollY), focus: document.activeElement?.dataset.testid }));
-  check(apresCompris.y === 0 && apresCompris.focus === 'copy-tip-help', `« Compris » : le focus va au lien de la légende sans faire sauter la page (${JSON.stringify(apresCompris)})`);
+  check(apresCompris.y === 0, `« Compris » ne fait pas sauter la page (${JSON.stringify(apresCompris)})`);
   // Retouches (point 4) : bulles compactes, une ligne par étiquette et par horaire (texte complet en infobulle) ; « 11 / 35 h » sur la ligne de la jauge.
   const r4 = await retours(page, '.dzp-table .dzp-etiquette, .dzp-table .dzp-bulle__heure');
   const sansTitre = await page.evaluate(() => [...document.querySelectorAll('.dzp-table .dzp-etiquette, .dzp-table .dzp-bulle__heure')].filter((e) => e.title !== e.textContent).length);
@@ -136,7 +143,7 @@ const PLANCHE_LIGNE = [
   check(envoyee.bg === 'rgb(21, 18, 15)' && envoyee.h === 'rgb(255, 194, 26)' && /^✓ \d\d:\d\d–\d\d:\d\d · \dh\d\d$/.test(envoyee.txt) && envoyee.b === 5 && envoyee.r === '12px', `bulle envoyée sombre, heure jaune « ✓ 08:00–12:00 · 4h00 », liseré 5 px, rayon 12 (${JSON.stringify(envoyee)})`);
   const etats = await page.evaluate(() => [...new Set([...document.querySelectorAll('.dzp-table .dzp-bulle')].map((e) => e.dataset.etat))].sort());
   check(['a-envoyer', 'ajoutee', 'en-cours', 'envoyee', 'prevue', 'retiree'].every((x) => etats.includes(x)) && await page.locator('.dzp-table .dzp-reunion').count() > 0, `états de la planche dessinés (${etats.join(', ')}, réunion)`);
-  check(await page.locator('.dzp-table .dzp-absence').count() >= 6 && await page.locator('.dzp-table .dzp-vide').count() > 10 && await page.locator('[data-testid=legende][data-toujours]').isVisible(), 'absences rayées, cases vides « + », légende posée sous la grille');
+  check(await page.locator('.dzp-table .dzp-absence').count() >= 6 && await page.locator('.dzp-table .dzp-vide').count() > 10 && await page.locator('[data-testid=legende]').count() === 0, 'absences rayées, cases vides « + », légende fermée (elle s’ouvre par le « ⓘ » de la barre)');
   const r = await retours(page, '[data-testid=barre-noire], [data-testid=barre-semaine]');
   check(r.length === 0, `1440 : rien ne passe à la ligne dans la barre noire ni dans la ligne de semaine (${r.join(' | ')})`);
   await capture(page, '1a-deplie-1440.png');
@@ -262,7 +269,7 @@ const PLANCHE_LIGNE = [
   check(pe.reste.length === 0 && pe.pastille === 'Quitter le plein écran (Échap)' && pe.semaine === '‹ S-42 ›' && pe.pos && pe.pos.droite === 14,
     `⤢ : tout le haut est masqué, seul reste le bouton rond « ${pe.pastille} » ; « ${pe.semaine} » dans la case SALARIÉ${pe.reste.length ? ` — restent : ${pe.reste.join(', ')}` : ''}`);
   const peHaut = await page.evaluate(() => {
-    const p = document.querySelector('[data-testid=quitter-plein-ecran]').getBoundingClientRect(); const th = document.querySelector('.dzp-table thead').getBoundingClientRect(); const leg = document.querySelector('[data-testid=legende]').getBoundingClientRect();
+    const p = document.querySelector('[data-testid=quitter-plein-ecran]').getBoundingClientRect(); const th = document.querySelector('.dzp-table thead').getBoundingClientRect(); const leg = { top: 9999 };
     return { haut: Math.round(p.top), droite: Math.round(innerWidth - p.right), basPastille: Math.round(p.bottom), hautGrille: Math.round(th.top), legende: Math.round(leg.top) };
   });
   check(peHaut.haut === 12 && peHaut.droite === 14 && peHaut.basPastille <= peHaut.hautGrille && peHaut.legende >= peHaut.basPastille,

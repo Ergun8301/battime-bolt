@@ -26,26 +26,6 @@ export { default as FicheV2 } from './fiche-v2';
 // Les fiches du guide pas à pas du bureau v2 : chargées avec ce morceau, jamais dans le premier chargement de /admin.
 export { findAdminTourV2 } from '@/supabase/functions/_shared/admin-tours-v2';
 
-const LEGENDE: { k: string; l: string }[] = [
-  { k: 'matin', l: 'Matin (avant 12 h)' }, { k: 'apres-midi', l: 'Après-midi (12 h – 18 h)' }, { k: 'soir', l: 'Soir (après 18 h)' }, { k: 'journee', l: 'Journée entière ou sans horaire' },
-  { k: 'prevue', l: 'Prévue (pointillés)' }, { k: 'a-envoyer', l: 'Saisie, à envoyer (ne compte pas)' }, { k: 'envoyee', l: 'Envoyée (compte)' }, { k: 'en-cours', l: 'En direct (pointage en cours)' },
-  { k: 'ajoutee', l: 'Ajoutée par le salarié' }, { k: 'retiree', l: 'Retirée par le salarié (barrée)' }, { k: 'reunion', l: 'Réunion (hors heures)' },
-  { k: 'absence', l: 'Absence (rayée)' }, { k: 'clos', l: 'Mois clôturé (CLOS)' }, { k: 'reserve', l: 'Réserve à traiter' },
-];
-
-/** La légende, toujours posée sous la grille (ordinateur et tablette) : aucun menu ne l'ouvre ni ne fait défiler la page jusqu'à elle. Au téléphone, le menu ☰
- *  l'ouvre dans une petite feuille (menu-mobile-v2.tsx). */
-function Legende({ astuce = null }: { astuce?: React.ReactNode }) {
-  return (
-    <div className="dzp-legende" data-open="" data-toujours="" data-testid="legende">
-      <span className="dzp-legende__t">LÉGENDE</span>
-      {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
-      {/* Ordinateur : « Astuce : copier une case » au bout de la légende (le « ? » d'avant, retiré de l'en-tête de la grille ; même aide). */}
-      {astuce ? <span className="dzp-legende__astuce" data-testid="legende-astuce">{astuce}</span> : null}
-    </div>
-  );
-}
-
 function Aide({ c }: { c: PlanningCtx }) {
   const vide = c.workers.length === 0 || c.worksites.length === 0;
   if (c.coachHidden || c.selectMode || !vide) return null;
@@ -308,8 +288,6 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
           <Aide c={c} />
           {ordi ? <Grille1a c={cGrille} totaux={totaux} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />
             : <Grille c={cGrille} totaux={totaux} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />}
-          {/* Ordinateur et tablette : la légende est toujours posée sous la grille (le téléphone l'ouvre depuis le menu ☰, dans une feuille). */}
-          <Legende astuce={ordi && c.workers.length > 0 ? c.copyTipHelpCorner : null} />
         </div>
       </div>
       <Mobile c={c} gens={gens} nbRecherche={nbRecherche} />
