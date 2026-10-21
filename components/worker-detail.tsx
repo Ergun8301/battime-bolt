@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
-import { addCertification, setWorkerActive, updateWorkerIdentity } from '@/lib/admin-writes';
+import { addCertification, sendDraftForWorker, setWorkerActive, updateWorkerIdentity } from '@/lib/admin-writes';
 import { useAuth } from '@/components/auth-provider';
 import { corrigerHeures, fmtHeure } from '@/lib/corrections';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
@@ -440,6 +440,30 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       toast.error((err as { message?: string })?.message || 'Renvoi impossible');
     } finally {
       setCReturning(false);
+    }
+  };
+
+  /**
+   * « Envoyer à sa place » : le patron ou la secrétaire envoie une ligne que le salarié a saisie sans l'envoyer. Même écriture que partout (lib/admin-writes.ts),
+   * avec la trace de la personne du bureau. La ligne compte ensuite comme une journée envoyée.
+   */
+  const doSendForWorker = async (entry: ExportEntry) => {
+    if (!worker || !me) return;
+    try {
+      const ok = await sendDraftForWorker(worker.company_id, entry.id, me.id);
+      if (!ok) { setActionErr('Cette ligne a déjà changé : rechargez la fiche.'); toast.error('Cette ligne a déjà changé : rechargez la fiche.'); return; }
+      toast.success(`Heures envoyées pour ${worker.first_name}`);
+      setActionErr(null);
+      fetchEntries();
+      fetchMissing();
+      onChanged?.();
+      return true;
+    } catch (err) {
+      console.error('Error sending draft for worker:', err);
+      const msg = (err as { message?: string })?.message || 'Envoi impossible';
+      const clair = /submitted_by/.test(msg) ? 'Mise à jour de la base en attente : envoi impossible pour le moment.' : msg;
+      setActionErr(clair);
+      toast.error(clair);
     }
   };
 
@@ -956,7 +980,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       onRelancer: onRelancer ? () => onRelancer(worker) : undefined, erasedDraft, deleteEmptyDraft, edits, corrections, qrFlags, leadMarks, positions, editsAvailable,
       worksites, reassigningId, setReassigningId, creatingFor, setCreatingFor, newClientName, setNewClientName, reassignEntry, createAndAttribute,
       correctingId, setCorrectingId, cStart, setCStart, cEnd, setCEnd, cBreak, setCBreak, cMeal, setCMeal, cGap, setCGap, cReason, setCReason,
-      cBadStart, cBadEnd, setCBadStart, setCBadEnd, cPauseErr, setCPauseErr, cSaving, cReturning, mealOn, previousEnd, actionErr, setActionErr, doCorrection, doReturn,
+      cBadStart, cBadEnd, setCBadStart, setCBadEnd, cPauseErr, setCPauseErr, cSaving, cReturning, mealOn, previousEnd, actionErr, setActionErr, doCorrection, doReturn, doSendForWorker,
     };
     return <Suspense fallback={null}><FicheHeuresV2 ctx={ctx} /></Suspense>;
   }

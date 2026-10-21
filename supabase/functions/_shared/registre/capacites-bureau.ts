@@ -1400,4 +1400,13 @@ export const CAPACITES_BUREAU: Capacite[] = [
       note: "Volet de lire_formations (B57) : nombre de fichiers du dossier privé sans formation et de formations publiées dont le fichier manque, avec les premières lignes. Lecture seule comme à l'écran : aucun bouton de suppression.",
     },
   },
+  // B141 · humain · niveau 3
+  {
+    id: 'B141', cote: 'bureau', libelle: "Envoyer à sa place les heures qu'un salarié a saisies sans les envoyer (fiche d'une ligne)",
+    genre: 'humain', niveau: 3,
+    humain: {
+      categorie: 'doute_patron',
+      raison: "Geste ajouté le 21 octobre 2026 à la demande d'Ergun, côté écran seulement : envoyer des heures à la place du salarié les fait compter dans la paie. À ne confier à l'assistant que si le patron le demande.",
+    },
+  },
 ];

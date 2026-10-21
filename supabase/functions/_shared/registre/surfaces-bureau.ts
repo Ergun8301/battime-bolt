@@ -986,4 +986,8 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'rpc:video_files_audit',
     'ecriture:lib/training-videos#fetchVideoFilesAudit',
   ],
+  // B141 · Envoyer à sa place les heures qu'un salarié a saisies sans les envoyer (fiche d'une ligne)
+  B141: [
+    'ecriture:lib/admin-writes#sendDraftForWorker',
+  ],
 };

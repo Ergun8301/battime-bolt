@@ -157,6 +157,18 @@ export async function closeMonth(companyId: string, userId: string, month: strin
   const { error } = await supabase.from('month_closures').insert({ company_id: companyId, month: `${month}-01`, closed_by: userId });
   if (error) throw error;
 }
+/**
+ * « Envoyer à sa place » : le bureau envoie une ligne que le salarié a saisie sans l'envoyer (brouillon). Elle compte alors comme n'importe quelle journée envoyée.
+ * Jamais sans trace : `submitted_by` porte la personne du bureau. Une ligne déjà envoyée, retirée, verrouillée ou renvoyée au salarié n'est pas touchée (0 ligne = false).
+ */
+export async function sendDraftForWorker(companyId: string, entryId: string, officeUserId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('time_entries')
+    .update({ status: 'submitted', submitted_at: new Date().toISOString(), submitted_by: officeUserId })
+    .eq('id', entryId).eq('company_id', companyId).eq('status', 'draft').eq('locked', false).is('submitted_at', null)
+    .select('id');
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
 /** « Attribuer un client » aux heures notées sur « Autre » (ou sans chantier). */
 export async function attributeEntries(companyId: string, p: { userId: string; date: string; fromWorksiteId: string | null; toWorksiteId: string }) {
   const base = supabase.from('time_entries').update({ worksite_id: p.toWorksiteId })

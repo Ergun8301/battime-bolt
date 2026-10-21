@@ -99,6 +99,8 @@ export interface FicheHeuresCtx {
   actionErr: string | null; setActionErr: (v: string | null) => void;
   doCorrection: (e: ExportEntry) => Promise<unknown>;
   doReturn: (e: ExportEntry) => Promise<unknown>;
+  /** « Envoyer à sa place » : le bureau envoie les heures d'un salarié qui ne l'a pas fait (brouillon → envoyée, avec trace). */
+  doSendForWorker: (e: ExportEntry) => Promise<unknown>;
 }
 
 const OTHER_NAME = 'Autre';
@@ -127,6 +129,7 @@ function etatLigne(entry: ExportEntry, c: FicheHeuresCtx) {
   if (isCancelled) chips.push({ etat: 'retiree', texte: 'Retirée' });
   else if (isEmptyDraft) chips.push({ etat: 'brouillon', texte: 'brouillon vide', testId: 'badge-empty-draft', titre: 'Début = fin : ne compte nulle part' });
   else if (entry.status === 'draft') chips.push({ etat: 'brouillon', texte: 'brouillon', testId: 'badge-draft' });
+  else if (entry.submitted_by && entry.submitted_by !== c.worker.id) chips.push({ etat: 'envoye', texte: 'Envoyé par le bureau', testId: 'badge-sent-by-office', titre: 'Envoyé à la place du salarié' });
   else chips.push({ etat: 'envoye', texte: 'Envoyé' });
   if (returned) chips.push({ etat: 'renvoyee', texte: 'renvoyée · en attente du salarié', testId: 'badge-returned' });
   if (isWorkerAdded) chips.push({ etat: 'ajoute', texte: 'ajouté par le salarié' });
@@ -341,6 +344,11 @@ function LigneV2({ c, entry, fermer, corriger, renvoyer }: { c: FicheHeuresCtx; 
   const e = etatLigne(entry, c);
   const route = c.weekRoute.get(entry.id) || 0;
   const corrigeable = isCounted(entry.status);
+  // « Envoyer à sa place » : une ligne saisie mais jamais envoyée, ni vide, ni renvoyée au salarié, ni verrouillée.
+  const envoyable = entry.status === 'draft' && !entry.submitted_at && !entry.locked && !e.isEmptyDraft && !e.returned;
+  const [confirmer, setConfirmer] = useState(false);
+  const [envoi, setEnvoi] = useState(false);
+  const envoyer = async () => { setEnvoi(true); try { await c.doSendForWorker(entry); } finally { setEnvoi(false); setConfirmer(false); } };
   const linkedCorr = new Set(e.lineEdits.map((x) => x.correction_id).filter(Boolean));
   const history = [
     ...(c.corrections.get(entry.id) || []).filter((x) => !linkedCorr.has(x.id)).map((x) => ({ at: x.corrected_at, c: x, x: null as EntryEdit | null })),
@@ -358,6 +366,18 @@ function LigneV2({ c, entry, fermer, corriger, renvoyer }: { c: FicheHeuresCtx; 
           {c.editsAvailable ? <button type="button" className="dz-hb-btn" data-testid="correct-return" onClick={renvoyer}>Renvoyer au salarié</button> : null}
           <button type="button" className="dz-hb-btn" data-ton="principal" data-guide="bureau-fiche.corriger" data-testid="correct-open" onClick={corriger}>Corriger</button>
         </>
+      ) : envoyable ? (
+        confirmer ? (
+          <>
+            <span className="dz-hb-aide" data-testid="send-for-worker-confirm">Envoyer ces heures pour {c.worker.first_name} ? Elles compteront comme envoyées.</span>
+            <button type="button" className="dz-hb-btn" disabled={envoi} onClick={() => setConfirmer(false)}>Annuler</button>
+            <button type="button" className="dz-hb-btn" data-ton="principal" disabled={envoi} data-testid="send-for-worker-ok" onClick={envoyer}>
+              {envoi ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null} Envoyer
+            </button>
+          </>
+        ) : (
+          <button type="button" className="dz-hb-btn" data-ton="principal" data-testid="send-for-worker" onClick={() => setConfirmer(true)}>Envoyer à sa place</button>
+        )
       ) : undefined}>
       <Chips chips={e.chips} />
       <ul className="dz-hb-kv dz-hb-carte">
@@ -434,7 +454,11 @@ function LigneV2({ c, entry, fermer, corriger, renvoyer }: { c: FicheHeuresCtx; 
           </li>
         ) : null))}
         {entry.submitted_at ? (
-          <li><small>{format(new Date(entry.submitted_at), 'dd/MM HH:mm')} · {c.worker.first_name} {c.worker.last_name}</small><b>Envoyée</b></li>
+          entry.submitted_by && entry.submitted_by !== c.worker.id ? (
+            <li data-testid="sent-by-office"><small>{format(new Date(entry.submitted_at), 'dd/MM HH:mm')} · {entry.submitted_by === c.meId ? 'vous' : 'le bureau'}</small><b>Envoyée à la place de {c.worker.first_name}</b></li>
+          ) : (
+            <li><small>{format(new Date(entry.submitted_at), 'dd/MM HH:mm')} · {c.worker.first_name} {c.worker.last_name}</small><b>Envoyée</b></li>
+          )
         ) : null}
         {history.length === 0 && !entry.submitted_at ? <li><b>Pas encore envoyée</b></li> : null}
       </ol>
