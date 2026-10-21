@@ -73,7 +73,8 @@ export type FixedRefusal =
   | 'position_imprecise'
   | 'out_of_zone'
   | 'point_imprecise'
-  | 'confirm_required';
+  | 'confirm_required'
+  | 'site_refused';
 
 const FIXED_STEMS: Record<Exclude<FixedRefusal, 'point_imprecise' | 'confirm_required'>, string> = {
   fixed_unavailable: 'Le QR fixe n’est pas disponible pour l’instant.',
@@ -83,6 +84,8 @@ const FIXED_STEMS: Record<Exclude<FixedRefusal, 'point_imprecise' | 'confirm_req
   position_missing: 'Position non reçue (refusée ou introuvable).',
   position_imprecise: 'Position trop imprécise pour vérifier la zone.',
   out_of_zone: 'Vous êtes hors de la zone de ce QR.',
+  // Réglage du chantier (fiche client) : vaut aussi pour la puce NFC, qui porte le même lien.
+  site_refused: 'Sur ce chantier, votre entreprise n’accepte pas le QR fixe ni la puce NFC.',
 };
 
 /** Le message d'un refus du QR fixe, avec le bon « autre moyen » (voir `fixedAlternative`). */
@@ -101,6 +104,7 @@ export const FIXED_REFUSAL_MESSAGES: Record<FixedRefusal, string> = {
   position_missing: fixedRefusalMessage('position_missing'),
   position_imprecise: fixedRefusalMessage('position_imprecise'),
   out_of_zone: fixedRefusalMessage('out_of_zone'),
+  site_refused: fixedRefusalMessage('site_refused'),
   point_imprecise: fixedRefusalMessage('point_imprecise'),
   confirm_required: fixedRefusalMessage('confirm_required'),
 };
@@ -147,6 +151,15 @@ export function checkFixedPosition(ref: GeoPoint | null, radiusM: number, pos: S
   if (pos.accuracy === null || pos.accuracy > FIXED_QR_SCAN_MAX_ACCURACY_M) return 'position_imprecise';
   const margin = Math.min(pos.accuracy, FIXED_QR_MARGIN_MAX_M);
   return distanceM(ref, pos) <= radiusM + margin ? 'ok' : 'out_of_zone';
+}
+
+/**
+ * Le chantier accepte-t-il le QR fixe (et la puce NFC) ? Seul un `false` écrit
+ * par le bureau refuse : colonne absente (migration pas passée), chantier
+ * introuvable ou valeur vide → accepté, comme avant.
+ */
+export function siteAcceptsFixed(row: { fixed_qr_allowed?: boolean | null } | null | undefined): boolean {
+  return row?.fixed_qr_allowed !== false;
 }
 
 /** Un rayon accepté (entier de 100 à 1 000 m), sinon `null`. */

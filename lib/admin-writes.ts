@@ -48,6 +48,11 @@ export async function updateWorksite(companyId: string, id: string, w: WorksiteP
   const { error } = await supabase.from('worksites').update(row).eq('id', id).eq('company_id', companyId);
   if (error) throw error;
 }
+/** Fiche client → « QR fixe et puce NFC » : acceptés ou refusés sur ce chantier. */
+export async function setWorksiteFixedQr(companyId: string, id: string, allowed: boolean) {
+  const { error } = await supabase.from('worksites').update({ fixed_qr_allowed: allowed }).eq('id', id).eq('company_id', companyId);
+  if (error) throw error;
+}
 /** « Archiver » (ou réactiver) un client. */
 export async function setWorksiteActive(companyId: string, id: string, active: boolean) {
   const { error } = await supabase.from('worksites').update({ is_active: active }).eq('id', id).eq('company_id', companyId);

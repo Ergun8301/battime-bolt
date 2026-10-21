@@ -4405,6 +4405,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
             sa: [salariesOpen, setSalariesOpen, setWorkerOpen, setImportWorkersOpen, setLeaveOpen, pendingLeaves, pendingInvites, user?.company_id, () => { fetchData(); fetchExtras(); }, officeUsers, user,
               roleBusyId, changeRole, salariesQuery, setSalariesQuery, workers, filteredWorkers, missingEffective, workerClosures, sendReminder, remindingId, setFicheMode, setFicheWorker, useInvitationsAttente],
             vt: user?.role === 'admin' ? () => setValiderTout({ userId: null }) : undefined,
+            rw: fetchData,
             ns: [workerOpen, setWorkerOpen, resetWorker, setPre, pre, createWorker, wFirst, setWFirst, wLast, setWLast, wEmail, setWEmail, wPhone, setWPhone, wSaving],
           }} />
         </Suspense>

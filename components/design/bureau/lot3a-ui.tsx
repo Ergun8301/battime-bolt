@@ -7,7 +7,7 @@ import './bureau-jetons.css';
 import './heures-v2.css';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import * as AlertPrimitive from '@radix-ui/react-alert-dialog';
-import { BarChart3, CircleCheck, Euro, FileText, Loader2, Plus, RotateCcw, ShieldCheck, type LucideIcon } from 'lucide-react';
+import { BarChart3, CircleCheck, Euro, FileText, Loader2, Plus, QrCode, RotateCcw, ShieldCheck, type LucideIcon } from 'lucide-react';
 import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react';
 
 type Style = CSSProperties & Record<`--${string}`, string | number>;
@@ -95,8 +95,8 @@ export function Etiquette({ children, droite }: { children: ReactNode; droite?: 
 
 // ───────────────────────── Lignes ─────────────────────────
 /** L'icône d'une ligne de fiche (Documents, Coût, Bilan…) : un pictogramme connu de tous, sur une pastille teintée, pour repérer la ligne d'un coup d'œil. */
-export type IconeLigne = 'documents' | 'cout' | 'bilan' | 'terminer' | 'rouvrir' | 'ajouter' | 'habilitation';
-const ICONES: Record<IconeLigne, LucideIcon> = { documents: FileText, cout: Euro, bilan: BarChart3, terminer: CircleCheck, rouvrir: RotateCcw, ajouter: Plus, habilitation: ShieldCheck };
+export type IconeLigne = 'documents' | 'cout' | 'bilan' | 'terminer' | 'rouvrir' | 'ajouter' | 'habilitation' | 'qr';
+const ICONES: Record<IconeLigne, LucideIcon> = { documents: FileText, cout: Euro, bilan: BarChart3, terminer: CircleCheck, rouvrir: RotateCcw, ajouter: Plus, habilitation: ShieldCheck, qr: QrCode };
 
 export interface LigneProps {
   t: ReactNode;

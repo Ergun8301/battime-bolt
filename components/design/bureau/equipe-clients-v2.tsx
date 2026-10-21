@@ -13,6 +13,8 @@ import { readSupportSession } from '@/lib/support';
 import { canFinishWorksite, completionUi, hasCompletionColumn, termineLe } from '@/supabase/functions/_shared/chantier-statut';
 import type { useInvitationsAttente } from '@/components/pending-invitations';
 import type { TermineTarget } from '@/components/chantier-termine';
+import { toast } from 'sonner';
+import { setWorksiteFixedQr } from '@/lib/admin-writes';
 import { Alerte, Btn, Champ, ChampTexte, Champs, Coque, Etiquette, Lignes, Ligne, P, Recherche, Vide, fondAvatar, initiales } from './lot3a-ui';
 
 type Fx<T> = (v: T) => void;
@@ -42,6 +44,8 @@ export interface Lot3Ctx {
     typeof useInvitationsAttente];
   /** « Tout valider » (toute l'entreprise), bureau seulement. */
   vt?: () => void;
+  /** Relire les chantiers (après le réglage « QR fixe et puce NFC » de la fiche). */
+  rw?: () => void;
   /** Nouveau salarié : ouvert, ouvrir/fermer, vider, effacer la note, note, envoyer, prénom, nom, e-mail, téléphone (+ changeurs), en cours. */
   ns: [boolean, Fx<boolean>, () => void, Fx<string | null>, string | null, (e: FormEvent) => void, string, Fx<string>, string, Fx<string>, string, Fx<string>,
     string, Fx<string>, boolean];
@@ -94,6 +98,22 @@ function FicheClientV2({ c }: { c: Lot3Ctx }) {
   const ui = completionUi({ ready: pret, hasColumn: colonne, supportMode: !!readSupportSession() });
   const fin = ws ? termineLe(ws) : null;
   const nDocs = ws ? docsPar.get(ws.id) || 0 : 0;
+  // QR fixe et puce NFC (même lien) sur ce chantier : écrit tout de suite, sans « Enregistrer ».
+  // Colonne absente (migration pas passée) : ligne cachée. Pas d'écriture en mode support.
+  const [qrBusy, setQrBusy] = useState(false);
+  const qrOk = ws?.fixed_qr_allowed;
+  const basculerQr = async () => {
+    if (!ws || qrOk === undefined || qrBusy) return;
+    setQrBusy(true);
+    try {
+      await setWorksiteFixedQr(ws.company_id, ws.id, !qrOk);
+      setWs({ ...ws, fixed_qr_allowed: !qrOk });
+      c.rw?.();
+      toast.success(!qrOk ? 'QR fixe et puce NFC acceptés sur ce chantier.' : 'QR fixe et puce NFC refusés sur ce chantier.');
+    } catch {
+      toast.error('Réglage non enregistré. Réessayez.');
+    } finally { setQrBusy(false); }
+  };
   return (
     <>
       <Coque open={!!ws} onOpenChange={(o) => { if (!o) setWs(null); }} forme="panneau" largeur={680} kicker="Fiche client" titre={nom.trim() || ws?.client_name || 'Client'}
@@ -123,6 +143,12 @@ function FicheClientV2({ c }: { c: Lot3Ctx }) {
           <P ton="doux">Alertes e-mail à 70, 80 et 100 %. Hors matériaux et sous-traitance ; le montant n’est juste que si tous les salariés ont un taux horaire. Suivi détaillé dans Coût chantiers.</P>
           <Lignes>
             <Ligne t="Documents" icone="documents" droite={String(nDocs)} chev onClick={() => setDocs({ ws, day: null })} clicTestId="fiche-client-documents" />
+            {qrOk !== undefined && !readSupportSession() ? (
+              <Ligne t="QR fixe et puce NFC" icone="qr" testId="fiche-client-qr-fixe"
+                s={qrOk ? 'Acceptés pour pointer sur ce chantier' : 'Refusés : tablette ou saisie à la main seulement'}
+                droite={qrBusy ? '…' : qrOk ? 'Oui' : 'Non'} droiteTon={qrOk ? 'ok' : 'erreur'}
+                onClick={() => void basculerQr()} clicTestId="fiche-client-qr-fixe-basculer" titre={qrOk ? 'Toucher pour les refuser' : 'Toucher pour les accepter'} />
+            ) : null}
             {ui.bilan ? <Ligne t="Bilan" icone="bilan" s="Lecture seule" chev onClick={() => setTermine({ ws, mode: 'bilan' })} clicTestId="ct-bilan" /> : null}
             {ui.bilan && ui.write ? (fin
               ? <Ligne t="Rouvrir le chantier" icone="rouvrir" s={fin} chev onClick={() => setTermine({ ws, mode: 'rouvrir' })} clicTestId="ct-rouvrir" />

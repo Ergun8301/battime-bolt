@@ -238,6 +238,7 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'table:worksites:update',
     'ecriture:lib/admin-writes#setWorksiteActive',
     'ecriture:lib/admin-writes#updateWorksite',
+    'ecriture:lib/admin-writes#setWorksiteFixedQr',
     'ecriture:lib/planning-writes#setWorksiteBudget',
     'ancre:bureau-clients.budget',
     'ancre:bureau-clients.crayon',

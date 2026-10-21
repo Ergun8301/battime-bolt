@@ -90,6 +90,7 @@ let insertError: Record<string, { status: number; body: unknown } | undefined> =
 // production aujourd'hui) : toute requête qui cite une colonne neuve reçoit
 // l'erreur de PostgREST, la table neuve est « introuvable ».
 let qrFixeMigrated = false;
+let siteColMigrated = false;
 // Lot 30 : les colonnes kiosks.client_state / client_state_at existent-elles ? Par défaut NON (production aujourd'hui).
 let lot30Migrated = false;
 const LOT30_COLS = ['client_state', 'client_state_at'];
@@ -171,6 +172,10 @@ async function fakeFetch(input: string | URL | Request, init?: RequestInit): Pro
     return reply(404, { code: 'PGRST205', message: `Could not find the table 'public.${table}' in the schema cache` });
   }
   if (method === 'GET' && readError[table]) return reply(readError[table]!.status, readError[table]!.body);
+  // Réglage par chantier (QR fixe / NFC) : colonne absente tant que la migration n'est pas passée.
+  if (method === 'GET' && table === 'worksites' && !siteColMigrated && (params.get('select') || '').includes('fixed_qr_allowed')) {
+    return reply(400, { code: '42703', message: 'column worksites.fixed_qr_allowed does not exist' });
+  }
   if (!qrFixeMigrated) {
     if (table === 'kiosk_ticket_failures') return reply(404, { code: 'PGRST205', message: `Could not find the table 'public.${table}' in the schema cache` });
     const cols = LOT12_QR_COLS[table];
@@ -307,6 +312,7 @@ function freshDb(): Db {
   readError = {};
   rpcResult = defaultRpc;
   qrFixeMigrated = false;
+  siteColMigrated = false;
   lot30Migrated = false; clientStateFail = undefined;
   // Lot 11 : horloge remise à l'heure, tables de l'appairage et support_staff absentes.
   clockOffset = 0; tick = 0;
@@ -779,6 +785,43 @@ Deno.test({
     // Compte inactif / non connecté.
     const noAuth = await call({ action: 'punch', ticket: t.json.ticket, ...at(10, 10) });
     eq([noAuth.status, noAuth.json.code], [401, 'auth'], 'non connecté : se connecter d’abord');
+  },
+});
+
+Deno.test({
+  name: 'QR fixe / puce NFC — réglage par chantier : refusé seulement là où le bureau l’a décoché',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb(); migrate();
+    const token = await enableFixed();
+    // Migration pas passée : la colonne n'existe pas, le QR fixe est accepté comme avant.
+    db.worksites.find((w) => w.id === AUTRE)!.fixed_qr_allowed = false;
+    let t = await call({ action: 'ticket', f: token });
+    let p = await call({ action: 'punch', ticket: t.json.ticket, ...at(10, 10) }, { token: 'jwt-karim' });
+    eq([p.status, p.json.kind], [200, 'arrival'], `colonne absente : accepté comme avant (${JSON.stringify(p.json)})`);
+
+    // Migration passée, chantier décoché : arrivée refusée, rien d'écrit, l'autre moyen proposé.
+    db = freshDb(); migrate(); siteColMigrated = true;
+    const token2 = await enableFixed();
+    db.worksites.find((w) => w.id === AUTRE)!.fixed_qr_allowed = false;
+    t = await call({ action: 'ticket', f: token2 });
+    p = await call({ action: 'punch', ticket: t.json.ticket, ...at(10, 10) }, { token: 'jwt-karim' });
+    eq([p.status, p.json.code], [403, 'site_refused'], 'chantier décoché : refusé');
+    ok(/NFC/.test(String(p.json.error)) && String(p.json.error).endsWith('Ajoutez votre intervention à la main.'), `message clair : « ${p.json.error} »`);
+    eq([db.active_sessions.length, db.kiosk_punches.length], [0, 0], '… aucun chrono, aucun pointage');
+
+    // Un autre chantier (coché) prévu aujourd'hui : l'arrivée y va, acceptée.
+    db.planning.push({ id: 'p-villa', company_id: CO, user_id: 'u-karim', worksite_id: VILLA, work_date: parisToday(), estimated_start: '08:00:00', absence_type: null });
+    p = await call({ action: 'punch', ticket: t.json.ticket, ...at(10, 10) }, { token: 'jwt-karim' });
+    eq([p.status, p.json.kind, db.active_sessions[0]?.worksite_id], [200, 'arrival', VILLA], 'chantier coché : accepté');
+
+    // Départ : le chantier du pointage en cours est décoché entre-temps → refusé.
+    db.kiosk_punches.at(-1)!.created_at = ago(120);
+    db.worksites.find((w) => w.id === VILLA)!.fixed_qr_allowed = false;
+    p = await call({ action: 'punch', ticket: t.json.ticket, ...at(10, 10) }, { token: 'jwt-karim' });
+    eq([p.status, p.json.code, db.active_sessions.length], [403, 'site_refused', 1], 'départ refusé, le pointage reste en cours');
+    // La tablette, elle, n'est jamais concernée par ce réglage.
+    ok(!calls.some((c) => c.table === 'rpc:finish_active_session'), 'aucune fermeture tentée');
   },
 });
 

@@ -14,6 +14,13 @@
 //     sécurisé », date, référence courte), dans une fenêtre à part ;
 //   · « Régénérer… » (l'ancien QR imprimé cesse aussitôt de marcher) et
 //     « Désactiver… », chacun avec sa confirmation sur place.
+//   · « Puce NFC » : le MÊME lien que le QR fixe, écrit sur une puce
+//     autocollante (NTAG213/215/216). Écrire : Android + Chrome seulement
+//     (Web NFC) ; sinon un mini-guide iPhone avec l'appli gratuite NFC Tools.
+//     Lire : tout téléphone récent (iPhone et Android), sans appli — le
+//     salarié approche son téléphone et retombe sur /pointer#f=…, donc même
+//     connexion, même position au scan, même réglage par chantier. Régénérer
+//     le QR fixe rend aussi la puce inutile : il faut la réécrire.
 //
 // CE QUE VAUT LA ZONE, DIT EN CLAIR AU PATRON : la position est DÉCLARÉE par le
 // téléphone du salarié ; elle peut être falsifiée (coordonnées simulées sur un
@@ -79,6 +86,8 @@ const CSS = `
 .kf-link{background:none;border:0;padding:2px 0;font:inherit;font-size:13px;font-weight:700;color:#8a8378;text-decoration:underline;text-underline-offset:3px;cursor:pointer;text-align:left}
 .kf-link:hover{color:#C0461F}
 .kf-cut{margin:0;background:#FBE9E5;border:1px solid #F0B8AD;border-radius:10px;padding:8px 10px;color:#8A2A12;font-weight:700}
+.kf-steps{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.kf-url{display:block;margin:6px 0 0;padding:6px 8px;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:8px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;overflow-wrap:anywhere;user-select:all}
 .kf-recent summary{cursor:pointer;font-weight:800;color:#15120F}
 .kf-recent ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;max-height:220px;overflow:auto}
 .kf-recent li{font-size:13px;line-height:1.35}
@@ -141,6 +150,83 @@ h1{font-size:30pt;font-weight:900;letter-spacing:-.02em;margin:0 0 3mm;line-heig
   // Laisser la feuille se dessiner avant la fenêtre d'impression (polices du
   // système : rien à télécharger, l'impression ne dépend pas du réseau).
   setTimeout(() => { try { w.focus(); w.print(); } catch { /* le bouton « Imprimer » de la feuille reste */ } }, 350);
+}
+
+// Web NFC (Android + Chrome seulement) : pas encore dans les types de TypeScript.
+type NdefWriter = { write: (msg: { records: { recordType: 'url'; data: string }[] }, opts?: { signal?: AbortSignal }) => Promise<void> };
+const nfcWriter = (): NdefWriter | null => {
+  const C = typeof window !== 'undefined' ? (window as unknown as { NDEFReader?: new () => NdefWriter }).NDEFReader : undefined;
+  return C ? new C() : null;
+};
+
+/**
+ * « Puce NFC » : écrire le lien du QR fixe (exactement le même) sur une puce
+ * autocollante. Android + Chrome : directement d'ici. Ailleurs (iPhone,
+ * ordinateur) : copier le lien et l'écrire avec NFC Tools (gratuit).
+ */
+function NfcChip({ url }: { url: string }) {
+  const canWrite = typeof window !== 'undefined' && 'NDEFReader' in window;
+  const [msg, setMsg] = useState<Msg>(null);
+  const [waiting, setWaiting] = useState<AbortController | null>(null);
+  const [guide, setGuide] = useState(!canWrite);
+  useEffect(() => () => waiting?.abort(), [waiting]);
+
+  const write = async () => {
+    const w = nfcWriter();
+    if (!w) { setGuide(true); return; }
+    const ctrl = new AbortController();
+    setWaiting(ctrl);
+    setMsg({ tone: '', text: 'Approchez la puce du dos du téléphone et ne bougez plus…' });
+    try {
+      await w.write({ records: [{ recordType: 'url', data: url }] }, { signal: ctrl.signal });
+      setMsg({ tone: 'ok', text: '✓ Lien écrit sur la puce. Testez-la : approchez un téléphone, la page de pointage doit s’ouvrir.' });
+    } catch (e) {
+      const name = (e as { name?: string })?.name;
+      setMsg(name === 'AbortError' ? null : {
+        tone: 'bad',
+        text: name === 'NotAllowedError'
+          ? 'NFC refusé : autorisez le NFC pour ce site (et activez le NFC du téléphone), puis réessayez.'
+          : 'Écriture impossible : puce verrouillée, trop petite ou retirée trop tôt. Réessayez en la tenant immobile.',
+      });
+    } finally { setWaiting(null); }
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); toast.success('Lien copié.'); }
+    catch { toast.error('Copie impossible : sélectionnez le lien ci-dessous et copiez-le.'); }
+  };
+
+  return (
+    <div className="kf-sub" data-testid="kf-nfc">
+      <p className="kf-sub-t">Puce NFC</p>
+      <p style={{ margin: 0 }}>
+        Une puce autocollante (type NTAG213, quelques euros) qui contient <b>le même lien que ce QR fixe</b>. Le salarié approche son téléphone
+        (iPhone ou Android, sans appli) : même connexion, même lecture de la position au moment du pointage. Régénérer le QR fixe rend aussi la puce inutile : il faut la réécrire.
+      </p>
+      <div className="kf-row" style={{ marginTop: 8 }}>
+        {canWrite && (waiting
+          ? <button type="button" className="kf-btn" data-testid="kf-nfc-cancel" onClick={() => waiting.abort()}>Annuler</button>
+          : <button type="button" className="kf-btn" data-testid="kf-nfc-write" onClick={() => void write()}>Écrire le lien sur une puce</button>)}
+        <button type="button" className="kf-btn" data-testid="kf-nfc-copy" onClick={() => void copy()}>Copier le lien</button>
+        {canWrite && <button type="button" className="kf-link" data-testid="kf-nfc-guide-toggle" onClick={() => setGuide((g) => !g)}>Sur iPhone ?</button>}
+      </div>
+      <p className={`kf-msg${msg?.tone ? ` ${msg.tone}` : ''}`} data-testid="kf-nfc-msg" aria-live="polite">{msg?.text ?? ''}</p>
+      {guide && (
+        <div data-testid="kf-nfc-guide">
+          <p style={{ margin: 0 }}>
+            {canWrite ? 'Sur iPhone' : 'Écrire depuis ce navigateur n’est possible qu’avec Chrome sur Android. Sur iPhone'}, avec l’appli gratuite <b>NFC Tools</b> :
+          </p>
+          <ol className="kf-steps">
+            <li>Copiez le lien ci-dessus (bouton « Copier le lien »), ou ouvrez cette page sur l’iPhone.</li>
+            <li>Ouvrez NFC Tools → <b>Écrire</b> → <b>Ajouter un enregistrement</b> → <b>URL / URI</b>.</li>
+            <li>Collez le lien en entier, puis validez.</li>
+            <li>Touchez <b>Écrire</b> et approchez la puce du haut de l’iPhone.</li>
+            <li>Testez : approchez un téléphone, la page de pointage BEMEXO doit s’ouvrir.</li>
+          </ol>
+          <code className="kf-url" data-testid="kf-nfc-url">{url}</code>
+        </div>
+      )}
+    </div>
+  );
 }
 
 type Confirm = null | 'enable' | 'regenerate' | 'disable';
@@ -289,6 +375,8 @@ export default function KioskFixedQr({ defaultOpen = false }: { defaultOpen?: bo
                   </div>
                 </div>
               )}
+
+              {!cut && url && <NfcChip url={url} />}
 
               {!cut && (
                 <>
