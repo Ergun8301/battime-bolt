@@ -204,9 +204,10 @@ function SalariesV2({ c }: { c: Lot3Ctx }) {
                 const badge = clos ? `CLÔTURÉ AU ${format(parseISO(clos), 'dd/MM')}` : miss > 0 ? `${miss} J` : role === 'lead' ? 'CHEF' : undefined;
                 return (
                   <Ligne key={w.id} t={nom(w)} s={sous} ini={initiales(w.first_name, w.last_name)} avFond={fondAvatar(w.id)}
-                    badge={badge} badgeTon={clos ? 'clos' : miss > 0 ? 'erreur' : 'chef'} chev
+                    badge={badge} badgeTon={clos ? 'clos' : miss > 0 ? 'erreur' : 'chef'}
                     onClick={() => { setOpen(false); setFicheMode('manage'); setFicheWorker(w); }} guide="bureau-salaries.nom" titre="Ouvrir sa fiche"
                     actions={<>
+                      <Btn taille="ligne" onClick={() => { setOpen(false); setFicheMode('hours'); setFicheWorker(w); }} title="Voir et valider ses heures" data-testid="salarie-heures">Heures</Btn>
                       {miss > 0 ? <Btn taille="ligne" busy={relanceId === w.id} disabled={relanceId === w.id} onClick={() => relancer(w)} title="Envoyer un rappel">Relancer</Btn> : null}
                       <select className="dz-l3-select" aria-label={`Rôle de ${nom(w)}`} value={role} disabled={roleBusy === w.id}
                         onChange={(e) => setAsk({ u: w, role: e.target.value as Role })}>

@@ -11,3 +11,4 @@
 .dz-envoi__choix { display: flex; gap: 8px; }
 .dz-envoi__choix > * { flex: 1; }
 .dz-envoi__non { min-height: 52px; border-radius: 14px; border: 1px solid #E3DACB; background: #FFFDF8; color: #15120F; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.dz-envoi__bloque { font-size: 12.5px; font-weight: 700; color: #7A5A00; }

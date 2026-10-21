@@ -25,6 +25,8 @@ export interface FicheCtx {
   onFiche: () => void; onDocs: () => void;
   /** « Envoyer à sa place » : présent seulement pour une case dont les heures sont saisies mais pas envoyées (administrateur). */
   onSendForWorker?: () => unknown | Promise<unknown>; sendingForWorker?: boolean;
+  /** « Valider ses heures » : intervention prévue (aujourd'hui ou passée) sans rien de saisi. `horaireValide` = « 08:00 → 12:00 · 4h00 », null si l'horaire manque. */
+  onValidateForWorker?: () => unknown | Promise<unknown>; horaireValide?: string | null;
 }
 
 /**
@@ -43,8 +45,16 @@ function etatHeures(f: FicheCtx): { ton: string; grand: string; texte: string } 
 
 /** Le bloc « Envoyer à sa place », en haut de la fenêtre, quand les heures de la case sont saisies mais pas envoyées. */
 function Envoi({ f }: { f: FicheCtx }) {
+  const prenom = f.worker?.first_name || 'le salarié';
+  if (f.onValidateForWorker && !f.draft && !f.real) {
+    return <EnvoiASaPlace prenom={prenom} heures={f.horaireValide || ''} envoyer={f.onValidateForWorker} enCours={f.sendingForWorker} testId="slot-validate-for-worker"
+      texte={<><b>Aucune heure saisie par {prenom}.</b> Il a fini comme prévu ? Validez ses heures à sa place.</>}
+      bouton={f.horaireValide ? `Valider ${f.horaireValide}` : 'Valider ses heures'}
+      confirmation={`Valider ${f.horaireValide} pour ${prenom} ? Elles compteront, et ${prenom} sera prévenu.`}
+      bloque={f.horaireValide ? null : 'Indiquez l’horaire (début et fin) ci-dessous pour valider.'} ok="Valider" />;
+  }
   if (!f.onSendForWorker || !f.draft || f.real) return null;
-  return <EnvoiASaPlace prenom={f.worker?.first_name || 'le salarié'} heures={`${f.draft.start.slice(0, 5)} → ${f.draft.end.slice(0, 5)}`} envoyer={f.onSendForWorker} enCours={f.sendingForWorker} testId="slot-send-for-worker" />;
+  return <EnvoiASaPlace prenom={prenom} heures={`${f.draft.start.slice(0, 5)} → ${f.draft.end.slice(0, 5)}`} envoyer={f.onSendForWorker} enCours={f.sendingForWorker} testId="slot-send-for-worker" />;
 }
 
 /** Planche 2c « Panneau sous 1024 px » : la fiche en feuille du bas (92 % de la hauteur), mêmes champs et mêmes actions que le panneau. */

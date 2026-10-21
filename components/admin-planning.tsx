@@ -1903,6 +1903,18 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     } finally { setSendingForWorker(false); }
   };
 
+  const dureeHm = (a: string, b: string) => { const m = (+b.slice(0, 2) * 60 + +b.slice(3, 5)) - (+a.slice(0, 2) * 60 + +a.slice(3, 5)); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
+  // « Valider ses heures » : intervention prévue (aujourd'hui ou passée) sans rien de saisi par le salarié ; le bureau crée la ligne envoyée sur l'horaire affiché.
+  const validateSlotForWorker = async (p: PlanningWithWorksite) => {
+    if (!user || !p.worksite_id || !editStart || !editEnd || editTimeBad) return;
+    setSendingForWorker(true);
+    try {
+      const prenom = workers.find((x) => x.id === p.user_id)?.first_name || 'le salarié';
+      if (await (await import('@/lib/office-send')).validerPourSalarie({ companyId: user.company_id, officeUserId: user.id, prenom,
+        slot: { id: p.id, user_id: p.user_id, worksite_id: p.worksite_id, work_date: p.work_date }, debut: editStart, fin: editEnd })) { closeEdit(); refresh(); }
+    } finally { setSendingForWorker(false); }
+  };
+
   // Declared hours that DON'T match a planned chantier of the cell (hors-planning) —
   // shown as a distinct "déclaré par le salarié" chip on the grid.
   const worksiteNameById = useMemo(() => {
@@ -4280,8 +4292,10 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                 </Button>
               ))}
               <div className="border-t pt-2 mt-1">
-                <Button variant="ghost" className="w-full justify-start text-muted-foreground" data-guide="bureau-statut.feuille" onClick={() => { setFicheMode('hours'); setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
-                  <FileText className="h-4 w-4 mr-2" /> Feuille d'heures
+                <Button variant="outline" className="w-full justify-start h-12 text-[15px] font-semibold bg-[#FBF7EE] border-[#E3DACB] hover:bg-[#F3EEE4]" data-guide="bureau-statut.feuille" onClick={() => { setFicheMode('hours'); setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
+                  <span className="mr-3 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#FFC21A] text-[#15120F]"><FileText className="h-4 w-4" aria-hidden="true" /></span>
+                  Voir et valider ses heures
+                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 </Button>
               </div>
             </div>
@@ -4980,6 +4994,9 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         } : undefined,
         onFiche: () => openClientFiche(editing.worksite), onDocs: () => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); },
         onSendForWorker: user?.role === 'admin' && draftForPlanning(editing) && !exitDraftKeys.has(`p:${editing.id}`) ? () => sendSlotForWorker(editing) : undefined, sendingForWorker,
+        onValidateForWorker: user?.role === 'admin' && editing.worksite_id && !editing.absence_type && editing.work_date <= todayStr && !editRealAgg && !draftForPlanning(editing)
+          && !liveForBubble(editing) && !withdrawnIds.has(editing.id) && !emptyDraftPids.has(editing.id) ? () => validateSlotForWorker(editing) : undefined,
+        horaireValide: editStart && editEnd && !editTimeBad && editEnd > editStart ? `${editStart} → ${editEnd} · ${dureeHm(editStart, editEnd)}` : null,
       }} /> : null) : (<>
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) closeEdit(); }}>
         <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">

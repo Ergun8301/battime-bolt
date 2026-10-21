@@ -991,5 +991,6 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'ecriture:lib/office-send#sendDraftForWorker',
     'ecriture:lib/office-send#sendDraftsForWorker',
     'ecriture:lib/office-send#envoyerAPlace',
+    'ecriture:lib/office-send#validerPourSalarie',
   ],
 };

@@ -41,3 +41,32 @@ export async function envoyerAPlace(p: { companyId: string; entryIds: string[]; 
   }
   return false;
 }
+
+/**
+ * « Valider ses heures » : une intervention PRÉVUE dont le salarié n'a rien saisi (il a dit « c'est bon » au téléphone). Le bureau crée la ligne d'heures
+ * envoyée, sur l'horaire prévu, avec la trace `submitted_by` ; le salarié est prévenu. Refusé s'il existe déjà une ligne sur cette intervention.
+ */
+export async function validerPourSalarie(p: {
+  companyId: string; officeUserId: string; prenom: string;
+  slot: { id: string; user_id: string; worksite_id: string; work_date: string }; debut: string; fin: string;
+}): Promise<boolean> {
+  try {
+    const { data: deja, error: e1 } = await supabase.from('time_entries').select('id').eq('planning_id', p.slot.id).neq('status', 'cancelled').limit(1);
+    if (e1) throw e1;
+    if (deja?.length) { toast.error(`${p.prenom} a déjà des heures sur cette intervention : rechargez le planning.`); return false; }
+    const { error } = await supabase.from('time_entries').insert({
+      company_id: p.companyId, user_id: p.slot.user_id, worksite_id: p.slot.worksite_id, planning_id: p.slot.id, work_date: p.slot.work_date,
+      start_time: `${p.debut.slice(0, 5)}:00`, end_time: `${p.fin.slice(0, 5)}:00`, break_minutes: 0,
+      status: 'submitted', submitted_at: new Date().toISOString(), submitted_by: p.officeUserId,
+    });
+    if (error) throw error;
+    const jour = new Date(`${p.slot.work_date}T12:00:00Z`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+    await notifyWorker(p.slot.user_id, 'Heures validées par le bureau', `Vos heures du ${jour} (${p.debut.slice(0, 5)} – ${p.fin.slice(0, 5)}) ont été validées pour vous par le bureau.`, 'heures');
+    toast.success(`Heures validées pour ${p.prenom} : il est prévenu`);
+    return true;
+  } catch (err) {
+    const msg = (err as { message?: string })?.message || 'Validation impossible';
+    toast.error(/submitted_by/.test(msg) ? 'Mise à jour de la base en attente : validation impossible pour le moment.' : msg);
+    return false;
+  }
+}

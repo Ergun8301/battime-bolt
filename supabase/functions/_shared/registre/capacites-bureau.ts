@@ -1402,7 +1402,7 @@ export const CAPACITES_BUREAU: Capacite[] = [
   },
   // B141 · humain · niveau 3
   {
-    id: 'B141', cote: 'bureau', libelle: "Envoyer à sa place les heures qu'un salarié a saisies sans les envoyer (fenêtre de l'intervention, fiche d'une ligne)",
+    id: 'B141', cote: 'bureau', libelle: "Envoyer à sa place les heures qu'un salarié a saisies sans les envoyer, ou valider une intervention prévue où rien n'a été saisi (fenêtre de l'intervention, fiche d'une ligne)",
     genre: 'humain', niveau: 3,
     humain: {
       categorie: 'doute_patron',
