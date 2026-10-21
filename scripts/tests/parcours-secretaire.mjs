@@ -100,7 +100,10 @@ const deroulant = (page, sel) => page.evaluate((s) => {
 {
   const r = await ouvrir(1440, 900); const { page } = r;
   await apres(page, '1440 · arrivée', { max: 0, y: 0 });
-  check(await page.locator('[data-testid=legende][data-toujours]').isVisible(), '1440 · la légende est posée sous la grille');
+  check(await page.locator('[data-testid=legende]').count() === 0, '1440 · la légende n’est plus posée sous la grille');
+  await page.click('[data-testid=bar-legende]'); await page.waitForTimeout(200);
+  check(await page.locator('[data-testid=legende]').isVisible(), '1440 · le petit « ⓘ » de la barre ouvre la légende');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);
 
   // ── Les quatre tuiles (retouches 4) : compactes (170 px au plus), même largeur (±1 px), aucune liste de noms au repos ──
   const tuile = '[data-testid=bandeau] [data-testid=stat-relance]';
@@ -396,7 +399,9 @@ const deroulant = (page, sel) => page.evaluate((s) => {
 // ═════════════ TABLETTE 834 (contrôle de cohérence : mêmes règles que l'ordinateur) ═════════════
 {
   const r = await ouvrir(834, 1112, true); const { page } = r;
-  check(await page.locator('[data-testid=legende]').isVisible(), '834 · la légende est posée sous la grille (plus dans « Plus ⋯ »)');
+  await page.click('[data-testid=bar-legende]'); await page.waitForTimeout(200);
+  check(await page.locator('[data-testid=legende]').isVisible(), '834 · le petit « ⓘ » de la barre ouvre la légende (plus sous la grille)');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   // Retouches 4 : le panneau des tuiles en 2 × 2, quatre largeurs égales, aucune liste au repos ; la tuile « À relancer » ouvre sa liste sous elle.
   if (await page.locator('[data-testid=stat-waiting]:visible').count()) {
     await page.locator('[data-testid=stat-waiting]:visible').click(); await pause(page, 500);

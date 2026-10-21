@@ -306,8 +306,6 @@ button.dzp-b-actuelle { background: transparent; border: 1px solid #FFC21A; colo
 .dzp-m-cartes .dzp-taches, .dzp-m-carte .dzp-taches { min-height: var(--dz-tap); padding: 0 14px; font-size: 13px; }
 
 /* ── Légende ── */
-.dzp-legende { margin-top: 10px; display: none; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: var(--dz-fs-125); color: var(--dz-texte-note); background: var(--dz-carte); border: 1px solid var(--dz-trait); border-radius: 14px; padding: 10px 14px; }
-.dzp-legende__t { font-family: var(--dz-font-chiffres); font-size: var(--dz-fs-11); letter-spacing: .14em; font-weight: 700; color: var(--dz-texte-2); background: none; border: 0; cursor: pointer; padding: 0; min-height: 24px; }
 .dzp-legende__i { display: inline-flex; align-items: center; gap: 6px; }
 .dzp-pastille { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--dz-prevu-trait); background: var(--dz-journee); flex: none; }
 .dzp-pastille[data-k="matin"] { background: var(--dz-matin); border-style: solid; border-color: var(--dz-matin-trait); }
@@ -610,8 +608,6 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
 }
 @media (forced-colors: active) { .dzp-bureau-desk :focus-visible { outline: 2px solid CanvasText; } }
 
-/* Légende : fermée par défaut, ouverte par « Plus ⋯ » › Légende (planche 2a : rien au-dessus du planning). */
-.dzp-legende[data-open] { display: flex; }
 /* Avatars : une teinte douce par salarié (règle de couleur d'avant : un hachage de l'identifiant) ; absent = teinte « maladie » */
 .dzp-avatar[data-teinte="0"] { background: var(--dz-jaune); } .dzp-avatar[data-teinte="1"] { background: var(--dz-matin); }
 .dzp-avatar[data-teinte="2"] { background: #E0ECE6; } .dzp-avatar[data-teinte="3"] { background: var(--dz-maladie-a); }
@@ -734,9 +730,6 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
 @media (min-width: 1024px) {
   .dzp-bureau-desk[data-mise="1a"] { --dz-barre-h: 60px; }
   .dzp-haut--1a { position: sticky; top: 0; z-index: 30; background: #F2EDE3; }
-  /* La page fait au moins la hauteur de l'écran et la légende reste collée en bas, même quand la grille est courte (haut replié, peu de salariés). */
-  .dzp-bureau-desk[data-mise="1a"]:not([data-plein-ecran]) { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
-  .dzp-bureau-desk[data-mise="1a"] .dzp-zone { display: flex; flex-direction: column; }
 
   /* ── Barre noire (60 px) : logo + onglets | compteurs | ✦ Assistant + compte ── */
   .dzp-noire { height: 60px; background: #15120F; color: #F2EDE3; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 0 24px; white-space: nowrap; }
@@ -911,12 +904,8 @@ html[data-dz-bureau] .dzp-panneau-edition { left: auto; right: 0; top: 0; bottom
   .dzp-table .dzp-avatar[data-teinte="4"] { background: #EDE3F8; } .dzp-table .dzp-avatar[data-teinte="5"] { background: #FFE1CC; }
   .dzp-table .dzp-avatar[data-teinte="6"] { background: #E2F0D9; } .dzp-table .dzp-avatar[data-teinte="7"] { background: #E6DDCD; }
   .dzp-table .dzp-avatar[data-teinte="absent"] { background: #F1E2E2; }
-  /* Légende : toujours posée sous la grille (planche 1a), en ligne, sans carte. */
-  .dzp-legende[data-toujours] { margin-top: auto; background: transparent; border: 0; padding: 14px 0 0; gap: 8px 18px; font-size: 12px; color: #5B534A; }
-  .dzp-legende[data-toujours] .dzp-legende__t { font-size: 10.5px; letter-spacing: .16em; color: #5B534A; cursor: default; min-height: 0; }
-  .dzp-legende[data-toujours] .dzp-pastille { width: 14px; height: 14px; }
   /* « Astuce : copier une case » : le même bouton qu'avant (il réaffiche l'astuce), dessiné en petit lien au bout de la légende. */
-  .dzp-legende__astuce { margin-left: auto; display: inline-flex; }
+  .dzp-legende__astuce { display: inline-flex; padding: 8px 6px 2px; border-top: 1px solid var(--dz-trait-doux); }
   .dzp-legende__astuce .bt-cp-help { position: static; width: auto; height: auto; min-height: 24px; padding: 0 2px; font-size: 12px; font-weight: 700; color: #5B534A; text-decoration: underline; text-underline-offset: 2px; border-radius: 4px; }
   .dzp-legende__astuce .bt-cp-help:hover { color: #15120F; }
   .dzp-legende__astuce .bt-cp-help > span { display: none; }
@@ -1108,3 +1097,9 @@ button.dzp-tuile__corps[aria-expanded="true"] .dzp-tuile__k::after { content: ' 
   .dzp-chiffres > .dzp-tuile:nth-child(2n) .dzp-deroulant { left: auto; right: -1.5px; }
 }
 @media (pointer: coarse) { .dzp-deroulant .bt-pl-sp-act, .dzp-deroulant__tous { min-height: 44px; } }
+
+/* ── Légende : la petite fenêtre du bouton « ⓘ » de la barre (ordinateur et tablette), deux colonnes, jamais affichée en permanence ── */
+.dzp-menu-legende { width: min(560px, calc(100vw - 32px)); gap: 6px; }
+.dzp-menu-legende__liste { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; padding: 6px; font-size: 12.5px; color: var(--dz-texte-note); }
+.dzp-menu-legende .dzp-pastille { width: 14px; height: 14px; }
+@media (max-width: 1023px) { .dzp-menu-legende .dzp-legende__astuce { display: none; } }

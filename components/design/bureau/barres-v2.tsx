@@ -3,7 +3,7 @@
 // Design du bureau (v2, planche d'essai 2a) · la barre UNIQUE de 64 px, « Plus ⋯ », le menu du compte, la pastille du plein écran et le tiroir Clients.
 // Un seul accès par fonction : tout ce qui n'est pas dans la barre est dans « Plus ⋯ » (Statistiques, Imprimer, Borne, Réserves, Pièces jointes, Formations,
 // Coût chantiers, Interventions supprimées, Envoyer par e-mail, essai) ; Réglages et Déconnexion dans le menu de l'avatar. Chaque ligne d'un menu le FERME
-// avant d'ouvrir sa cible, et aucune ne fait défiler la page (la légende est toujours sous la grille ; « Versions du planning » n'est plus offert en v2).
+// avant d'ouvrir sa cible, et aucune ne fait défiler la page (la légende s'ouvre par le petit bouton ⓘ de la barre ; « Versions du planning » n'est plus offert en v2).
 import { useEffect, useRef, useState } from 'react';
 import { addDays, format, getISOWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -142,6 +142,48 @@ function Rond({ ton, className, ...reste }: React.ButtonHTMLAttributes<HTMLButto
   return <button type="button" className={`dzp-b-rond${className ? ` ${className}` : ''}`} data-ton={ton} {...reste} />;
 }
 
+/** Les codes visuels de la grille (couleurs, pointillés, pastilles) : la liste de la petite fenêtre « ⓘ ». */
+const LEGENDE: { k: string; l: string }[] = [
+  { k: 'matin', l: 'Matin (avant 12 h)' }, { k: 'apres-midi', l: 'Après-midi (12 h – 18 h)' }, { k: 'soir', l: 'Soir (après 18 h)' }, { k: 'journee', l: 'Journée entière ou sans horaire' },
+  { k: 'prevue', l: 'Prévue (pointillés)' }, { k: 'a-envoyer', l: 'Saisie, à envoyer (ne compte pas)' }, { k: 'envoyee', l: 'Envoyée (compte)' }, { k: 'en-cours', l: 'En direct (pointage en cours)' },
+  { k: 'ajoutee', l: 'Ajoutée par le salarié' }, { k: 'retiree', l: 'Retirée par le salarié (barrée)' }, { k: 'reunion', l: 'Réunion (hors heures)' },
+  { k: 'absence', l: 'Absence (rayée)' }, { k: 'clos', l: 'Mois clôturé (CLOS)' }, { k: 'reserve', l: 'Réserve à traiter' },
+];
+
+/**
+ * La légende : un petit « ⓘ » dans la barre (jamais affichée en permanence). Il ouvre une petite fenêtre sous le bouton, comme les autres menus ; un clic ailleurs
+ * ou Échap la ferme. Ordinateur : « Astuce : copier une case » est au bas de la fenêtre. Au téléphone, la légende est dans le menu ☰ (menu-mobile-v2.tsx).
+ */
+function BoutonLegende({ c, astuce = false }: { c: PlanningCtx; astuce?: boolean }) {
+  const [ouvert, setOuvert] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useBloquePage(ouvert);
+  useDansLEcran(ref);
+  useEffect(() => {
+    if (!ouvert) return;
+    const f = (e: KeyboardEvent) => { if (e.key === 'Escape') setOuvert(false); };
+    window.addEventListener('keydown', f);
+    return () => window.removeEventListener('keydown', f);
+  }, [ouvert]);
+  return (
+    <div className="dzp-relatif">
+      <Rond aria-label="Légende" title="Légende des couleurs" aria-expanded={ouvert} aria-haspopup="dialog" data-testid="bar-legende" data-guide="bureau-nav.legende" onClick={() => setOuvert((o) => !o)}>ⓘ</Rond>
+      {ouvert && (
+        <>
+          <div className="dzp-fond-menu" onClick={() => setOuvert(false)} />
+          <div className="dzp-menu dzp-menu-legende" role="dialog" aria-label="Légende" data-testid="legende" ref={ref}>
+            <div className="dzp-menu__titre">Légende</div>
+            <div className="dzp-menu-legende__liste">
+              {LEGENDE.map((x) => <span key={x.k} className="dzp-legende__i"><span className="dzp-pastille" data-k={x.k} />{x.l}</span>)}
+            </div>
+            {astuce && c.workers.length > 0 ? <span className="dzp-legende__astuce" data-testid="legende-astuce">{c.copyTipHelpCorner}</span> : null}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** La loupe (seul ajout de mise en page autorisé) : au clic, elle s'ouvre en champ « Chercher un salarié, un client… » posé sur la barre ; le planning se filtre en direct. */
 function Loupe({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   const [ouvert, setOuvert] = useState(false);
@@ -235,6 +277,7 @@ export function BarreUnique({ c, recherche, setRecherche, pleinEcran }: { c: Pla
         {c.aiOn && c.isAdmin && (
           <Rond ton="jaune" onClick={() => c.setAssistantOpen(true)} title="Assistant BEMEXO" aria-label="Assistant BEMEXO" data-testid="bar-assistant" data-guide="bureau-nav.assistant">✦</Rond>
         )}
+        <BoutonLegende c={c} />
         <Rond onClick={pleinEcran} aria-label="Plein écran" title="Plein écran (F)" data-testid="bar-plein-ecran">⤢</Rond>
         <div className="dzp-relatif">
           {/* L'avatar de la planche (initiales ou logo) ; le nom de l'entreprise reste le nom accessible du bouton (texte masqué à l'écran, lu par les lecteurs d'écran). */}
@@ -314,6 +357,7 @@ export function BarreNoire1a({ c, replie, deplier, replier, recherche, setRecher
             <button type="button" className="dzp-b-pilule dzp-b-pilule--jaune" onClick={() => c.setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter">↓ Exporter</button>
           </>
         )}
+        <BoutonLegende c={c} astuce />
         {/* « Replier ▴ » / « Déplier ▾ » : toujours ici, juste avant « ✦ Assistant », même pilule dans les deux états. */}
         {replie
           ? <button type="button" className="dzp-b-pilule dzp-b-pilule--repli" onClick={deplier} aria-expanded={false} data-testid="haut-deplier" title="Afficher la ligne de semaine et les chiffres">Déplier ▾</button>
