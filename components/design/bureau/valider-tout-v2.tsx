@@ -6,14 +6,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { addDays, addMonths, addWeeks, endOfMonth, endOfWeek, format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { CheckCheck, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { CheckCheck, ChevronLeft, ChevronRight, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User } from '@/lib/types';
 import { chargerAValider, validerEnLot, type AValider, type JourAValider } from '@/lib/office-send';
 import { Alerte, Btn, Coque, Seg, Squelettes, Vide } from './lot3a-ui';
 import './valider-tout-v2.css';
 
-type Periode = 'jour' | 'semaine' | 'mois';
+export type Periode = 'jour' | 'semaine' | 'mois';
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
 const duree = (m: number) => `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
 
@@ -28,13 +28,15 @@ function libellePeriode(periode: Periode, a: Date, b: Date) {
   return format(a, 'MMMM yyyy', { locale: fr });
 }
 
-export default function ValiderToutV2({ open, onOpenChange, companyId, officeUserId, workers, worksiteNames, today, userId: userIdInitial = null, onDone }: {
+export default function ValiderToutV2({ open, onOpenChange, companyId, officeUserId, workers, worksiteNames, today, userId: userIdInitial = null, periode: periodeInitiale = 'mois', date: dateInitiale, onDone }: {
   open: boolean; onOpenChange: (o: boolean) => void; companyId: string; officeUserId: string; workers: User[]; worksiteNames: Map<string, string>;
-  today: string; userId?: string | null; onDone: () => void;
+  today: string; userId?: string | null;
+  /** Réglage de départ selon l'endroit cliqué : en-tête d'un jour (toute l'équipe, ce jour), case (un salarié, ce jour), statut (un salarié, sa semaine). */
+  periode?: Periode; date?: string; onDone: () => void;
 }) {
   const [userId, setUserId] = useState<string | null>(userIdInitial);
-  const [periode, setPeriode] = useState<Periode>('mois');
-  const [ancre, setAncre] = useState(() => parseISO(today));
+  const [periode, setPeriode] = useState<Periode>(periodeInitiale);
+  const [ancre, setAncre] = useState(() => parseISO(dateInitiale || today));
   const [data, setData] = useState<AValider | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [retires, setRetires] = useState<Set<string>>(new Set());
@@ -45,7 +47,7 @@ export default function ValiderToutV2({ open, onOpenChange, companyId, officeUse
   const from = iso(a), to = iso(b);
   const futur = from > today;
 
-  useEffect(() => { setUserId(userIdInitial); }, [userIdInitial]);
+  useEffect(() => { if (open) { setUserId(userIdInitial); setPeriode(periodeInitiale); setAncre(parseISO(dateInitiale || today)); } }, [open, userIdInitial, periodeInitiale, dateInitiale, today]);
   useEffect(() => {
     if (!open) return;
     let fini = false;
@@ -64,6 +66,13 @@ export default function ValiderToutV2({ open, onOpenChange, companyId, officeUse
   const choisis = (data?.jours || []).filter((j) => !retires.has(j.cle));
   const totalMin = choisis.reduce((n, j) => n + j.minutes, 0);
   const nbSal = new Set(choisis.map((j) => j.user_id)).size;
+  // Une « journée » = un salarié × un jour (il peut avoir plusieurs interventions ce jour-là).
+  const journees = (l: JourAValider[]) => new Set(l.map((j) => `${j.user_id}|${j.work_date}`)).size;
+  const nbJ = journees(choisis);
+  const sJ = nbJ > 1 ? 's' : '';
+  // Toute l'équipe : bouton noir (geste qui touche plusieurs personnes). Un salarié sur un seul jour : pas de question en plus, la liste suffit.
+  const equipe = !userId;
+  const direct = !equipe && new Set(choisis.map((j) => j.work_date)).size === 1;
   const basculer = (cles: string[], garder: boolean) => setRetires((s) => { const n = new Set(s); cles.forEach((k) => (garder ? n.delete(k) : n.add(k))); return n; });
   const deplacer = (sens: 1 | -1) => setAncre((d) => (periode === 'jour' ? addDays(d, sens) : periode === 'semaine' ? addWeeks(d, sens) : addMonths(d, sens)));
 
@@ -71,8 +80,8 @@ export default function ValiderToutV2({ open, onOpenChange, companyId, officeUse
     setOccupe(true);
     try {
       const r = await validerEnLot({ companyId, officeUserId, jours: choisis });
-      if (r.faits) toast.success(`${r.faits} journée${r.faits > 1 ? 's' : ''} validée${r.faits > 1 ? 's' : ''} : ${nbSal > 1 ? 'chaque salarié est prévenu' : 'le salarié est prévenu'}`);
-      if (r.ignores) toast.message(`${r.ignores} journée${r.ignores > 1 ? 's avaient' : ' avait'} déjà changé : laissée${r.ignores > 1 ? 's' : ''} telle${r.ignores > 1 ? 's' : ''} quelle${r.ignores > 1 ? 's' : ''}.`);
+      if (r.faits) toast.success(`Heures validées : ${nbSal > 1 ? 'chaque salarié est prévenu' : 'le salarié est prévenu'}`);
+      if (r.ignores) toast.message(`${r.ignores} intervention${r.ignores > 1 ? 's avaient' : ' avait'} déjà changé : laissée${r.ignores > 1 ? 's' : ''} telle${r.ignores > 1 ? 's' : ''} quelle${r.ignores > 1 ? 's' : ''}.`);
       onDone(); setTour((t) => t + 1);
     } catch (e) {
       const msg = (e as { message?: string })?.message || 'Validation impossible';
@@ -82,17 +91,18 @@ export default function ValiderToutV2({ open, onOpenChange, companyId, officeUse
 
   const pied = data && choisis.length > 0 ? (confirmer ? (
     <div className="vt-confirme" data-testid="valider-tout-confirm">
-      <span>Valider {choisis.length} journée{choisis.length > 1 ? 's' : ''} ({duree(totalMin)}) pour {nbSal} salarié{nbSal > 1 ? 's' : ''} ? Elles compteront, et chacun sera prévenu une fois.</span>
+      <span>Valider {nbJ} journée{sJ} ({duree(totalMin)}) pour <b>{nbSal} salarié{nbSal > 1 ? 's' : ''}</b> ? Elles compteront, et chacun sera prévenu une fois.</span>
       <div className="vt-confirme__btns">
         <Btn disabled={occupe} onClick={() => setConfirmer(false)}>Annuler</Btn>
-        <button type="button" className="vt-go" disabled={occupe} onClick={valider} data-testid="valider-tout-ok">
+        <button type="button" className="vt-go" data-equipe={equipe ? '' : undefined} disabled={occupe} onClick={valider} data-testid="valider-tout-ok">
           {occupe ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : <CheckCheck className="h-5 w-5" aria-hidden="true" />} Valider
         </button>
       </div>
     </div>
   ) : (
-    <button type="button" className="vt-go" onClick={() => setConfirmer(true)} data-testid="valider-tout-go">
-      <CheckCheck className="h-5 w-5" aria-hidden="true" /> Valider {choisis.length} journée{choisis.length > 1 ? 's' : ''} · {duree(totalMin)}
+    <button type="button" className="vt-go" data-equipe={equipe ? '' : undefined} disabled={occupe} onClick={() => (direct ? void valider() : setConfirmer(true))} data-testid="valider-tout-go">
+      {occupe ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : equipe ? <Users className="h-5 w-5" aria-hidden="true" /> : <CheckCheck className="h-5 w-5" aria-hidden="true" />}
+      {' '}Valider {nbJ} journée{sJ}{equipe ? ` · ${nbSal} salarié${nbSal > 1 ? 's' : ''}` : ''} · {duree(totalMin)}
     </button>
   )) : null;
 
@@ -132,7 +142,7 @@ export default function ValiderToutV2({ open, onOpenChange, companyId, officeUse
                   <label className="vt-groupe__tete">
                     <input type="checkbox" checked={tous} onChange={(e) => basculer(cles, e.target.checked)} />
                     <span className="vt-groupe__nom">{nomDe(uid)}</span>
-                    <span className="vt-groupe__n">{jours.length} journée{jours.length > 1 ? 's' : ''} · {duree(min)}</span>
+                    <span className="vt-groupe__n">{journees(jours)} journée{journees(jours) > 1 ? 's' : ''} · {duree(min)}</span>
                   </label>
                   <ul>
                     {jours.map((j) => (

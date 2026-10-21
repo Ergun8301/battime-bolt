@@ -37,3 +37,6 @@
   .vt-jour__h { grid-column: 2; }
 }
 .vt-periode .dz-l3-seg button { padding: 0 16px; }
+.vt-go[data-equipe] { background: #15120F; color: #FFC21A; box-shadow: 0 2px 0 #000000; }
+.vt-go[data-equipe]:hover { background: #2B2620; }
+.vt-confirme b { font-weight: 900; text-decoration: underline; text-decoration-color: #FFC21A; text-decoration-thickness: 3px; text-underline-offset: 3px; }

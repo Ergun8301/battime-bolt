@@ -1107,3 +1107,13 @@ button.dzp-tuile__corps[aria-expanded="true"] .dzp-tuile__k::after { content: ' 
 .dzp-menu-legende__liste { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; padding: 6px; font-size: 12.5px; color: var(--dz-texte-note); }
 .dzp-menu-legende .dzp-pastille { width: 14px; height: 14px; }
 @media (max-width: 1023px) { .dzp-menu-legende .dzp-legende__astuce { display: none; } }
+/* « Valider » depuis la grille (21 oct. 2026) : en-tête d'un jour = toute l'équipe (noir, texte jaune : geste qui touche plusieurs personnes) ;
+   case = toutes les interventions d'un salarié ce jour-là (jaune). Les deux ouvrent « Tout valider » réglé sur l'endroit cliqué. */
+.dzp-jour__valider { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; min-height: 26px; padding: 0 9px; border: 0; border-radius: 999px;
+  background: #15120F; color: #FFC21A; font: inherit; font-size: 11.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.dzp-jour__valider:hover { background: #2B2620; }
+.dzp-case-valider { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 28px; margin-top: 4px; padding: 0 8px; border: 0; border-radius: 9px;
+  background: #FFC21A; color: #15120F; font: inherit; font-size: 11.5px; font-weight: 900; cursor: pointer; box-shadow: 0 1px 0 #C79400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dzp-case-valider:hover { background: #FFB800; }
+.dzp-jour__valider:focus-visible, .dzp-case-valider:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
+@media print { .dzp-jour__valider, .dzp-case-valider { display: none !important; } }

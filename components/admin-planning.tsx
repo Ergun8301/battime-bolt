@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 
 import { Textarea } from '@/components/ui/textarea';
 import {
-  ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
+  ChevronLeft, ChevronRight, Plus, Trash2, Loader2, CheckCheck,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Mail, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
   Check, CheckSquare,
@@ -1896,7 +1896,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   // Jamais une sortie oubliée (fin à compléter) ni une journée renvoyée au salarié (sendDraftForWorker les refuse).
   const [sendingForWorker, setSendingForWorker] = useState(false);
   // « Tout valider » : ouvert pour un salarié (sa feuille d'heures) ou pour toute l'entreprise (null).
-  const [validerTout, setValiderTout] = useState<{ userId: string | null } | null>(null);
+  const [validerTout, setValiderTout] = useState<{ userId: string | null; periode?: 'jour' | 'semaine' | 'mois'; date?: string } | null>(null);
   const sendSlotForWorker = async (p: PlanningWithWorksite) => {
     const ids = draftEntries.filter((e) => e.id && bubbleKeyOf(e) === `p:${p.id}`).map((e) => e.id as string);
     if (!user || !ids.length) return;
@@ -3455,7 +3455,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     preloadTrainings: () => TrainingsAdmin.preload(), preloadEmail: () => StaffEmailDialog.preload(),
     accountMenuOpen, setAccountMenuOpen, chantierMenuOpen, setChantierMenuOpen, clientsQuery, setClientsQuery, filteredClients,
     statPanel, setStatPanel, renderRelanceRows, monthLabel, docListState, docsByChantier, waitingByWorker, openRelance: () => setRelanceOpen(true),
-    openValiderTout: user?.role === 'admin' ? () => setValiderTout({ userId: null }) : undefined,
+    openValiderTout: user?.role === 'admin' ? (o?: { userId?: string | null; periode?: 'jour' | 'semaine' | 'mois'; date?: string }) => setValiderTout({ userId: o?.userId ?? null, periode: o?.periode, date: o?.date }) : undefined,
     printOpen, setPrintOpen, closePrintMenu, printMenu: printMenuNode,
     coachHidden, dismissCoach,
     copyTipDesk: <CopyTip variant="desk" />, copyTipHelpCorner: <CopyTipHelp variant="corner" />, copyTipMobile: <CopyTip variant="mobile" />, copyTipHelpMobile: <CopyTipHelp variant="mobile" />,
@@ -4302,6 +4302,14 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                   Voir et valider ses heures
                   <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 </Button>
+                {ui2b && user?.role === 'admin' && format(currentWeekStart, 'yyyy-MM-dd') <= todayStr ? (
+                  <Button variant="outline" className="mt-2 w-full justify-start h-12 text-[15px] font-semibold bg-[#FBF7EE] border-[#E3DACB] hover:bg-[#F3EEE4]" data-testid="statut-valider-semaine"
+                    onClick={() => { const w = statusTarget.worker; setStatusTarget(null); setValiderTout({ userId: w.id, periode: 'semaine', date: format(currentWeekStart, 'yyyy-MM-dd') }); }}>
+                    <span className="mr-3 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#FFC21A] text-[#15120F]"><CheckCheck className="h-4 w-4" aria-hidden="true" /></span>
+                    Valider sa semaine (S-{format(currentWeekStart, 'I')})
+                    <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                  </Button>
+                ) : null}
               </div>
             </div>
           )}
@@ -4381,7 +4389,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           composant que dans les réglages (KioskAdmin est lui-même la fenêtre). */}
       {ui2b && user?.company_id && user.role === 'admin' && (
         <ValiderToutV2 open={!!validerTout} onOpenChange={(o) => { if (!o) setValiderTout(null); }} companyId={user.company_id} officeUserId={user.id}
-          workers={workers} worksiteNames={worksiteNameById} today={todayStr} userId={validerTout?.userId ?? null} onDone={() => { refresh(); fetchExtras(); }} />
+          workers={workers} worksiteNames={worksiteNameById} today={todayStr} userId={validerTout?.userId ?? null} periode={validerTout?.periode} date={validerTout?.date} onDone={() => { refresh(); fetchExtras(); }} />
       )}
       {kioskOn && user?.company_id && (
         <KioskAdmin open={kioskOpen} onOpenChange={setKioskOpen} companyId={user.company_id} />
