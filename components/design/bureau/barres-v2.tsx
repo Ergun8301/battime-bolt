@@ -167,7 +167,7 @@ function BoutonLegende({ c, astuce = false }: { c: PlanningCtx; astuce?: boolean
   }, [ouvert]);
   return (
     <div className="dzp-relatif">
-      <Rond aria-label="Légende" title="Légende des couleurs" aria-expanded={ouvert} aria-haspopup="dialog" data-testid="bar-legende" data-guide="bureau-nav.legende" onClick={() => setOuvert((o) => !o)}>ⓘ</Rond>
+      <Rond aria-label="Légende" title="Légende des couleurs" aria-expanded={ouvert} aria-haspopup="dialog" data-testid="bar-legende" onClick={() => setOuvert((o) => !o)}>ⓘ</Rond>
       {ouvert && (
         <>
           <div className="dzp-fond-menu" onClick={() => setOuvert(false)} />
