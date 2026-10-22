@@ -144,6 +144,24 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     return { from: t, to: t };
   });
   const [entries, setEntries] = useState<ExportEntry[]>([]);
+  // Zones BTP de la feuille d'heures (réglage « Indemnités BTP » allumé, ouvriers seulement) : ligne → zone du jour.
+  // null = réglage éteint ou illisible : la colonne n'existe pas.
+  const [btpZones, setBtpZones] = useState<Map<string, string> | null>(null);
+  useEffect(() => {
+    if (!ui2 || me?.role !== 'admin' || !worker || entries.length === 0 || worker.role === 'admin') { setBtpZones(null); return; } // ouvriers seulement (salarié, chef d'équipe)
+    let stale = false;
+    const ids = Array.from(new Set(entries.map((e) => e.worksite?.id).filter((x): x is string => !!x)));
+    // Chargé à la demande : le module ne pèse pas sur le premier chargement de /admin.
+    void import('@/lib/btp-zones').then(async (b) => {
+      const ctx = await b.loadBtpContext(worker.company_id, ids);
+      if (stale) return;
+      if (!ctx) { setBtpZones(null); return; }
+      // Une intervention retirée ne compte pas : elle ne fait pas monter la zone du jour.
+      const jours = b.btpDays(entries.filter((e) => e.status !== 'cancelled'), ctx);
+      setBtpZones(new Map(entries.filter((e) => e.status !== 'cancelled').map((e) => [e.id, b.dayZoneText(jours.get(b.dayKey(e.user_id, e.work_date)))])));
+    }).catch(() => { if (!stale) setBtpZones(null); });
+    return () => { stale = true; };
+  }, [ui2, me?.role, worker, entries]);
   // Semaines ENTIÈRES qui recouvrent la période choisie. Les heures
   // supplémentaires se comptent sur la semaine complète : si la période
   // commence un vendredi, les 35 h du lundi au jeudi comptent quand même, sinon
@@ -733,6 +751,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         overtimeRates,
         // Le matricule ENREGISTRÉ, comme à l'export de l'équipe.
         payrollIdByWorker: savedMatricule ? new Map([[worker.id, savedMatricule]]) : undefined,
+        // Zones BTP : relues au clic (réglage éteint → rien ne change).
+        btp: kind === 'csv' ? null : await (await import('@/lib/btp-zones')).loadBtpExport(worker.company_id, countedEntries, name),
       };
       if (kind === 'excel') await exportEntriesToExcel(countedEntries, opts);
       else if (kind === 'csv') {
@@ -971,6 +991,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       worksites, reassigningId, setReassigningId, creatingFor, setCreatingFor, newClientName, setNewClientName, reassignEntry, createAndAttribute,
       correctingId, setCorrectingId, cStart, setCStart, cEnd, setCEnd, cBreak, setCBreak, cMeal, setCMeal, cGap, setCGap, cReason, setCReason,
       cBadStart, cBadEnd, setCBadStart, setCBadEnd, cPauseErr, setCPauseErr, cSaving, cReturning, mealOn, previousEnd, actionErr, setActionErr, doCorrection, doReturn, doSendForWorker,
+      btpZones,
     };
     return <Suspense fallback={null}><FicheHeuresV2 ctx={ctx} /></Suspense>;
   }

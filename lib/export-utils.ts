@@ -113,6 +113,26 @@ export interface ExportOptions {
    * Absent = tous les jours comptent (comportement de l'onglet Excel, inchangé).
    */
   payPeriod?: { from: string; to: string };
+  /**
+   * Zones d'indemnités BTP (réglage « Indemnités BTP » allumé), préparées par lib/btp-zones.ts#btpExport — chargé
+   * à la demande, il ne pèse pas sur /admin. Absent = rien ne change : ni colonne « Zone », ni onglet. Présent : la
+   * zone du JOUR sur chaque ligne d'un ouvrier, et un tableau « Indemnités BTP » par ouvrier. Le CSV de paie (une
+   * ligne par semaine) n'est pas touché.
+   */
+  btp?: BtpExport | null;
+}
+
+/** Ce que l'export reçoit des zones BTP : déjà calculé, rien à importer ici. */
+export interface BtpExport {
+  /** La case « Zone » d'une ligne (zone du jour ; « - » pour le bureau). */
+  zoneOf: (e: { user_id: string; work_date: string }) => string;
+  /** Onglet Excel « Indemnités BTP » : notes, en-tête, lignes. */
+  sheet: (string | number)[][];
+  sheetCols: number[];
+  /** Le même tableau, sans montants, sous le détail du PDF. */
+  pdfTitle: string;
+  pdfHead: string[];
+  pdfBody: string[][];
 }
 
 /**
@@ -236,6 +256,7 @@ function statusLabel(status: string): string {
 function buildWorkbook(XLSX: typeof import('xlsx'), entries: ExportEntry[], opts: ExportOptions) {
   const includeWorker = !opts.singleWorkerName;
   const meal = showMealColumn(opts.mealEnabled !== false, entries);
+  const btp = opts.btp || null;
 
   const route = routeMinutesByEntry(entries);
   const rows = entries.map((entry) => {
@@ -247,6 +268,7 @@ function buildWorkbook(XLSX: typeof import('xlsx'), entries: ExportEntry[], opts
     }
     row['Client'] = entry.worksite?.client_name || '-';
     row['Ville'] = entry.worksite?.city || '-';
+    if (btp) row['Zone BTP'] = btp.zoneOf(entry);
     row['Début'] = entry.start_time?.substring(0, 5) || '-';
     row['Fin'] = entry.end_time?.substring(0, 5) || '-';
     row['Pause (min)'] = entry.break_minutes;
@@ -262,7 +284,7 @@ function buildWorkbook(XLSX: typeof import('xlsx'), entries: ExportEntry[], opts
   ws['!cols'] = [
     { wch: 12 },
     ...(includeWorker ? [{ wch: 20 }] : []),
-    { wch: 25 }, { wch: 15 }, { wch: 8 }, { wch: 8 },
+    { wch: 25 }, { wch: 15 }, ...(btp ? [{ wch: 16 }] : []), { wch: 8 }, { wch: 8 },
     { wch: 12 }, { wch: 12 }, { wch: 12 }, ...(meal ? [{ wch: 12 }] : []), { wch: 10 }, { wch: 30 },
   ];
 
@@ -308,9 +330,13 @@ function buildWorkbook(XLSX: typeof import('xlsx'), entries: ExportEntry[], opts
   }
 
   XLSX.utils.book_append_sheet(wb, ws, 'Détail');
+  if (btp) {
+    const wsBtp = XLSX.utils.aoa_to_sheet(btp.sheet);
+    wsBtp['!cols'] = btp.sheetCols.map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(wb, wsBtp, 'Indemnités BTP');
+  }
   return wb;
 }
-
 export async function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions): Promise<void> {
   const XLSX = await loadXlsx();
   XLSX.writeFile(buildWorkbook(XLSX, entries, opts), `${opts.fileName}.xlsx`);
@@ -408,6 +434,7 @@ export async function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOpt
   const { jsPDF, autoTable } = await loadPdf();
   const includeWorker = !opts.singleWorkerName;
   const meal = showMealColumn(opts.mealEnabled !== false, entries);
+  const btp = opts.btp || null;
   const doc = new jsPDF('landscape');
 
   doc.setFontSize(18);
@@ -438,8 +465,8 @@ export async function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOpt
   y += 2;
 
   const head = includeWorker
-    ? [['Date', 'Salarié', 'Client', 'Ville', 'Début', 'Fin', 'Pause', 'Route', 'Total', ...(meal ? ['Panier'] : []), 'Statut']]
-    : [['Date', 'Client', 'Ville', 'Début', 'Fin', 'Pause', 'Route', 'Total', ...(meal ? ['Panier'] : []), 'Statut']];
+    ? [['Date', 'Salarié', 'Client', 'Ville', ...(btp ? ['Zone'] : []), 'Début', 'Fin', 'Pause', 'Route', 'Total', ...(meal ? ['Panier'] : []), 'Statut']]
+    : [['Date', 'Client', 'Ville', ...(btp ? ['Zone'] : []), 'Début', 'Fin', 'Pause', 'Route', 'Total', ...(meal ? ['Panier'] : []), 'Statut']];
 
   const body = entries.map((entry) => {
     const cols: string[] = [format(parseISO(entry.work_date), 'dd/MM/yyyy')];
@@ -449,6 +476,7 @@ export async function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOpt
     cols.push(
       entry.worksite?.client_name || '-',
       entry.worksite?.city || '-',
+      ...(btp ? [btp.zoneOf(entry)] : []),
       entry.start_time?.substring(0, 5) || '-',
       entry.end_time?.substring(0, 5) || '-',
       `${entry.break_minutes} min`,
@@ -505,6 +533,20 @@ export async function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOpt
     styles: { fontSize: 9 },
     headStyles: { fillColor: [30, 64, 175] },
   });
+
+  if (btp) {
+    // @ts-expect-error — lastAutoTable est posé par jspdf-autotable sur le document.
+    const yb = (doc.lastAutoTable?.finalY ?? y) + 10;
+    doc.setFontSize(11);
+    doc.text(btp.pdfTitle, 14, yb);
+    autoTable(doc, {
+      startY: yb + 4,
+      head: [btp.pdfHead],
+      body: btp.pdfBody,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [21, 18, 15] },
+    });
+  }
 
   doc.save(`${opts.fileName}.pdf`);
 }

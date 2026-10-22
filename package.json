@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test:kiosk": "npx -y deno@2 test --allow-env supabase/functions/_shared/kiosk.test.ts",
     "test:cout": "npx -y deno@2 test --allow-env supabase/functions/_shared/payslip.test.ts",
+    "test:zones-btp": "npx -y deno@2.9.6 test supabase/functions/_shared/btp-zones.test.ts",
+    "test:zones-btp-rls": "bash supabase/tests/run-rls.sh supabase/tests/zones_btp_rls.sql",
     "test:cout-rls": "bash supabase/tests/run-rls.sh supabase/tests/lot2_cout_salarie_rls.sql",
     "test:verrou": "bash supabase/tests/run-rls.sh supabase/tests/verrou_interrupteurs.sql",
     "test:assistant": "npx -y deno@2 test --allow-env supabase/functions/_shared/assistant.test.ts",

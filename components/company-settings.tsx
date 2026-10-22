@@ -152,6 +152,8 @@ function SetSection({ id, testId, title, hint, icon, open, onToggle, guide, chil
 
 // Design bureau (v2, ?ui=2 sur aperçu) : la coque v2 (panneau 760 px, feuille lot3b-v2.css), chargée en différé seulement quand le drapeau est actif.
 // Le contenu ci-dessous (après les rubriques, pour garder les numéros de ligne des ancres du registre) (champs, rubriques, gestionnaires, « Enregistrer ») est le MÊME dans les deux rendus.
+// Indemnités BTP : chargé à la demande (le réglage est éteint pour la plupart des entreprises).
+const BtpZonesSetting = lazy(() => import('@/components/btp-zones-setting'));
 const CoqueL3 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.CoqueL3 })));
 const SupportV2 = lazy(() => import('@/components/design/bureau/lot3b-v2').then((m) => ({ default: m.SupportV2 })));
 
@@ -669,6 +671,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
                   </div>
                 </div>
               )}
+
+              {/* Indemnités BTP (petits déplacements) : éteintes par défaut, leur propre geste (components/btp-zones-setting.tsx). */}
+              {user?.company_id && <Suspense fallback={null}><BtpZonesSetting companyId={user.company_id} userId={user.id} /></Suspense>}
 
               {/* Comptable — destinataire de l'export de paie. L'adresse vit ici,
                   pas dans l'écran d'export : rien ne part vers une adresse tapée

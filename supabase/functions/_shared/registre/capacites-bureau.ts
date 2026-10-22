@@ -1417,5 +1417,13 @@ export const CAPACITES_BUREAU: Capacite[] = [
       categorie: 'doute_patron',
       raison: "Geste groupé ajouté le 21 octobre 2026 à la demande d'Ergun, côté écran seulement : il fait compter d'un coup des dizaines de journées dans la paie, après une liste cochée et une confirmation. Jamais confié à l'assistant sans demande du patron.",
     },
+  },  // B143 · humain · niveau 3
+  {
+    id: 'B143', cote: 'bureau', libelle: "Régler les indemnités BTP (petits déplacements) : activer, point de départ, limites des zones, montants facultatifs ; les adresses des chantiers sont placées automatiquement",
+    genre: 'humain', niveau: 3,
+    humain: {
+      categorie: 'doute_patron',
+      raison: "Réglage ajouté le 22 octobre 2026 (lot zones BTP), côté écran seulement : il change ce que l'export de paie annonce par jour et les montants d'aide au calcul. Le patron le règle lui-même avec son comptable.",
+    },
   },
 ];

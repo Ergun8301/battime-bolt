@@ -2741,7 +2741,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       // Lot 18 : le filtre (statuts, entreprise, période) est celui de l'alerte (lib/export-lignes.ts) ; `locked` s'y
       // ajoute pour recompter ce que le verrou va toucher. Rien d'autre ne change : même lignes, même ordre.
       const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => lignesExportees(user.company_id, from, to,
-        'id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, locked, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
+        'id, user_id, worksite_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, locked, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
         // Même ordre qu'avant, avec un départage COMPLET pour les égalités (même jour, même salarié : heure de début, puis id) :
         // les pages se suivent sans doublon ni trou, et le détail d'une journée sort dans l'ordre des heures.
         .order('work_date', { ascending: false }).order('user_id').order('start_time').order('id')
@@ -2757,6 +2757,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       // Excel, PDF et l'envoi au comptable. Changer le réglage change le fichier :
       // un nouvel envoi n'est alors pas reconnu comme doublon (empreinte du fichier).
       const mealEnabled = await readMealEnabled(user.company_id);
+      // Zones BTP : relues au clic, comme le panier. Réglage éteint ou illisible → null, le fichier est celui d'avant.
+      const btp = kind === 'csv' ? null : await (await import('@/lib/btp-zones')).loadBtpExport(user.company_id, entries);
       const opts = {
         fileName: `bemexo-${kind === 'pdf' ? 'rapport' : kind === 'csv' ? 'paie' : 'export'}-${from}`,
         title: 'BEMEXO - Rapport hebdomadaire',
@@ -2768,6 +2770,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         recapEntries,
         overtimeRates: tauxMajoration,
         payrollIdByWorker,
+        btp,
       };
       // Message final : dépend de ce que le serveur répond (envoyé / déjà parti).
       let sentNote = '';

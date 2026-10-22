@@ -998,5 +998,13 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
   B142: [
     'fenetre:design/bureau/valider-tout-v2',
     'ecriture:lib/office-send#validerEnLot',
+  ],  // B143 · Indemnités BTP (Réglages › Heures & paie) ; le géocodage écrit aussi à l'export et dans la feuille d'heures
+  B143: [
+    'fenetre:company-settings',
+    'table:btp_settings:upsert',
+    'table:worksite_geo:upsert',
+    'ecriture:lib/btp-zones#saveBtpSettings',
+    'ecriture:lib/btp-zones#loadBtpContext',
+    'ecriture:lib/btp-zones#loadBtpExport',
   ],
 };
