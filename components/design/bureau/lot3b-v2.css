@@ -68,6 +68,7 @@
   width: 100%; min-width: 0; height: var(--dz-tap); padding: 0 14px; border: 1.5px solid var(--dz-trait-fort); border-radius: var(--dz-r-s); background: var(--dz-carte);
   color: var(--dz-encre); font: inherit; font-size: 15px; font-weight: 500; }
 .dz-l3-champ input:focus, .dz-l3-champ select:focus { border-color: var(--dz-encre); outline: none; }
+html[data-dz-bureau] .bt-skin .dz-l3-champ > input:focus-visible, html[data-dz-bureau] .bt-skin .dz-l3-champ > select:focus-visible, html[data-dz-bureau] .bt-skin .dz-l3-suffixe input:focus-visible { border-color: var(--dz-encre); outline: none; box-shadow: inset 0 0 0 .5px var(--dz-encre); }
 .dz-l3-suffixe { position: relative; display: block; }
 .dz-l3-suffixe input { padding-right: 34px; }
 .dz-l3-suffixe i { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-style: normal; font-weight: 700; color: var(--dz-texte-2); }
@@ -144,7 +145,8 @@
 .dz-l3-reglages .bt-set-i, .dz-l3-reglages .bt-field, .dz-l3-reglages .bt-set-hour {
   height: var(--dz-tap); padding: 0 14px; border: 1.5px solid var(--dz-trait-fort); border-radius: var(--dz-r-s); background: var(--dz-carte); font-family: var(--dz-font-ui); font-size: 15px; font-weight: 500; color: var(--dz-encre); }
 .dz-l3-reglages .bt-field, .dz-l3-reglages .bt-set-hour { font-family: var(--dz-font-chiffres); font-weight: 600; }
-.dz-l3-reglages .bt-set-i:focus, .dz-l3-reglages .bt-field:focus { border-color: var(--dz-encre); }
+.dz-l3-reglages .bt-set-i:focus, .dz-l3-reglages .bt-field:focus,
+html[data-dz-bureau] .dz-l3-reglages .bt-set-i:focus-visible, html[data-dz-bureau] .dz-l3-reglages .bt-field:focus-visible { border-color: var(--dz-encre); outline: none; box-shadow: inset 0 0 0 .5px var(--dz-encre); }
 .dz-l3-reglages .bt-set-toprow { border: 1px solid var(--dz-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); padding: 12px 14px; align-items: center; }
 .dz-l3-reglages .bt-set-logo-prev { width: 44px; height: 44px; border-radius: 50%; background: var(--dz-jaune); border: 0; }
 .dz-l3-reglages .bt-set-logo-ph { color: var(--dz-encre); }
