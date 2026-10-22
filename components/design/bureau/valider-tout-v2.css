@@ -2,7 +2,7 @@
 .vt-filtres { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 16px; background: #FBF7EE; border: 1px solid #EFE7D9; margin-bottom: 14px; }
 .vt-qui { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: #5B534A; }
 .vt-qui select { min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #E3DACB; background: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; color: #15120F; }
-.vt-qui select:focus { outline: none; border-color: #15120F; box-shadow: 0 0 0 3px rgba(255,194,26,.35); }
+.vt-qui select:focus, html[data-dz-bureau] .bt-skin .vt-qui select:focus-visible { outline: none; border-color: #15120F; box-shadow: inset 0 0 0 1px #15120F; }
 .vt-periode { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; justify-content: space-between; }
 .vt-nav { display: flex; align-items: center; gap: 8px; }
 .vt-nav__l { min-width: 150px; text-align: center; font-size: 14px; font-weight: 800; text-transform: capitalize; color: #15120F; }

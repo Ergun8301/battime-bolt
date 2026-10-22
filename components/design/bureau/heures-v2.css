@@ -166,7 +166,8 @@
   font: 400 16px/1.35 var(--dz-font-chiffres); box-sizing: border-box;
 }
 .dz-hb-champ textarea { min-height: 96px; resize: vertical; font-family: var(--dz-font-ui); }
-.dz-hb-champ input:focus-visible, .dz-hb-champ textarea:focus-visible { outline: var(--dz-focus-contour); outline-offset: var(--dz-focus-decalage); border-color: var(--dz-encre); }
+.dz-hb-champ input:focus-visible, .dz-hb-champ textarea:focus-visible,
+html[data-dz-bureau] .bt-skin .dz-hb-champ input:focus-visible, html[data-dz-bureau] .bt-skin .dz-hb-champ textarea:focus-visible { outline: none; border-color: var(--dz-encre); box-shadow: inset 0 0 0 .5px var(--dz-encre); } /* bordure 1,5 + 0,5 en dedans = 2 px encre, sans décalage de la mise en page */
 .dz-hb-champ [role="combobox"], .dz-hb-champ button[aria-label] { min-height: 48px; }
 .dz-hb-champ .dz-hb-heure { display: block; }
 .dz-hb-compteur { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -428,7 +429,8 @@ button.dz-l3-ligne:hover, .dz-l3-ligne__clic:hover { background: var(--dz-jaune-
 .dz-l3-champ__aide { font: 400 13px/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
 .dz-l3-champ__aide[data-ton="erreur"] { font-weight: 700; color: var(--dz-erreur-texte); }
 .dz-l3-champ__boite:focus-within { outline: none; }
-.dz-l3-champ__boite input:focus-visible, .dz-l3-champ__boite textarea:focus-visible, .dz-l3-champ__boite select:focus-visible { outline: none; }
+.dz-l3-champ__boite input:focus-visible, .dz-l3-champ__boite textarea:focus-visible, .dz-l3-champ__boite select:focus-visible,
+html[data-dz-bureau] .bt-skin .dz-l3-champ__boite input:focus-visible, html[data-dz-bureau] .bt-skin .dz-l3-champ__boite textarea:focus-visible, html[data-dz-bureau] .bt-skin .dz-l3-champ__boite select:focus-visible { outline: none; } /* le contour, c'est la bordure 2 px de la boîte (:focus-within) ; l'exemption passe devant la règle générale de planning-v2.css */
 
 /* ── Jauge (B.gauge), dépôt (B.drop), coches (B.checks), pastilles (B.chips), segments (B.seg), onglets ── */
 .dz-l3-jauge { display: flex; flex-direction: column; gap: 6px; }
