@@ -48,6 +48,8 @@ export interface PlanningCtx {
   docsByChantier: { id: string; name: string; docs: { id: string; label: string | null; file_name: string | null; mime_type: string | null; work_date: string | null; created_at: string }[] }[];
   waitingByWorker: { id: string; name: string; days: string[] }[];
   openRelance: () => void;
+  /** Objectif de la semaine d'un salarié, en heures : son horaire propre (fiche), sinon celui de l'entreprise, sinon 35 h. 0 = pas d'horaire. */
+  weeklyGoalFor: (workerId: string) => number;
   /** « Tout valider » (bureau seulement) : sans réglage, toute l'entreprise sur le mois ; sinon l'endroit cliqué (en-tête d'un jour : l'équipe ce jour-là ; case : un salarié ce jour-là). */
   openValiderTout?: (o?: { userId?: string | null; periode?: 'jour' | 'semaine' | 'mois'; date?: string }) => void;
   // imprimer

@@ -133,12 +133,13 @@ const PLANCHE_LIGNE = [
   await fermerAstuce(page); await page.waitForTimeout(150);
   const apresCompris = await page.evaluate(() => ({ y: Math.round(window.scrollY), focus: document.activeElement?.dataset.testid }));
   check(apresCompris.y === 0, `« Compris » ne fait pas sauter la page (${JSON.stringify(apresCompris)})`);
-  // Retouches (point 4) : bulles compactes, une ligne par étiquette et par horaire (texte complet en infobulle) ; « 11 / 35 h » sur la ligne de la jauge.
+  // Retouches (point 4) : bulles compactes, une ligne par étiquette et par horaire (texte complet en infobulle) ; objectif de la semaine sous la jauge.
   const r4 = await retours(page, '.dzp-table .dzp-etiquette, .dzp-table .dzp-bulle__heure');
   const sansTitre = await page.evaluate(() => [...document.querySelectorAll('.dzp-table .dzp-etiquette, .dzp-table .dzp-bulle__heure')].filter((e) => e.title !== e.textContent).length);
   check(r4.length === 0 && sansTitre === 0, `bulles : étiquettes et horaires sur une ligne (coupés par « … »), texte complet en infobulle (${r4.slice(0, 4).join(' | ')}${sansTitre ? ` · ${sansTitre} sans infobulle` : ''})`);
-  const heuresL = await page.evaluate(() => [...document.querySelectorAll('.dzp-td-nom .dzp-heures')].map((h) => { const j = h.querySelector('.dzp-jauge').getBoundingClientRect(); const t = h.querySelector('.dzp-heures__t').getBoundingClientRect(); return { meme: Math.abs((j.top + j.bottom) / 2 - (t.top + t.bottom) / 2) < 6 && t.left > j.right, t: h.querySelector('.dzp-heures__t').innerText }; }));
-  check(heuresL.length === 8 && heuresL.every((x) => x.meme && /^[\d.]+ \/ 35 h$/.test(x.t)), `« N / 35 h » sur la même ligne que la jauge, à droite (${heuresL.slice(0, 2).map((x) => x.t).join(', ')})`);
+  // Lot « Heures et objectifs » : sous la jauge, « Prévu N / objectif h » (l'objectif de la fiche, sinon 35 h) — voir heures-objectifs.mjs.
+  const heuresL = await page.evaluate(() => [...document.querySelectorAll('.dzp-td-nom .dzp-obj')].map((h) => ({ jauge: !!h.querySelector('.dzp-jauge'), t: h.querySelector('[data-testid=objectif-prevu]')?.innerText || '' })));
+  check(heuresL.length === 8 && heuresL.every((x) => x.jauge && /^Prévu .+ \/ \d+ h/.test(x.t)), `jauge puis « Prévu N / objectif h » sous chaque nom (${heuresL.slice(0, 2).map((x) => x.t.replace(/\n/g, ' ')).join(', ')})`);
   const envoyee = await page.locator('.dzp-table .dzp-bulle[data-etat=envoyee]').first().evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, h: getComputedStyle(e.querySelector('.dzp-bulle__heure')).color, txt: e.querySelector('.dzp-bulle__heure').innerText, b: e.querySelector('.dzp-bulle__bande').getBoundingClientRect().width, r: getComputedStyle(e).borderTopLeftRadius }));
   check(envoyee.bg === 'rgb(21, 18, 15)' && envoyee.h === 'rgb(255, 194, 26)' && /^✓ \d\d:\d\d–\d\d:\d\d · \dh\d\d$/.test(envoyee.txt) && envoyee.b === 5 && envoyee.r === '12px', `bulle envoyée sombre, heure jaune « ✓ 08:00–12:00 · 4h00 », liseré 5 px, rayon 12 (${JSON.stringify(envoyee)})`);
   const etats = await page.evaluate(() => [...new Set([...document.querySelectorAll('.dzp-table .dzp-bulle')].map((e) => e.dataset.etat))].sort());
@@ -235,7 +236,9 @@ const PLANCHE_LIGNE = [
     `la barre noire reprend, compacts (style 2a : 36 / 38 px), « ${replie.compact} », la loupe, Exporter et « ${replie.deplier} » (${JSON.stringify(replie)})`);
   const lignes = await page.evaluate(() => [...document.querySelectorAll('.dzp-table tbody tr')].map((tr) => tr.getBoundingClientRect().bottom));
   const entieres = lignes.filter((b) => b <= 900).length;
-  check(entieres >= 8, `replié : 8 salariés entiers à 1440 × 900 (${entieres} lignes entières, la 8e finit à ${Math.round(lignes[7] || 0)} px)`);
+  // Lot « Heures et objectifs » (oct. 2026) : deux lignes de plus sous chaque nom (« Prévu … · manque … », « Pointé … · écart … »), demandées par Ergun :
+  // les lignes compactes du jeu 2a grandissent d'environ 30 px ; 7 salariés entiers au lieu de 8 sur cet écran (les vraies lignes, avec des interventions, ne changent pas).
+  check(entieres >= 7, `replié : 7 salariés entiers à 1440 × 900 (${entieres} lignes entières, la 8e finit à ${Math.round(lignes[7] || 0)} px)`);
   await capture(page, '1a-replie-1440.png');
   // la loupe de la barre repliée filtre aussi
   await page.click('[data-testid=bar-recherche]'); await page.waitForTimeout(150);

@@ -221,7 +221,9 @@ const GHOST_ROW_H = 105;
 // début est refusée (la borne et l'écran du salarié lisent le début d'abord).
 const scheduleError = (start: string, end: string): string | null => {
   if (end && !start) return 'Indiquez aussi le début';
-  if (start && end && end <= start) return 'La fin doit être après le début';
+  // Heures possibles : 00:00 → 23:45. Une intervention ne passe pas minuit (pas de modèle « fin le lendemain ») : on dit quoi faire.
+  if (start && end && end < start) return `La fin doit être après le début (${start} → ${end}). Une intervention s'arrête à minuit : finissez à 23:45 et ajoutez la suite le lendemain.`;
+  if (start && end && end === start) return 'La fin doit être après le début';
   return null;
 };
 const EMPTY_SET: Set<string> = new Set();
@@ -1586,6 +1588,22 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     setAccountantEmail(cs.accountantEmail);
     setCompanyLogo(cs.logoUrl);
   }, [cs]);
+
+  // Objectif hebdo sous le nom (planning v2) : l'horaire propre de chaque salarié (fiche › « Heures par semaine »), sinon celui
+  // de l'entreprise, sinon 35 h (lib/overtime). Relu à la fermeture d'une fiche ou de la liste Salariés. Lecture seule : une
+  // lecture ratée laisse l'horaire de l'entreprise partout (affichage seulement : heures sup., paie et exports n'en dépendent pas).
+  const [weeklyOverrides, setWeeklyOverrides] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (!user?.company_id || user.role !== 'admin' || ficheWorker || salariesOpen) return;
+    let off = false;
+    supabase.from('user_payroll').select('user_id, weekly_hours').eq('company_id', user.company_id).then(({ data, error }) => {
+      if (off || error) return;
+      const rows = (data || []) as { user_id: string; weekly_hours: number | null }[];
+      setWeeklyOverrides(new Map(rows.filter((r) => r.weekly_hours != null).map((r) => [r.user_id, Number(r.weekly_hours)])));
+    });
+    return () => { off = true; };
+  }, [user?.company_id, user?.role, ficheWorker, salariesOpen]);
+  const weeklyGoalFor = useCallback((id: string) => weeklyHoursFor(weeklyOverrides.get(id) ?? null, companyWeeklyHours), [weeklyOverrides, companyWeeklyHours]);
 
   // ─── Lot 9 : « en cours depuis » — sondage dédié des chronos ouverts ─────────
   // Toutes les 30 s, en pause quand l'onglet est caché, relu tout de suite au
@@ -3458,6 +3476,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     preloadTrainings: () => TrainingsAdmin.preload(), preloadEmail: () => StaffEmailDialog.preload(),
     accountMenuOpen, setAccountMenuOpen, chantierMenuOpen, setChantierMenuOpen, clientsQuery, setClientsQuery, filteredClients,
     statPanel, setStatPanel, renderRelanceRows, monthLabel, docListState, docsByChantier, waitingByWorker, openRelance: () => setRelanceOpen(true),
+    weeklyGoalFor,
     openValiderTout: user?.role === 'admin' ? (o?: { userId?: string | null; periode?: 'jour' | 'semaine' | 'mois'; date?: string }) => setValiderTout({ userId: o?.userId ?? null, periode: o?.periode, date: o?.date }) : undefined,
     printOpen, setPrintOpen, closePrintMenu, printMenu: printMenuNode,
     coachHidden, dismissCoach,

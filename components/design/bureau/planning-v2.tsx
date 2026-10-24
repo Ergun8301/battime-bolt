@@ -17,6 +17,7 @@ import { ListePieces, PanneauChiffres, type ListeChiffres } from './bandeau-v2';
 import { chargeJours, Grille } from './grille-v2';
 import { Grille1a } from './grille-1a';
 import { Mobile } from './mobile-v2';
+import { useObjectifs } from './objectif-v2';
 import { publierPont, useLargeur, REQ_ORDI, REQ_TELEPHONE } from './pont-v2';
 import type { PlanningCtx } from './contexte-v2';
 
@@ -220,6 +221,7 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
     return totauxSemaine(dates, c.displayWorkers.map((w) => w.id), c.realEntries, c.planning, exclure);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dates.join('|'), c.displayWorkers, c.realEntries, c.planning, c.draftEntries, c.withdrawnIds]);
+  const objectifs = useObjectifs(c);
   const relances = (c.waitingByWorker as { id: string; name: string; days: string[] }[]) || [];
   // La grille ne montre que les salariés retenus par la recherche (affichage seulement : la sélection « toute la semaine » garde toute l'équipe).
   const visibles = useMemo(() => filtrer(c, recherche, dates),
@@ -286,11 +288,11 @@ export default function PlanningV2({ c }: { c: PlanningCtx }) {
         {c.workers.length > 0 && !c.selectMode && !(ordi && pleinEcran) && <div className="dzp-astuce">{c.copyTipDesk}</div>}
         <div className="dzp-zone">
           <Aide c={c} />
-          {ordi ? <Grille1a c={cGrille} totaux={totaux} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />
-            : <Grille c={cGrille} totaux={totaux} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />}
+          {ordi ? <Grille1a c={cGrille} totaux={totaux} objectifs={objectifs} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />
+            : <Grille c={cGrille} totaux={totaux} objectifs={objectifs} recherche={recherche.trim()} navPE={pleinEcran ? <NavSemainePleinEcran c={c} /> : null} />}
         </div>
       </div>
-      <Mobile c={c} gens={gens} nbRecherche={nbRecherche} />
+      <Mobile c={c} gens={gens} nbRecherche={nbRecherche} objectifs={objectifs} />
       <Dock c={c} />
     </>
   );

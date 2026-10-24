@@ -75,8 +75,9 @@ export default function GererV2({ c }: { c: GererV2Ctx }) {
           <Champ nom="Téléphone" mono value={c.mPhone} onChange={(e) => c.setMPhone(e.target.value)} />
           <Champ nom="E-mail" inactif value={w.email || ''} title="Identifiant de connexion" onChange={() => undefined} />
           <Champ nom="Taux horaire (coût chargé)" mono inputMode="decimal" suffixe="€/h" placeholder="ex. 28,50" value={c.mRate} onChange={(e) => c.setMRate(e.target.value)} />
-          <Champ nom="Horaire hebdomadaire propre" mono inputMode="decimal" suffixe="h" placeholder={`par défaut ${c.companyWeeklyHours}`} value={c.mWeekly} onChange={(e) => c.setMWeekly(e.target.value)}
-            title={`Vide : celui de l’entreprise (${c.companyWeeklyHours} h). Sert aux heures supplémentaires.`} />
+          <Champ nom="Heures par semaine" mono inputMode="decimal" suffixe="h" placeholder={`par défaut ${c.companyWeeklyHours}`} value={c.mWeekly} onChange={(e) => c.setMWeekly(e.target.value)}
+            data-testid="fiche-heures-semaine" aide={`Objectif sur le planning · vide = ${c.companyWeeklyHours} h`}
+            title={`Objectif de la semaine sur le planning (17, 35, 39…). Vide : celui de l’entreprise (${c.companyWeeklyHours} h). Sert aussi de base aux heures supplémentaires.`} />
           <Champ nom="N° de sécurité sociale" mono placeholder="1 23 45…" value={c.mNir} onChange={(e) => c.setMNir(e.target.value)} />
           <Champ nom="Date d’embauche" type="date" value={c.mHireDate} onChange={(e) => c.setMHireDate(e.target.value)} />
           <Champ nom="Type de contrat" placeholder="CDI, CDD, Intérim…" value={c.mContract} onChange={(e) => c.setMContract(e.target.value)} />

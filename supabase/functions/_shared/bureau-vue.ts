@@ -84,3 +84,71 @@ export function plageAbsence(date: string, type: (d: string) => string | null): 
   const jours = Math.round((new Date(`${au}T12:00:00Z`).getTime() - new Date(`${du}T12:00:00Z`).getTime()) / 86400000) + 1;
   return { du, au, jours };
 }
+
+/** « 30 h », « 7h30 », « 45 min » : des minutes en heures, court (sans décimale, sans signe), pour tenir sur une ligne sous le nom. */
+export function heuresCourtes(minutes: number): string {
+  const m = Math.round(Math.abs(minutes));
+  const h = Math.floor(m / 60); const r = m % 60;
+  if (h === 0 && r > 0) return `${r} min`;
+  return r ? `${h}h${String(r).padStart(2, '0')}` : `${h} h`;
+}
+
+export interface PrevuSalarie {
+  /** Durée prévue de TOUTES ses interventions de la semaine (minutes), hors absence, hors retirée. */
+  prevu: number;
+  /** La part déjà passée : jours avant aujourd'hui, et interventions d'aujourd'hui déjà finies (`maintenant` « HH:MM »). */
+  prevuEcoule: number;
+  /** Jours d'absence de la semaine (congé, arrêt…) : l'écart à l'objectif dit « absent N j » au lieu d'un « manque » trompeur. */
+  absences?: number;
+}
+
+/** Prévu de la semaine par salarié, pour l'objectif sous le nom (une intervention sans heure de fin compte 0). */
+export function prevuSemaine(dates: string[], salaries: string[], prevues: LignePrevue[], aExclure: Set<string>, aujourdhui: string, maintenant: string): Record<string, PrevuSalarie> {
+  const out: Record<string, PrevuSalarie> = {};
+  const absents: Record<string, Set<string>> = {};
+  for (const id of salaries) { out[id] = { prevu: 0, prevuEcoule: 0, absences: 0 }; absents[id] = new Set(); }
+  for (const p of prevues) {
+    if (p.absence_type && out[p.user_id] && dates.includes(p.work_date)) { absents[p.user_id].add(p.work_date); out[p.user_id].absences = absents[p.user_id].size; }
+    if (p.absence_type || aExclure.has(p.id) || !out[p.user_id] || !dates.includes(p.work_date)) continue;
+    const m = dureePrevue(p.estimated_start, p.estimated_end);
+    out[p.user_id].prevu += m;
+    if (p.work_date < aujourdhui || (p.work_date === aujourdhui && (p.estimated_end || '').slice(0, 5) <= maintenant)) out[p.user_id].prevuEcoule += m;
+  }
+  return out;
+}
+
+export type TonObjectif = 'manque' | 'dessus' | 'atteint' | 'absent';
+export interface LignesObjectif {
+  /** « Prévu 30 / 35 h » (« Prévu 30 h » sans objectif). */
+  prevu: string;
+  /** « manque 5 h », « + 3 h », « objectif atteint », « absent 2 j » (absence dans la semaine) ; vide sans objectif. Le SIGNE et le MOT portent le sens, la couleur ne fait que l'appuyer. */
+  ecartObjectif: string; ton: TonObjectif | null;
+  /** « Pointé 28 h » et « écart −2 h » (par rapport au prévu déjà passé) ; null tant que rien n'est passé ni pointé. */
+  pointe: string | null; ecartPointe: string | null;
+  /** Phrase complète pour l'infobulle et les lecteurs d'écran. */
+  phrase: string;
+}
+
+/** Les deux lignes courtes sous le nom du salarié. `objectif` en heures (0 = pas d'horaire hebdomadaire). Aucun effet sur heures sup., paie, exports. */
+export function lignesObjectif(objectif: number, p: PrevuSalarie, pointe: number): LignesObjectif {
+  const obj = Math.max(0, Math.round(objectif * 60));
+  let ecartObjectif = ''; let ton: TonObjectif | null = null; let phraseObj = '';
+  if (obj > 0) {
+    const d = p.prevu - obj;
+    const abs = p.absences || 0;
+    if (d < 0 && abs > 0) { ecartObjectif = `absent ${abs} j`; ton = 'absent'; phraseObj = `${heuresCourtes(d)} sous l’objectif de ${heuresCourtes(obj)}, avec ${abs} jour${abs > 1 ? 's' : ''} d’absence`; }
+    else if (d < 0) { ecartObjectif = `manque ${heuresCourtes(d)}`; ton = 'manque'; phraseObj = `il manque ${heuresCourtes(d)} pour atteindre l’objectif de ${heuresCourtes(obj)}`; }
+    else if (d > 0) { ecartObjectif = `+ ${heuresCourtes(d)}`; ton = 'dessus'; phraseObj = `${heuresCourtes(d)} au-dessus de l’objectif de ${heuresCourtes(obj)}`; }
+    else { ecartObjectif = 'objectif atteint'; ton = 'atteint'; phraseObj = `objectif de ${heuresCourtes(obj)} atteint`; }
+  }
+  const prevuTxt = obj > 0 ? `Prévu ${heuresCourtes(p.prevu).replace(/ h$/, '')} / ${heuresCourtes(obj)}` : `Prévu ${heuresCourtes(p.prevu)}`;
+  let pointeTxt: string | null = null; let ecartPointe: string | null = null; let phrasePointe = '';
+  if (pointe > 0 || p.prevuEcoule > 0) {
+    const e = pointe - p.prevuEcoule;
+    pointeTxt = `Pointé ${heuresCourtes(pointe)}`;
+    ecartPointe = `écart ${e < 0 ? '−' : e > 0 ? '+' : ''}${heuresCourtes(e)}`;
+    phrasePointe = ` Pointé ${heuresCourtes(pointe)} pour ${heuresCourtes(p.prevuEcoule)} prévues jusqu’ici : ${e < 0 ? `${heuresCourtes(e)} de moins` : e > 0 ? `${heuresCourtes(e)} de plus` : 'pile'}.`;
+  }
+  const phrase = `Prévu ${heuresCourtes(p.prevu)} cette semaine${phraseObj ? `, ${phraseObj}` : ''}.${phrasePointe}`;
+  return { prevu: prevuTxt, ecartObjectif, ton, pointe: pointeTxt, ecartPointe, phrase };
+}

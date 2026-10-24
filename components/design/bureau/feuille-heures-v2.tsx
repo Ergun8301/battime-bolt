@@ -510,6 +510,9 @@ function CorrectionV2({ c, entry, apres }: { c: FicheHeuresCtx; entry: ExportEnt
         <div className="dz-hb-champ"><span className="dz-hb-nom">Fin</span><TimeField value={c.cEnd} onChange={c.setCEnd} ariaLabel="Heure de fin" onBadChange={c.setCBadEnd} /></div>
       </div>
       <p className="dz-hb-aide">Était {fmtHeure(entry.start_time)}–{fmtHeure(entry.end_time)}</p>
+      {!c.cBadStart && !c.cBadEnd && c.cStart && c.cEnd && c.cEnd < c.cStart ? (
+        <p className="dz-hb-aide" role="status" data-testid="correct-nuit">Fin avant le début : la fin est comptée le lendemain ({c.cStart} → {c.cEnd}, passage de minuit).</p>
+      ) : null}
       {c.editsAvailable ? (
         <>
           <PausePicker variant="phone" testId="correct-break" vous
