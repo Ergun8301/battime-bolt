@@ -23,12 +23,20 @@ export function parseTimeInput(raw: string): string | null {
   return `${pad(h)}:${pad(m)}`;
 }
 
-/** Les quarts d'heure proposés dans la liste (05:00 → 22:00). */
+/** Les quarts d'heure proposés dans la liste : toute la journée, 00:00 → 23:45 (restaurant, nuit, astreinte…). */
 export const QUARTER_HOURS: string[] = (() => {
   const out: string[] = [];
-  for (let h = 5; h <= 22; h++) for (const m of [0, 15, 30, 45]) { if (h === 22 && m > 0) break; out.push(`${pad(h)}:${pad(m)}`); }
+  for (let h = 0; h <= 23; h++) for (const m of [0, 15, 30, 45]) out.push(`${pad(h)}:${pad(m)}`);
   return out;
 })();
+
+/** Heure sur laquelle la liste s'ouvre : l'heure déjà saisie (au quart d'heure le plus proche, en dessous), sinon 07:00. */
+export function listAnchor(value: string): string {
+  const v = parseTimeInput(value);
+  if (!v) return '07:00';
+  const [h, m] = v.split(':').map(Number);
+  return `${pad(h)}:${pad(Math.floor(m / 15) * 15)}`;
+}
 
 /** Les entrées de la liste qui commencent par ce qui est tapé (« 14 » → 14:00, 14:15…). */
 export function filterQuarterHours(typed: string): string[] {

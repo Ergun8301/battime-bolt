@@ -11,15 +11,15 @@ import { toast } from 'sonner';
 import { CheckCheck, Users } from 'lucide-react';
 import type { User } from '@/lib/types';
 import { closedFor } from '@/lib/worker-closure';
-import { hm, plageAbsence, type TotauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
+import { hm, plageAbsence, type LignesObjectif, type TotauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
 import { ReunionV2, TachesV2 } from './missions-v2';
 import { hashStr } from '@/components/planning-bubble';
 import { BulleV2, type DonneesBulle } from './bulle-v2';
 import { CaseDrop, chargeJours } from './grille-v2';
 import type { PlanningCtx } from './contexte-v2';
+import { Objectif, pctObjectif } from './objectif-v2';
 
 const LIB_ABS: Record<string, string> = { conge: 'Congé', maladie: 'Arrêt maladie', intemperie: 'Intempérie', repos: 'Repos' };
-const LIB_ABS_COURT: Record<string, string> = { conge: 'congé', maladie: 'arrêt maladie', intemperie: 'intempérie', repos: 'repos' };
 
 /** Sous le jour (planche 1a, `days.sub`) : « 6 interv. · 30 h » (interventions du jour, heures envoyées + prévues), « — » sans intervention. Qui pointe : la tuile « En direct ». */
 function sousJour(date: string, c: PlanningCtx, charge: number): string {
@@ -50,7 +50,7 @@ function nomAbsence(c: PlanningCtx, worker: User, date: string) {
   return { type, libelle: LIB_ABS[type] || type, sous };
 }
 
-export function Grille1a({ c, totaux, recherche = '', navPE = null }: { c: PlanningCtx; totaux: TotauxSemaine; recherche?: string; navPE?: ReactNode }) {
+export function Grille1a({ c, totaux, objectifs, recherche = '', navPE = null }: { c: PlanningCtx; totaux: TotauxSemaine; objectifs: Record<string, LignesObjectif>; recherche?: string; navPE?: ReactNode }) {
   const dates = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const toutCoche = (ids: string[]) => ids.length > 0 && ids.every((id) => c.selOn.has(id));
   const charge = chargeJours(c, dates, totaux);
@@ -92,7 +92,7 @@ export function Grille1a({ c, totaux, recherche = '', navPE = null }: { c: Plann
           </tr>
         </thead>
         <tbody>
-          {c.displayWorkers.map((worker) => <Ligne key={worker.id} c={c} worker={worker} dates={dates} totaux={totaux} />)}
+          {c.displayWorkers.map((worker) => <Ligne key={worker.id} c={c} worker={worker} dates={dates} totaux={totaux} objectifs={objectifs} />)}
           {c.displayWorkers.length === 0 && recherche && (
             <tr><td colSpan={8} className="dzp-aucun" data-testid="recherche-vide">Aucun salarié ni chantier ne correspond à « {recherche} ».</td></tr>
           )}
@@ -103,17 +103,15 @@ export function Grille1a({ c, totaux, recherche = '', navPE = null }: { c: Plann
 }
 
 const TEINTES = 8;
-function Ligne({ c, worker, dates, totaux }: { c: PlanningCtx; worker: User; dates: string[]; totaux: TotauxSemaine }) {
+function Ligne({ c, worker, dates, totaux, objectifs }: { c: PlanningCtx; worker: User; dates: string[]; totaux: TotauxSemaine; objectifs: Record<string, LignesObjectif> }) {
   const absAuj = c.todayAbsence.get(worker.id);
   const manque = (c.missingEffective.get(worker.id) || []).length;
   const nomComplet = `${worker.first_name} ${worker.last_name}`;
   const t = totaux.parSalarie[worker.id] || { envoyees: 0, prevues: 0 };
   const idsLigne: string[] = c.selectMode ? c.selectableIn((p: { user_id: string }) => p.user_id === worker.id) : [];
   const coche = idsLigne.length > 0 && idsLigne.every((id) => c.selOn.has(id));
-  // Planche 1a (`rows`) : « 20.5 / 35 h » sur la ligne de la jauge (heures envoyées sur 35 h) ; « envoyées » et le détail d'avant (prévues, absence) restent dans l'infobulle.
-  const detail = t.envoyees === 0 && t.prevues === 0 && absAuj ? `0:00 h · ${LIB_ABS_COURT[absAuj] || absAuj}` : `${hm(t.envoyees)} h envoyées${t.prevues > 0 ? ` · +${hm(t.prevues)} prévues` : ''}`;
-  const heures = `${Math.round((t.envoyees / 60) * 10) / 10} / 35 h`;
-  const pct = Math.min(100, Math.round((t.envoyees / 60 / 35) * 100));
+  // Sous le nom : la jauge (heures envoyées sur l'objectif du salarié) puis « Prévu 30 / 35 h · manque 5 h » et « Pointé 28 h · écart −2 h » (objectif-v2.tsx).
+  const objectif = c.weeklyGoalFor(worker.id);
   return (
     <tr>
       <td className="dzp-td-nom">
@@ -137,10 +135,7 @@ function Ligne({ c, worker, dates, totaux }: { c: PlanningCtx; worker: User; dat
             </span>
           </button>
         </div>
-        <div className="dzp-heures" title={`${heures} envoyées — ${detail}`}>
-          <div className="dzp-jauge" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
-          <span className="dzp-heures__t">{heures}</span>
-        </div>
+        {objectifs[worker.id] ? <Objectif o={objectifs[worker.id]} pct={pctObjectif(t.envoyees, objectif)} /> : null}
       </td>
       {dates.map((d, i) => <Cellule key={d} c={c} worker={worker} d={d} jour={c.weekDays[i]} />)}
     </tr>

@@ -10,11 +10,12 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { User } from '@/lib/types';
 import { closedFor } from '@/lib/worker-closure';
-import { dureePrevue, hm, plageAbsence, type TotauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
+import { dureePrevue, hm, plageAbsence, type LignesObjectif, type TotauxSemaine } from '@/supabase/functions/_shared/bureau-vue';
 import { ReunionV2, TachesV2 } from './missions-v2';
 import { hashStr } from '@/components/planning-bubble';
 import { BulleV2, Carte2a, duree2a, type DonneesBulle } from './bulle-v2';
 import type { PlanningCtx } from './contexte-v2';
+import { Objectif, pctObjectif } from './objectif-v2';
 
 // Libellés des absences dans la case (planche 2a, `ABS`) : mono, capitales.
 const LIB_ABS: Record<string, string> = { conge: 'CONGÉ', maladie: 'ABSENT · MALADIE', intemperie: 'INTEMPÉRIE', repos: 'REPOS' };
@@ -85,7 +86,7 @@ function nomAbsence(c: PlanningCtx, worker: User, date: string) {
   return { type, libelle: LIB_ABS[type] || type, sous };
 }
 
-export function Grille({ c, totaux, recherche = '', navPE = null }: { c: PlanningCtx; totaux: TotauxSemaine; recherche?: string; navPE?: ReactNode }) {
+export function Grille({ c, totaux, objectifs, recherche = '', navPE = null }: { c: PlanningCtx; totaux: TotauxSemaine; objectifs: Record<string, LignesObjectif>; recherche?: string; navPE?: ReactNode }) {
   const dates = c.weekDays.map((d) => format(d, 'yyyy-MM-dd'));
   const toutCoche = (ids: string[]) => ids.length > 0 && ids.every((id) => c.selOn.has(id));
   const charge = chargeJours(c, dates, totaux);
@@ -125,7 +126,7 @@ export function Grille({ c, totaux, recherche = '', navPE = null }: { c: Plannin
           </tr>
         </thead>
         <tbody>
-          {c.displayWorkers.map((worker) => <Ligne key={worker.id} c={c} worker={worker} dates={dates} totaux={totaux} />)}
+          {c.displayWorkers.map((worker) => <Ligne key={worker.id} c={c} worker={worker} dates={dates} totaux={totaux} objectifs={objectifs} />)}
           {c.displayWorkers.length === 0 && recherche && (
             <tr><td colSpan={8} className="dzp-aucun" data-testid="recherche-vide">Aucun salarié ni chantier ne correspond à « {recherche} ».</td></tr>
           )}
@@ -135,15 +136,15 @@ export function Grille({ c, totaux, recherche = '', navPE = null }: { c: Plannin
   );
 }
 
-function Ligne({ c, worker, dates, totaux }: { c: PlanningCtx; worker: User; dates: string[]; totaux: TotauxSemaine }) {
+function Ligne({ c, worker, dates, totaux, objectifs }: { c: PlanningCtx; worker: User; dates: string[]; totaux: TotauxSemaine; objectifs: Record<string, LignesObjectif> }) {
   const absAuj = c.todayAbsence.get(worker.id);
   const manque = (c.missingEffective.get(worker.id) || []).length;
   const nomComplet = `${worker.first_name} ${worker.last_name}`;
   const t = totaux.parSalarie[worker.id] || { envoyees: 0, prevues: 0 };
   const idsLigne: string[] = c.selectMode ? c.selectableIn((p: { user_id: string }) => p.user_id === worker.id) : [];
   const coche = idsLigne.length > 0 && idsLigne.every((id) => c.selOn.has(id));
-  // Jauge de la planche 2a : heures envoyées de la semaine sur 35 h (durée légale), plafonnée à 100 %.
-  const pct = Math.min(100, Math.round((t.envoyees / 60 / 35) * 100));
+  // Jauge : heures envoyées de la semaine sur l'objectif du salarié (fiche › « Heures par semaine », sinon l'entreprise, sinon 35 h), plafonnée à 100 %.
+  const objectif = c.weeklyGoalFor(worker.id);
   const heures = `${hm(t.envoyees)} h envoyées${t.prevues > 0 ? ` · +${hm(t.prevues)} prévues` : ''}${worker.role === 'lead' ? ' · chef d’équipe' : ''}`;
   return (
     <tr>
@@ -165,7 +166,7 @@ function Ligne({ c, worker, dates, totaux }: { c: PlanningCtx; worker: User; dat
             </span>
           </button>
         </div>
-        <div className="dzp-jauge" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
+        {objectifs[worker.id] ? <Objectif o={objectifs[worker.id]} pct={pctObjectif(t.envoyees, objectif)} /> : null}
       </td>
       {dates.map((d, i) => <Cellule key={d} c={c} worker={worker} d={d} jour={c.weekDays[i]} />)}
     </tr>

@@ -1117,3 +1117,14 @@ button.dzp-tuile__corps[aria-expanded="true"] .dzp-tuile__k::after { content: ' 
 .dzp-case-valider:hover { background: #FFB800; }
 .dzp-jour__valider:focus-visible, .dzp-case-valider:focus-visible { outline: 2px solid #15120F; outline-offset: 2px; }
 @media print { .dzp-jour__valider, .dzp-case-valider { display: none !important; } }
+
+/* Objectif de la semaine sous le nom (objectif-v2.tsx) : jauge, puis « Prévu 30 / 35 h · manque 5 h » et « Pointé 28 h · écart −2 h ». Le mot et le signe portent le sens. */
+.dzp-obj { margin-top: 4px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.dzp-table .dzp-obj .dzp-jauge { margin: 0 0 1px; flex: none; height: 5px; }
+.dzp-obj__l { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; line-height: 1.1; color: #5B534A; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dzp-obj__l span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dzp-obj__l b { flex: none; font-weight: 800; color: #15120F; }
+.dzp-obj__l b[data-ton="dessus"] { color: #B45309; }
+.dzp-obj__l b[data-ton="atteint"] { color: #17663F; }
+@media (max-width: 1279px) { .dzp-obj__l { flex-wrap: wrap; column-gap: 6px; row-gap: 0; } .dzp-obj__l span { overflow: visible; } } /* colonne de 176 px : l'écart passe dessous plutôt que d'être coupé */
+.dzp-m-obj .dzp-obj { margin-top: -2px; }

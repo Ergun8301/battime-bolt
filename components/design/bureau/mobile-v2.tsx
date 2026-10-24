@@ -17,6 +17,8 @@ import { hashStr } from '@/components/planning-bubble';
 import { CaseCoche, duree2a, lireBulle2a, type DonneesBulle } from './bulle-v2';
 import { useLargeur, REQ_TELEPHONE } from './pont-v2';
 import type { PlanningCtx } from './contexte-v2';
+import { Objectif } from './objectif-v2';
+import type { LignesObjectif } from '@/supabase/functions/_shared/bureau-vue';
 
 // Libellés des absences (planche, `ABS`) : mono, capitales.
 const LIB_ABS: Record<string, string> = { conge: 'CONGÉ', maladie: 'ABSENT · MALADIE', intemperie: 'INTEMPÉRIE', repos: 'REPOS' };
@@ -103,7 +105,7 @@ function Semaine({ c, gens, ouvrirJour }: { c: PlanningCtx; gens: User[]; ouvrir
   );
 }
 
-export function Mobile({ c, gens, nbRecherche }: { c: PlanningCtx; gens: User[]; nbRecherche: string }) {
+export function Mobile({ c, gens, nbRecherche, objectifs }: { c: PlanningCtx; gens: User[]; nbRecherche: string; objectifs: Record<string, LignesObjectif> }) {
   const [vue, setVue] = useState<'jour' | 'semaine'>('jour');
   const telephone = useLargeur(REQ_TELEPHONE);
   const jour = c.weekDays[c.mobileDayIdx];
@@ -182,6 +184,7 @@ export function Mobile({ c, gens, nbRecherche }: { c: PlanningCtx; gens: User[];
                   <span className="dzp-m-nom">{nomComplet}</span>
                   <span className="dzp-m-etat" data-ton={manque.length > 0 ? 'attente' : undefined} data-testid={manque.length > 0 ? 'row-waiting' : undefined}>{manque.length > 0 ? `${manque.length} J EN ATTENTE` : 'À JOUR'}</span>
                 </button>
+                {objectifs[worker.id] ? <div className="dzp-m-obj"><Objectif o={objectifs[worker.id]} jauge={false} /></div> : null}
                 {absence ? (
                   <>
                     <button type="button" className="dzp-m-absence" data-type={absence.absence_type} data-testid="absence" onClick={() => (c.selectMode ? toast('Absence — à changer avec « Présent »') : c.setStatusTarget({ worker, fromStr: d }))}
